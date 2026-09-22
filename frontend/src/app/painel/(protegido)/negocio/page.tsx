@@ -140,7 +140,7 @@ export default function PaginaPerfilNegocio() {
           </label>
         </div>
         <div className="flex gap-3">
-          <label className="flex-[2]">
+          <label className="flex-2">
             <span className={classeLabel}>Rua</span>
             <input className={classeInput} value={perfil.rua ?? ""} onChange={(e) => atualizarCampo("rua", e.target.value)} />
           </label>

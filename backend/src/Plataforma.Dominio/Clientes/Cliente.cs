@@ -21,6 +21,11 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
 
     public OrigemCliente Origem { get; private set; }
 
+    /// <summary>LGPD (seção 8.4) — exclusão sob demanda é anonimização, não remoção da linha: preserva o histórico de agendamentos/faturamento sem identificar a pessoa.</summary>
+    public bool Excluido { get; private set; }
+
+    public DateTimeOffset? ExcluidoEm { get; private set; }
+
     protected Cliente()
     {
     }
@@ -67,5 +72,31 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
         Nome = nome.Trim();
         Email = email;
         Observacoes = observacoes;
+    }
+
+    /// <summary>
+    /// Anonimiza em vez de apagar a linha (seção 8.4): zera nome/e-mail/observações e troca
+    /// o telefone por um valor sintético (só pra continuar batendo o formato E.164 e a
+    /// unicidade — nunca mais identifica nem contata a pessoa de verdade). Os agendamentos
+    /// já feitos continuam existindo (auditoria/financeiro), só deixam de apontar pra um
+    /// cliente identificável.
+    /// </summary>
+    public void Anonimizar(DateTimeOffset agora)
+    {
+        if (Excluido)
+            return;
+
+        Nome = "Cliente removido";
+        Email = null;
+        Observacoes = null;
+        Telefone = TelefoneAnonimo(Id);
+        Excluido = true;
+        ExcluidoEm = agora;
+    }
+
+    private static TelefoneE164 TelefoneAnonimo(Guid id)
+    {
+        var numerico = (uint)id.GetHashCode() % 1_000_000_000;
+        return TelefoneE164.Criar($"+19{numerico:D9}");
     }
 }

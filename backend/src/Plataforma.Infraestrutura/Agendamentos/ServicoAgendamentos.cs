@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Fidelidade;
 using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Clientes;
@@ -29,10 +30,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly INotificador _notificador;
     private readonly IServicoTokenPublico _servicoToken;
     private readonly OpcoesMarca _opcoesMarca;
+    private readonly IGerenciadorFidelidade _gerenciadorFidelidade;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
-        INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca)
+        INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
+        IGerenciadorFidelidade gerenciadorFidelidade)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
@@ -40,6 +43,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         _notificador = notificador;
         _servicoToken = servicoToken;
         _opcoesMarca = opcoesMarca.Value;
+        _gerenciadorFidelidade = gerenciadorFidelidade;
     }
 
     public async Task<ResultadoAgendamento> CriarAsync(CriarAgendamento dados, CancellationToken cancellationToken = default)
@@ -232,6 +236,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 }
             }
 
+            agendamento.RegistrarConsentimento(DateTimeOffset.UtcNow, dados.IpCliente, VersaoTermos.Atual);
             agendamento.ConfirmarReserva();
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
@@ -461,6 +466,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         agendamento.MarcarConcluido();
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Selo do cartão de fidelidade (seção 7) — não faz nada se o negócio não tiver
+        // programa ativo (ver GerenciadorFidelidade.RegistrarSeloAsync).
+        if (agendamento.ClienteId is not null)
+            await _gerenciadorFidelidade.RegistrarSeloAsync(agendamento.ClienteId.Value, agendamento.Id, cancellationToken);
+
         return true;
     }
 

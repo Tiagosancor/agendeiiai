@@ -4,6 +4,7 @@ using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -153,9 +154,33 @@ if (app.Environment.IsDevelopment())
     await Plataforma.Infraestrutura.Persistencia.SemeadorDesenvolvimento.SemearAsync(dbContext, senhaHasher);
 }
 
+// Atrás de um reverse proxy (Caddy/VPS, Render — seção "Caminho 2" de docs/deploy.md), a
+// API só é alcançada pelo proxy, nunca direto pela internet — por isso confiar em
+// X-Forwarded-For aqui é seguro (não dá pra um cliente externo forjar o cabeçalho e
+// se passar por outro IP, já que o proxy sempre sobrescreve/adiciona o dele por cima).
+// Sem isso, o IP de consentimento do cliente (seção 8.4) seria sempre o IP do proxy, não
+// o do cliente de verdade.
+var opcoesCabecalhosEncaminhados = new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+};
+// "KnownIPNetworks = { }"/"KnownProxies = { }" no inicializador de objeto é um
+// collection initializer — adiciona zero itens à lista padrão já existente (que traz
+// loopback), não a esvazia. Sem o .Clear() explícito, o X-Forwarded-For do proxy real
+// (gateway do Docker, nunca loopback) era silenciosamente ignorado e o IP de
+// consentimento (seção 8.4) gravava o IP do container em vez do IP do cliente.
+opcoesCabecalhosEncaminhados.KnownIPNetworks.Clear();
+opcoesCabecalhosEncaminhados.KnownProxies.Clear();
+app.UseForwardedHeaders(opcoesCabecalhosEncaminhados);
+
 app.UseSerilogRequestLogging();
 
 app.UseMiddleware<TratamentoGlobalErrosMiddleware>();
+
+// Modo manutenção (seção 8.5.8) — antes de qualquer outra coisa (CORS, resolução de
+// tenant, autenticação), pra bloquear TUDO de uma vez só enquanto ativo. /health é a
+// única exceção (o middleware já trata isso internamente).
+app.UseMiddleware<ModoManutencaoMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {

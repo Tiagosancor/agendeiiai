@@ -5,6 +5,7 @@ import { requisicaoApiPublica } from "@/lib/api";
 import type { CategoriaComServicosPublicos, NegocioPublico, ProfissionalPublico } from "@/lib/tipos";
 import { NOMES_DIAS_SEMANA } from "@/lib/tipos";
 import { AssistenteAgendamento } from "@/components/publico/AssistenteAgendamento";
+import { BotaoTema } from "@/components/BotaoTema";
 
 function iniciaisNome(nome: string): string {
   return nome
@@ -68,12 +69,15 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           {negocio.logoUrl && <img src={negocio.logoUrl} alt="" className="h-8 w-8 rounded-full object-cover" />}
           <span className="font-semibold text-gray-900 dark:text-neutral-50">{negocio.nomeExibido}</span>
         </div>
-        <button
-          onClick={() => abrirAssistente()}
-          className="rounded-lg bg-[var(--cor-primaria)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-        >
-          Agendar
-        </button>
+        <div className="flex items-center gap-2">
+          <BotaoTema />
+          <button
+            onClick={() => abrirAssistente()}
+            className="rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+          >
+            Agendar
+          </button>
+        </div>
       </header>
 
       <main>
@@ -86,7 +90,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           )}
           <button
             onClick={() => abrirAssistente()}
-            className="mt-6 rounded-lg bg-[var(--cor-primaria)] px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+            className="mt-6 rounded-lg bg-(--cor-primaria) px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
           >
             Agendar Agora
           </button>
@@ -97,11 +101,11 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
             <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-50">Equipe</h2>
             <div className="flex gap-4 overflow-x-auto pb-2">
               {profissionais.map((p) => (
-                <div key={p.id} className="flex w-20 flex-shrink-0 flex-col items-center text-center">
+                <div key={p.id} className="flex w-20 shrink-0 flex-col items-center text-center">
                   {p.fotoUrl ? (
                     <img src={p.fotoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
                   ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--cor-primaria)] text-sm font-semibold text-white">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-(--cor-primaria) text-sm font-semibold text-white">
                       {iniciaisNome(p.nome)}
                     </div>
                   )}
@@ -132,7 +136,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
                       <span className="font-medium text-gray-900 dark:text-neutral-50">{s.nome}</span>
                       <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">{s.duracaoMinutos} min</span>
                     </span>
-                    <span className="font-semibold text-[var(--cor-primaria)]">R$ {s.preco.toFixed(2)}</span>
+                    <span className="font-semibold text-(--cor-primaria)">R$ {s.preco.toFixed(2)}</span>
                   </button>
                 ))}
               </div>
@@ -165,7 +169,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
                             <span className="text-gray-900 dark:text-neutral-50">{s.nome}</span>
                             <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">{s.duracaoMinutos} min</span>
                           </span>
-                          <span className="font-semibold text-[var(--cor-primaria)]">R$ {s.preco.toFixed(2)}</span>
+                          <span className="font-semibold text-(--cor-primaria)">R$ {s.preco.toFixed(2)}</span>
                         </button>
                       ))}
                     </div>
@@ -198,7 +202,10 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
       </main>
 
       <footer className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-400 dark:border-neutral-800 dark:text-neutral-500">
-        {negocio.nomeExibido}
+        <p>{negocio.nomeExibido}</p>
+        <a href="/privacidade" className="mt-1 inline-block underline">
+          Política de privacidade
+        </a>
       </footer>
 
       <AssistenteAgendamento
@@ -251,21 +258,21 @@ function FormularioContato() {
           placeholder="Nome"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--cor-primaria)] dark:border-neutral-700 dark:bg-neutral-900"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
         />
         <div className="flex gap-2">
           <input
             placeholder="Telefone"
             value={telefone}
             onChange={(e) => setTelefone(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--cor-primaria)] dark:border-neutral-700 dark:bg-neutral-900"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
           />
           <input
             placeholder="E-mail"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--cor-primaria)] dark:border-neutral-700 dark:bg-neutral-900"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
           />
         </div>
         <textarea
@@ -274,12 +281,12 @@ function FormularioContato() {
           placeholder="Mensagem"
           value={mensagem}
           onChange={(e) => setMensagem(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-[var(--cor-primaria)] dark:border-neutral-700 dark:bg-neutral-900"
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
         />
         <button
           type="submit"
           disabled={enviando}
-          className="rounded-lg bg-[var(--cor-primaria)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+          className="rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
         >
           {enviando ? "Enviando..." : "Enviar"}
         </button>

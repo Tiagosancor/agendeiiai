@@ -90,7 +90,7 @@ export default function PaginaServicos() {
 
         <div className={classeCartao}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[650px]">
+            <table className="w-full min-w-162.5">
               <thead className="border-b border-gray-200 dark:border-neutral-800">
                 <tr>
                   <th className={classeTh}>Nome</th>

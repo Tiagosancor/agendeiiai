@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Plataforma.Infraestrutura.Persistencia;
@@ -11,9 +12,11 @@ using Plataforma.Infraestrutura.Persistencia;
 namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 {
     [DbContext(typeof(PlataformaDbContext))]
-    partial class PlataformaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922202121_FidelidadeELgpd")]
+    partial class FidelidadeELgpd
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -36,18 +39,6 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.Property<Guid?>("ClienteId")
                         .HasColumnType("uuid")
                         .HasColumnName("cliente_id");
-
-                    b.Property<DateTimeOffset?>("ConsentimentoData")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("consentimento_data");
-
-                    b.Property<string>("ConsentimentoIp")
-                        .HasColumnType("text")
-                        .HasColumnName("consentimento_ip");
-
-                    b.Property<string>("ConsentimentoVersaoTermos")
-                        .HasColumnType("text")
-                        .HasColumnName("consentimento_versao_termos");
 
                     b.Property<DateTimeOffset>("CriadoEm")
                         .HasColumnType("timestamp with time zone")
