@@ -14,4 +14,8 @@ public static class ExcecoesDeConcorrencia
 {
     public static bool EhViolacaoDeUnicidade(this DbUpdateException excecao) =>
         excecao.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
+
+    /// <summary>Violação da exclusion constraint de horários (seção 8.2.1) — dois agendamentos do mesmo profissional se sobrepondo.</summary>
+    public static bool EhViolacaoDeExclusao(this DbUpdateException excecao) =>
+        excecao.InnerException is PostgresException { SqlState: PostgresErrorCodes.ExclusionViolation };
 }

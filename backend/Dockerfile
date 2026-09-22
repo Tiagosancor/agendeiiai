@@ -20,6 +20,11 @@ RUN dotnet publish src/Plataforma.Api/Plataforma.Api.csproj -c Release -o /app -
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 WORKDIR /app
 
+# Alpine não traz o banco de fusos horários IANA por padrão — sem isso,
+# TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo") (seção 8.2.6) explode em
+# runtime mesmo funcionando em dev (Windows/a maioria das distros Linux já tem tzdata).
+RUN apk add --no-cache tzdata
+
 # Usuário sem privilégios (seção 8.5.1) — a imagem base já traz o usuário "app" (uid 64198) no Alpine.
 USER app
 

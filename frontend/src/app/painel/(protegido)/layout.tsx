@@ -7,6 +7,7 @@ import { useAutenticacao } from "@/lib/auth-context";
 
 const ITENS_MENU = [
   { href: "/painel", rotulo: "Início" },
+  { href: "/painel/agenda", rotulo: "Agenda" },
   { href: "/painel/usuarios", rotulo: "Usuários" },
   { href: "/painel/profissionais", rotulo: "Profissionais" },
   { href: "/painel/servicos", rotulo: "Serviços" },

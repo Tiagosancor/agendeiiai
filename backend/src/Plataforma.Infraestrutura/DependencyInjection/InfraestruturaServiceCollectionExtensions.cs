@@ -4,12 +4,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Aplicacao.Autenticacao;
 using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Negocios;
 using Plataforma.Aplicacao.Profissionais;
 using Plataforma.Aplicacao.Servicos;
 using Plataforma.Aplicacao.Usuarios;
+using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Autenticacao;
 using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.MultiTenant;
@@ -96,6 +98,14 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGerenciadorServicos, GerenciadorServicos>();
         servicos.AddScoped<IGerenciadorClientes, GerenciadorClientes>();
         servicos.AddScoped<IGerenciadorPerfilNegocio, GerenciadorPerfilNegocio>();
+
+        // Agenda e disponibilidade (Sprint 2 — seção 8.2).
+        servicos.AddScoped<IGerenciadorHorariosTrabalho, GerenciadorHorariosTrabalho>();
+        servicos.AddScoped<IGerenciadorBloqueios, GerenciadorBloqueios>();
+        servicos.AddScoped<IGerenciadorProfissionalServicos, GerenciadorProfissionalServicos>();
+        servicos.AddScoped<IConsultaDisponibilidade, ConsultaDisponibilidade>();
+        servicos.AddScoped<IServicoAgendamentos, ServicoAgendamentos>();
+        servicos.AddScoped<JobExpirarReservas>();
 
         servicos
             .AddHealthChecks()
