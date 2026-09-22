@@ -24,4 +24,10 @@ public sealed class OpcoesMarca
     [Required(AllowEmptyStrings = false, ErrorMessage = "Marca__EmailRemetente é obrigatório.")]
     [EmailAddress(ErrorMessage = "Marca__EmailRemetente precisa ser um e-mail válido.")]
     public string EmailRemetente { get; set; } = string.Empty;
+
+    /// <summary>Esquema da página pública do negócio, para montar links de e-mail (seção 6.3: cancelar/remarcar, .ics).</summary>
+    public string EsquemaUrlPublica { get; set; } = "https";
+
+    /// <summary>Porta da página pública, só em dev (ex.: 3000) — nula em produção, onde a porta é a padrão do esquema.</summary>
+    public int? PortaUrlPublica { get; set; }
 }

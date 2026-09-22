@@ -60,6 +60,7 @@ export interface ProfissionalResumo {
   nome: string;
   ativo: boolean;
   fotoUrl: string | null;
+  funcao: string | null;
 }
 
 export interface ProfissionalDetalhe {
@@ -70,6 +71,7 @@ export interface ProfissionalDetalhe {
   ativo: boolean;
   fotoUrl: string | null;
   cpfMascarado: string | null;
+  funcao: string | null;
 }
 
 export interface CategoriaResumo {
@@ -119,9 +121,11 @@ export interface PerfilNegocio {
   numero: string | null;
   cep: string | null;
   telefone: string | null;
+  emailContato: string | null;
   instagram: string | null;
   facebook: string | null;
   whatsApp: string | null;
+  whatsAppAtivoParaConfirmacoes: boolean;
   horarioFuncionamento: HorarioFuncionamentoDia[];
 }
 
@@ -153,7 +157,7 @@ export interface ProfissionalServicoResumo {
 export interface AgendamentoResumo {
   id: string;
   profissionalId: string;
-  clienteId: string;
+  clienteId: string | null;
   clienteNome: string;
   inicio: string;
   fim: string;
@@ -175,3 +179,96 @@ export interface RespostaConflitoAgendamento {
   title: string;
   proximosHorariosLivres: string[];
 }
+
+export interface CupomResumo {
+  id: string;
+  codigo: string;
+  tipo: "Percentual" | "ValorFixo";
+  valor: number;
+  validoAte: string | null;
+  limiteUsos: number | null;
+  usosAtuais: number;
+  ativo: boolean;
+  servicoIdsEscopo: string[];
+}
+
+// --- Sprint 3: página pública, assistente e código de confirmação ---
+
+export interface NegocioPublico {
+  id: string;
+  slug: string;
+  nomeExibido: string;
+  tipo: string;
+  fuso: string;
+  logoUrl: string | null;
+  corPrimaria: string | null;
+  corSecundaria: string | null;
+  tituloPagina: string | null;
+  subtituloPagina: string | null;
+  textoSobre: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  rua: string | null;
+  numero: string | null;
+  cep: string | null;
+  telefone: string | null;
+  instagram: string | null;
+  facebook: string | null;
+  whatsApp: string | null;
+  horarioFuncionamento: HorarioFuncionamentoDia[];
+}
+
+export interface ServicoPublico {
+  id: string;
+  nome: string;
+  preco: number;
+  duracaoMinutos: number;
+  popular: boolean;
+}
+
+export interface CategoriaComServicosPublicos {
+  categoriaId: string;
+  nome: string;
+  servicos: ServicoPublico[];
+}
+
+export interface ProfissionalPublico {
+  id: string;
+  nome: string;
+  fotoUrl: string | null;
+  funcao: string | null;
+  servicoIds: string[];
+}
+
+export interface HorarioLivrePublico {
+  inicio: string;
+  profissionalId: string;
+}
+
+export interface CriarReservaPublica {
+  profissionalId: string;
+  servicoIds: string[];
+  inicio: string;
+}
+
+export interface ConfirmarAgendamentoPublico {
+  agendamentoId: string;
+  tokenVerificacao: string;
+  nome: string;
+  telefone: string;
+  email?: string | null;
+  observacoes?: string | null;
+  codigoCupom?: string | null;
+}
+
+export interface DetalhePublicoAgendamento {
+  id: string;
+  nomeNegocio: string;
+  local: string;
+  inicio: string;
+  fim: string;
+  servicos: string[];
+  total: number;
+  status: string;
+}
+

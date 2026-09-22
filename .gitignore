@@ -20,6 +20,10 @@ backend/.vs/
 frontend/node_modules/
 frontend/.next/
 
+# Node / Expo (o mobile também tem seu próprio .gitignore mais detalhado)
+mobile/node_modules/
+mobile/.expo/
+
 # Dados locais (volumes montados por bind mount, se algum dia usarmos)
 **/dados-locais/
 

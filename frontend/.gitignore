@@ -13,6 +13,12 @@
 # testing
 /coverage
 
+# Playwright (frontend/e2e) — relatórios e artefatos de execução, nunca versionados.
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # next.js
 /.next/
 /out/

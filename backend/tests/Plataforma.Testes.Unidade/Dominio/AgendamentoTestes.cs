@@ -151,4 +151,72 @@ public sealed class AgendamentoTestes
 
         acao.Should().Throw<InvalidOperationException>();
     }
+
+    [Fact]
+    public void CriarReserva_publica_aceita_cliente_nulo()
+    {
+        var agendamento = Agendamento.CriarReserva(
+            Guid.NewGuid(), Guid.NewGuid(), null, Inicio, [ServicoDeTeste], Inicio.AddHours(-1), TimeSpan.FromMinutes(10));
+
+        agendamento.ClienteId.Should().BeNull();
+        agendamento.Status.Should().Be(StatusAgendamento.Reservado);
+    }
+
+    [Fact]
+    public void ConfirmarReserva_sem_cliente_vinculado_lanca_excecao()
+    {
+        var agendamento = Agendamento.CriarReserva(
+            Guid.NewGuid(), Guid.NewGuid(), null, Inicio, [ServicoDeTeste], Inicio.AddHours(-1), TimeSpan.FromMinutes(10));
+
+        var acao = () => agendamento.ConfirmarReserva();
+
+        acao.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void VincularCliente_permite_confirmar_depois()
+    {
+        var clienteId = Guid.NewGuid();
+        var agendamento = Agendamento.CriarReserva(
+            Guid.NewGuid(), Guid.NewGuid(), null, Inicio, [ServicoDeTeste], Inicio.AddHours(-1), TimeSpan.FromMinutes(10));
+
+        agendamento.VincularCliente(clienteId);
+        agendamento.ConfirmarReserva();
+
+        agendamento.ClienteId.Should().Be(clienteId);
+        agendamento.Status.Should().Be(StatusAgendamento.Agendado);
+    }
+
+    [Fact]
+    public void VincularCliente_duas_vezes_lanca_excecao()
+    {
+        var agendamento = Agendamento.CriarReserva(
+            Guid.NewGuid(), Guid.NewGuid(), null, Inicio, [ServicoDeTeste], Inicio.AddHours(-1), TimeSpan.FromMinutes(10));
+        agendamento.VincularCliente(Guid.NewGuid());
+
+        var acao = () => agendamento.VincularCliente(Guid.NewGuid());
+
+        acao.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void AplicarCupom_reduz_o_total()
+    {
+        var agendamento = Agendamento.CriarReserva(
+            Guid.NewGuid(), Guid.NewGuid(), null, Inicio, [ServicoDeTeste], Inicio.AddHours(-1), TimeSpan.FromMinutes(10));
+
+        agendamento.AplicarCupom(Guid.NewGuid(), 10m);
+
+        agendamento.Total.Should().Be(40m); // 50 - 10
+    }
+
+    [Fact]
+    public void Total_sem_cupom_e_a_soma_dos_servicos()
+    {
+        var agendamento = Agendamento.CriarConfirmado(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio,
+            [ServicoDeTeste, new ItemServicoAgendamento(Guid.NewGuid(), "Barba", 30m, 20)]);
+
+        agendamento.Total.Should().Be(80m);
+    }
 }

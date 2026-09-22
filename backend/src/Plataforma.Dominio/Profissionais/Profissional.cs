@@ -18,6 +18,9 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
     public string? Email { get; private set; }
 
+    /// <summary>Cargo exibido na página pública (seção 6.1.3, ex.: "Barbeiro", "Manicure").</summary>
+    public string? Funcao { get; private set; }
+
     public Endereco Endereco { get; private set; } = Endereco.Vazio;
 
     public CpfProtegido? Cpf { get; private set; }
@@ -38,7 +41,7 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
     public static Profissional Criar(
         Guid negocioId, string nome, string? telefone = null, string? email = null,
-        Endereco? endereco = null, CpfProtegido? cpf = null)
+        Endereco? endereco = null, CpfProtegido? cpf = null, string? funcao = null)
     {
         if (string.IsNullOrWhiteSpace(nome))
             throw new ArgumentException("O nome é obrigatório.", nameof(nome));
@@ -49,10 +52,11 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
             Email = email,
             Endereco = endereco ?? Endereco.Vazio,
             Cpf = cpf,
+            Funcao = funcao,
         };
     }
 
-    public void AtualizarDados(string nome, string? telefone, string? email, Endereco endereco)
+    public void AtualizarDados(string nome, string? telefone, string? email, Endereco endereco, string? funcao = null)
     {
         if (string.IsNullOrWhiteSpace(nome))
             throw new ArgumentException("O nome é obrigatório.", nameof(nome));
@@ -61,6 +65,7 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
         Telefone = telefone;
         Email = email;
         Endereco = endereco;
+        Funcao = funcao;
     }
 
     public void DefinirCpf(CpfProtegido cpf) => Cpf = cpf;

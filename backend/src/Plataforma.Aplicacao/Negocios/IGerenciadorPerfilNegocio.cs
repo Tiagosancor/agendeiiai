@@ -12,8 +12,8 @@ public sealed record PerfilNegocio(
     string Slug, string NomeExibido, string Tipo, string? LogoUrl, string? CorPrimaria, string? CorSecundaria,
     string? TituloPagina, string? SubtituloPagina, string? TextoSobre,
     string? Bairro, string? Cidade, string? Rua, string? Numero, string? Cep,
-    string? Telefone, string? Instagram, string? Facebook, string? WhatsApp,
-    IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento);
+    string? Telefone, string? EmailContato, string? Instagram, string? Facebook, string? WhatsApp,
+    bool WhatsAppAtivoParaConfirmacoes, IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento);
 
 public sealed record HorarioFuncionamentoDiaDto(int DiaSemana, TimeOnly? Abertura, TimeOnly? Fechamento, bool Fechado);
 
@@ -21,5 +21,5 @@ public sealed record AtualizarPerfilNegocio(
     string NomeExibido, string? LogoUrl, string? CorPrimaria, string? CorSecundaria,
     string? TituloPagina, string? SubtituloPagina, string? TextoSobre,
     string? Bairro, string? Cidade, string? Rua, string? Numero, string? Cep,
-    string? Telefone, string? Instagram, string? Facebook, string? WhatsApp,
-    IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento);
+    string? Telefone, string? EmailContato, string? Instagram, string? Facebook, string? WhatsApp,
+    bool WhatsAppAtivoParaConfirmacoes, IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento);

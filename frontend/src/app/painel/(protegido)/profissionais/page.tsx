@@ -104,6 +104,7 @@ function ModalCriarProfissional({
 }) {
   const { chamarApi } = useAutenticacao();
   const [nome, setNome] = useState("");
+  const [funcao, setFuncao] = useState("");
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
   const [cpf, setCpf] = useState("");
@@ -117,9 +118,10 @@ function ModalCriarProfissional({
     try {
       await chamarApi("/painel/profissionais", {
         metodo: "POST",
-        corpo: { nome, telefone: telefone || null, email: email || null, cpf: cpf || null },
+        corpo: { nome, telefone: telefone || null, email: email || null, cpf: cpf || null, funcao: funcao || null },
       });
       setNome("");
+      setFuncao("");
       setTelefone("");
       setEmail("");
       setCpf("");
@@ -137,6 +139,10 @@ function ModalCriarProfissional({
         <label>
           <span className={classeLabel}>Nome</span>
           <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
+        </label>
+        <label>
+          <span className={classeLabel}>Função (opcional, aparece na página pública)</span>
+          <input className={classeInput} value={funcao} onChange={(e) => setFuncao(e.target.value)} placeholder="Barbeiro" />
         </label>
         <label>
           <span className={classeLabel}>Telefone (opcional)</span>

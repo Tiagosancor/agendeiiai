@@ -1,8 +1,10 @@
 using System.Text;
+using System.Threading.RateLimiting;
 using Hangfire;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Plataforma.Aplicacao.Abstracoes;
@@ -72,6 +74,24 @@ builder.Services.AddAuthorization(opcoes =>
 });
 
 builder.Services.AddTransient<IClaimsTransformation, ContextoNegocioClaimsTransformation>();
+
+// Camada extra de rate limit por IP (seção 8.1.5) — o limite por telefone/negócio, que é o
+// que importa de verdade contra abuso do código de confirmação, já é reforçado dentro do
+// ServicoVerificacao (banco); isto aqui é só a primeira barreira, barata, contra um único
+// IP martelando o endpoint.
+builder.Services.AddRateLimiter(opcoes =>
+{
+    opcoes.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    opcoes.AddPolicy("CodigoVerificacaoPorIp", contexto => RateLimitPartition.GetFixedWindowLimiter(
+        contexto.Connection.RemoteIpAddress?.ToString() ?? "sem-ip",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            Window = TimeSpan.FromMinutes(1),
+            PermitLimit = 10,
+            QueueLimit = 0,
+        }));
+});
 
 var dominioBase = builder.Configuration[$"{OpcoesMarca.Secao}:Dominio"];
 builder.Services.AddCors(opcoes => opcoes.AddPolicy("PadraoPlataforma", politica =>
@@ -146,6 +166,7 @@ app.UseMiddleware<ResolucaoNegocioMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRateLimiter();
 
 app.MapControllers();
 

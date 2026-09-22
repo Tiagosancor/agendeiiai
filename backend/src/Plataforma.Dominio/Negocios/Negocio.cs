@@ -40,7 +40,17 @@ public class Negocio : EntidadeBase
 
     public string? Telefone { get; private set; }
 
+    /// <summary>Destino do formulário "Fale Conosco" (seção 6.1.6) — distinto do e-mail de um usuário/login.</summary>
+    public string? EmailContato { get; private set; }
+
     public RedesSociais RedesSociais { get; private set; } = RedesSociais.Vazio;
+
+    /// <summary>
+    /// Opt-in por negócio para confirmações e lembretes por WhatsApp além do código, que é
+    /// sempre enviado pelos dois canais independente disto (seção 9: cada mensagem tem
+    /// custo na Meta).
+    /// </summary>
+    public bool WhatsAppAtivoParaConfirmacoes { get; private set; }
 
     public IReadOnlyCollection<HorarioFuncionamentoDia> HorarioFuncionamento => _horarioFuncionamento.AsReadOnly();
 
@@ -74,7 +84,8 @@ public class Negocio : EntidadeBase
     public void AtualizarPerfil(
         string nomeExibido, string? logoUrl, string? corPrimaria, string? corSecundaria,
         string? tituloPagina, string? subtituloPagina, string? textoSobre,
-        Endereco endereco, string? telefone, RedesSociais redesSociais)
+        Endereco endereco, string? telefone, string? emailContato, RedesSociais redesSociais,
+        bool whatsAppAtivoParaConfirmacoes)
     {
         if (string.IsNullOrWhiteSpace(nomeExibido))
             throw new ArgumentException("O nome exibido é obrigatório.", nameof(nomeExibido));
@@ -88,7 +99,9 @@ public class Negocio : EntidadeBase
         TextoSobre = textoSobre;
         Endereco = endereco;
         Telefone = telefone;
+        EmailContato = emailContato;
         RedesSociais = redesSociais;
+        WhatsAppAtivoParaConfirmacoes = whatsAppAtivoParaConfirmacoes;
     }
 
     /// <summary>Substitui o horário de funcionamento inteiro — sempre os 7 dias da semana, um registro cada.</summary>

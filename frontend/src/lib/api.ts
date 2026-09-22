@@ -49,9 +49,39 @@ export async function requisicaoApi<T>(caminho: string, opcoes: OpcoesRequisicao
     throw new ErroApi(resposta.status, mensagem);
   }
 
-  if (resposta.status === 204) {
-    return undefined as T;
+  return lerCorpoJson<T>(resposta);
+}
+
+/** 204 (painel) e 202 Accepted (público, seção 8.1) não têm corpo — `.json()` direto quebraria neles. */
+async function lerCorpoJson<T>(resposta: Response): Promise<T> {
+  const texto = await resposta.text();
+  return (texto ? JSON.parse(texto) : undefined) as T;
+}
+
+/**
+ * Chamadas públicas (assistente de agendamento, seção 6.2) passam pelo proxy same-origin
+ * `/api/publico/*` (`app/api/publico/[...caminho]/route.ts`), nunca direto em
+ * `NEXT_PUBLIC_API_URL` — o navegador não consegue definir o cabeçalho `Host`, que é como
+ * a API resolve o negócio nas rotas públicas (seção 8.3.2). `caminho` já vem com o prefixo
+ * `/publico` retirado (ex.: `/servicos`, não `/publico/servicos`).
+ */
+export async function requisicaoApiPublica<T>(caminho: string, opcoes: OpcoesRequisicao = {}): Promise<T> {
+  const resposta = await fetch(`/api/publico${caminho}`, {
+    method: opcoes.metodo ?? "GET",
+    headers: opcoes.corpo !== undefined ? { "Content-Type": "application/json" } : {},
+    body: opcoes.corpo !== undefined ? JSON.stringify(opcoes.corpo) : undefined,
+  });
+
+  if (!resposta.ok) {
+    let mensagem = `Erro ${resposta.status}`;
+    try {
+      const corpoErro = await resposta.json();
+      mensagem = corpoErro.detail ?? corpoErro.title ?? mensagem;
+    } catch {
+      // corpo não é JSON — mantém a mensagem genérica.
+    }
+    throw new ErroApi(resposta.status, mensagem);
   }
 
-  return (await resposta.json()) as T;
+  return lerCorpoJson<T>(resposta);
 }

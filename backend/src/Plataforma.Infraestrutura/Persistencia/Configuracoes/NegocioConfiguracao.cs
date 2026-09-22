@@ -47,6 +47,8 @@ public sealed class NegocioConfiguracao : IEntityTypeConfiguration<Negocio>
         builder.Property(n => n.SubtituloPagina).HasMaxLength(300);
         builder.Property(n => n.TextoSobre).HasMaxLength(4000);
         builder.Property(n => n.Telefone).HasMaxLength(20);
+        builder.Property(n => n.EmailContato).HasMaxLength(320);
+        builder.Property(n => n.WhatsAppAtivoParaConfirmacoes).IsRequired().HasDefaultValue(false);
 
         builder.OwnsOne(n => n.Endereco, endereco =>
         {
