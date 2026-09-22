@@ -11,6 +11,7 @@ using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Contato;
 using Plataforma.Aplicacao.Cupons;
 using Plataforma.Aplicacao.Financeiro;
+using Plataforma.Aplicacao.Fidelidade;
 using Plataforma.Aplicacao.Ics;
 using Plataforma.Aplicacao.Negocios;
 using Plataforma.Aplicacao.Notificacoes;
@@ -25,6 +26,7 @@ using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.Contato;
 using Plataforma.Infraestrutura.Cupons;
 using Plataforma.Infraestrutura.Financeiro;
+using Plataforma.Infraestrutura.Fidelidade;
 using Plataforma.Infraestrutura.Ics;
 using Plataforma.Infraestrutura.MultiTenant;
 using Plataforma.Infraestrutura.Negocios;
@@ -111,6 +113,11 @@ public static class InfraestruturaServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        // Sem ValidateOnStart nem ValidateDataAnnotations de propósito: é só um bool, e
+        // precisa ser lido via IOptionsMonitor (não IOptions) pra dar pra ligar/desligar o
+        // modo manutenção em produção sem reiniciar a API (ver ModoManutencaoMiddleware).
+        servicos.AddOptions<OpcoesManutencao>().Bind(configuracao.GetSection(OpcoesManutencao.Secao));
+
         servicos.AddDbContext<PlataformaDbContext>((sp, opcoes) => opcoes
             .UseNpgsql(
                 ObterConnectionString(sp),
@@ -165,6 +172,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<JobEnviarLembretes>();
         servicos.AddScoped<IGerenciadorPagamentos, GerenciadorPagamentos>();
         servicos.AddScoped<IServicoFinanceiro, ServicoFinanceiro>();
+        servicos.AddScoped<IGerenciadorFidelidade, GerenciadorFidelidade>();
 
         // E-mail e WhatsApp: Fake em dev/testes, provedor real escolhido em runtime pela
         // configuração (seção 4) — nunca hardcoded, senão os testes de integração (que não

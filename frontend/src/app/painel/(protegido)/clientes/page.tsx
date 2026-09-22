@@ -4,7 +4,17 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
-import type { ClienteResumo } from "@/lib/tipos";
+import type { ClienteResumo, ExportacaoCliente, ProgressoFidelidade } from "@/lib/tipos";
+
+function baixarJson(nomeArquivo: string, dados: unknown) {
+  const blob = new Blob([JSON.stringify(dados, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function PaginaClientes() {
   const { chamarApi } = useAutenticacao();
@@ -12,6 +22,7 @@ export default function PaginaClientes() {
   const [erro, setErro] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [clienteEditando, setClienteEditando] = useState<ClienteResumo | null>(null);
+  const [clienteFidelidade, setClienteFidelidade] = useState<ClienteResumo | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -27,6 +38,19 @@ export default function PaginaClientes() {
     carregar();
   }, [carregar]);
 
+  async function exportarDados(cliente: ClienteResumo) {
+    const exportacao = await chamarApi<ExportacaoCliente>(`/painel/clientes/${cliente.id}/exportar`);
+    baixarJson(`dados-${cliente.nome.toLowerCase().replace(/\s+/g, "-")}.json`, exportacao);
+  }
+
+  async function excluirDados(cliente: ClienteResumo) {
+    if (!confirm(`Excluir os dados pessoais de "${cliente.nome}"? O histórico de agendamentos é mantido, mas anonimizado — isso não pode ser desfeito.`)) {
+      return;
+    }
+    await chamarApi(`/painel/clientes/${cliente.id}/excluir`, { metodo: "POST" });
+    await carregar();
+  }
+
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
@@ -40,7 +64,7 @@ export default function PaginaClientes() {
 
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[550px]">
+          <table className="w-full min-w-137.5">
             <thead className="border-b border-gray-200 dark:border-neutral-800">
               <tr>
                 <th className={classeTh}>Nome</th>
@@ -51,14 +75,29 @@ export default function PaginaClientes() {
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
               {clientes?.map((cliente) => (
-                <tr key={cliente.id}>
+                <tr key={cliente.id} className={cliente.excluido ? "opacity-50" : ""}>
                   <td className={classeTd}>{cliente.nome}</td>
                   <td className={classeTd}>{cliente.telefone}</td>
                   <td className={classeTd}>{cliente.email ?? "—"}</td>
-                  <td className={classeTd}>
-                    <button className="text-blue-600 hover:underline dark:text-blue-400" onClick={() => setClienteEditando(cliente)}>
-                      Editar
-                    </button>
+                  <td className={`${classeTd} space-x-3`}>
+                    {cliente.excluido ? (
+                      <span className="text-xs text-gray-400">Dados excluídos</span>
+                    ) : (
+                      <>
+                        <button className="text-blue-600 hover:underline dark:text-blue-400" onClick={() => setClienteEditando(cliente)}>
+                          Editar
+                        </button>
+                        <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => setClienteFidelidade(cliente)}>
+                          Fidelidade
+                        </button>
+                        <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => exportarDados(cliente)}>
+                          Exportar dados
+                        </button>
+                        <button className="text-red-600 hover:underline dark:text-red-400" onClick={() => excluirDados(cliente)}>
+                          Excluir dados
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -96,7 +135,65 @@ export default function PaginaClientes() {
           }}
         />
       )}
+
+      {clienteFidelidade && <ModalFidelidade cliente={clienteFidelidade} aoFechar={() => setClienteFidelidade(null)} />}
     </div>
+  );
+}
+
+function ModalFidelidade({ cliente, aoFechar }: { cliente: ClienteResumo; aoFechar: () => void }) {
+  const { chamarApi } = useAutenticacao();
+  const [progresso, setProgresso] = useState<ProgressoFidelidade | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [resgatando, setResgatando] = useState(false);
+
+  const carregarProgresso = useCallback(async () => {
+    try {
+      setErro(null);
+      setProgresso(await chamarApi<ProgressoFidelidade>(`/painel/fidelidade/clientes/${cliente.id}/progresso`));
+    } catch {
+      setErro("Não foi possível carregar a fidelidade (o negócio talvez ainda não tenha um programa configurado em Meu negócio → Fidelidade).");
+    }
+  }, [chamarApi, cliente.id]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    carregarProgresso();
+  }, [carregarProgresso]);
+
+  async function resgatar() {
+    setResgatando(true);
+    try {
+      await chamarApi(`/painel/fidelidade/clientes/${cliente.id}/resgatar`, { metodo: "POST" });
+      await carregarProgresso();
+    } catch {
+      setErro("Não foi possível resgatar.");
+    } finally {
+      setResgatando(false);
+    }
+  }
+
+  return (
+    <Modal titulo={`Fidelidade — ${cliente.nome}`} aberto aoFechar={aoFechar}>
+      {erro && <p className="text-sm text-red-600">{erro}</p>}
+      {progresso && !erro && (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-700 dark:text-neutral-300">
+            {progresso.selosNecessarios > 0
+              ? `${progresso.selosAtuais} de ${progresso.selosNecessarios} selos`
+              : `${progresso.selosAtuais} selo(s) — nenhum programa ativo no momento`}
+          </p>
+          {progresso.descricaoRecompensa && (
+            <p className="text-xs text-gray-500 dark:text-neutral-400">Recompensa: {progresso.descricaoRecompensa}</p>
+          )}
+          {progresso.podeResgatar && (
+            <button disabled={resgatando} className={classeBotaoPrimario} onClick={resgatar}>
+              {resgatando ? "Resgatando..." : "Resgatar recompensa"}
+            </button>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 

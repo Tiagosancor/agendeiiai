@@ -248,6 +248,19 @@ public sealed class AgendamentoTestes
     }
 
     [Fact]
+    public void RegistrarConsentimento_grava_data_ip_e_versao()
+    {
+        var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+        var agora = DateTimeOffset.UtcNow;
+
+        agendamento.RegistrarConsentimento(agora, "203.0.113.10", "1.0");
+
+        agendamento.ConsentimentoData.Should().Be(agora);
+        agendamento.ConsentimentoIp.Should().Be("203.0.113.10");
+        agendamento.ConsentimentoVersaoTermos.Should().Be("1.0");
+    }
+
+    [Fact]
     public void PrecisaLembrete_falso_para_agendamento_cancelado()
     {
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);

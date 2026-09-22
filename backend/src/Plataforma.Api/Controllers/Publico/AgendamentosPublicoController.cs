@@ -70,7 +70,8 @@ public sealed class AgendamentosPublicoController : ControllerBase
 
         var resultado = await _servicoAgendamentos.ConfirmarReservaPublicaAsync(
             new ConfirmarReservaPublica(
-                requisicao.AgendamentoId, requisicao.Nome, telefone!.Valor, requisicao.Email, requisicao.Observacoes, requisicao.CodigoCupom),
+                requisicao.AgendamentoId, requisicao.Nome, telefone!.Valor, requisicao.Email, requisicao.Observacoes,
+                requisicao.CodigoCupom, HttpContext.Connection.RemoteIpAddress?.ToString() ?? "desconhecido"),
             cancellationToken);
 
         // O token de cancelar/remarcar (seção 6.3) vai junto na resposta — a tela de sucesso

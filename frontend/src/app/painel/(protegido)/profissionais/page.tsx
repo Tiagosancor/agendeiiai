@@ -46,7 +46,7 @@ export default function PaginaProfissionais() {
 
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[500px]">
+          <table className="w-full min-w-125">
             <thead className="border-b border-gray-200 dark:border-neutral-800">
               <tr>
                 <th className={classeTh}>Nome</th>

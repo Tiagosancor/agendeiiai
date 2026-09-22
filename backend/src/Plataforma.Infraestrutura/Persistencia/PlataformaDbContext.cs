@@ -7,6 +7,7 @@ using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Contato;
 using Plataforma.Dominio.Cupons;
+using Plataforma.Dominio.Fidelidade;
 using Plataforma.Dominio.Financeiro;
 using Plataforma.Dominio.Negocios;
 using Plataforma.Dominio.Profissionais;
@@ -66,6 +67,10 @@ public class PlataformaDbContext : DbContext
     public DbSet<MensagemContato> MensagensContato => Set<MensagemContato>();
 
     public DbSet<Pagamento> Pagamentos => Set<Pagamento>();
+
+    public DbSet<ProgramaFidelidade> ProgramasFidelidade => Set<ProgramaFidelidade>();
+
+    public DbSet<SeloCliente> SelosCliente => Set<SeloCliente>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

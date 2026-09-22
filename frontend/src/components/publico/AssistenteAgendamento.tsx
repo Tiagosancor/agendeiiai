@@ -264,7 +264,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
           {[1, 2, 3, 4].map((n) => (
             <span
               key={n}
-              className={`h-1.5 w-6 rounded-full ${typeof etapa === "number" && etapa >= n ? "bg-[var(--cor-primaria)]" : "bg-gray-200 dark:bg-neutral-800"}`}
+              className={`h-1.5 w-6 rounded-full ${typeof etapa === "number" && etapa >= n ? "bg-(--cor-primaria)" : "bg-gray-200 dark:bg-neutral-800"}`}
             />
           ))}
         </div>
@@ -290,7 +290,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                         key={s.id}
                         onClick={() => alternarServico(s.id)}
                         className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm ${
-                          selecionado ? "border-[var(--cor-primaria)] bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-neutral-800"
+                          selecionado ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-neutral-800"
                         }`}
                       >
                         <span>
@@ -301,7 +301,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                         </span>
                         <span
                           className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                            selecionado ? "bg-[var(--cor-primaria)] text-white" : "border border-gray-300 dark:border-neutral-700"
+                            selecionado ? "bg-(--cor-primaria) text-white" : "border border-gray-300 dark:border-neutral-700"
                           }`}
                         >
                           {selecionado ? "✓" : "+"}
@@ -350,8 +350,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                       setDataEscolhida(dia);
                       setHorarioEscolhido(null);
                     }}
-                    className={`flex flex-shrink-0 flex-col items-center rounded-lg border px-3 py-2 text-xs ${
-                      selecionado ? "border-[var(--cor-primaria)] bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-neutral-800"
+                    className={`flex shrink-0 flex-col items-center rounded-lg border px-3 py-2 text-xs ${
+                      selecionado ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-neutral-800"
                     }`}
                   >
                     <span>{dia.toLocaleDateString("pt-BR", { weekday: "short" })}</span>
@@ -373,7 +373,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                     onClick={() => setHorarioEscolhido(h)}
                     className={`rounded-lg border px-2 py-2 text-sm ${
                       horarioEscolhido?.inicio === h.inicio && horarioEscolhido.profissionalId === h.profissionalId
-                        ? "border-[var(--cor-primaria)] bg-blue-50 dark:bg-blue-950"
+                        ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950"
                         : "border-gray-200 dark:border-neutral-800"
                     }`}
                   >
@@ -420,8 +420,13 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             {!codigoEnviado && (
               <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-neutral-400">
                 <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-0.5" />
-                Ao agendar, concordo com os termos de serviço e aceito receber lembretes e confirmações dos meus agendamentos por
-                e-mail e WhatsApp.
+                <span>
+                  Ao agendar, concordo com os termos de serviço e a{" "}
+                  <a href="/privacidade" target="_blank" rel="noopener noreferrer" className="underline">
+                    política de privacidade
+                  </a>
+                  , e aceito receber lembretes e confirmações dos meus agendamentos por e-mail e WhatsApp.
+                </span>
               </label>
             )}
 
@@ -429,7 +434,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               <button
                 onClick={enviarCodigo}
                 disabled={!podeEnviarCodigo || enviandoCodigo}
-                className="w-full rounded-lg bg-[var(--cor-primaria)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
               >
                 {enviandoCodigo ? "Enviando..." : "Enviar código"}
               </button>
@@ -448,7 +453,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 <button
                   onClick={validarCodigo}
                   disabled={codigo.length !== 6 || validandoCodigo}
-                  className="w-full rounded-lg bg-[var(--cor-primaria)] px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
                   {validandoCodigo ? "Validando..." : "Confirmar código"}
                 </button>
@@ -462,7 +467,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                   >
                     Mudar dados
                   </button>
-                  <button onClick={enviarCodigo} disabled={reenviarEm > 0} className="text-[var(--cor-primaria)] disabled:opacity-50">
+                  <button onClick={enviarCodigo} disabled={reenviarEm > 0} className="text-(--cor-primaria) disabled:opacity-50">
                     {reenviarEm > 0 ? `Reenviar em ${reenviarEm}s` : "Reenviar código"}
                   </button>
                 </div>
@@ -545,12 +550,12 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 Adicionar ao calendário
               </a>
               {tokenAgendamento && (
-                <a href={`/agendamentos/${tokenAgendamento}`} className="text-sm text-[var(--cor-primaria)] hover:underline">
+                <a href={`/agendamentos/${tokenAgendamento}`} className="text-sm text-(--cor-primaria) hover:underline">
                   Cancelar ou remarcar
                 </a>
               )}
             </div>
-            <button onClick={aoFechar} className="w-full rounded-lg bg-[var(--cor-primaria)] px-4 py-2 text-sm font-medium text-white">
+            <button onClick={aoFechar} className="w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white">
               Fechar
             </button>
           </div>
@@ -580,7 +585,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               else if (etapa === 3) setEtapa(4);
               else if (etapa === 4) confirmarAgendamento();
             }}
-            className="w-full rounded-lg bg-[var(--cor-primaria)] px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            className="w-full rounded-lg bg-(--cor-primaria) px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
             {textoBotaoContinuar(etapa, podeContinuarEtapa1, podeContinuarEtapa2, podeConfirmar, confirmando)}
           </button>

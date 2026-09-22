@@ -54,6 +54,13 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Lembrete configurável (padrão 2h antes, seção 9).</summary>
     public bool Lembrete2hEnviado { get; private set; }
 
+    /// <summary>Consentimento do cliente no assistente público (seção 8.4) — data, IP e versão dos termos aceitos ao confirmar. Nulo em agendamentos criados pelo painel (não é o próprio cliente aceitando).</summary>
+    public DateTimeOffset? ConsentimentoData { get; private set; }
+
+    public string? ConsentimentoIp { get; private set; }
+
+    public string? ConsentimentoVersaoTermos { get; private set; }
+
     public IReadOnlyCollection<AgendamentoServico> Servicos => _servicos.AsReadOnly();
 
     protected Agendamento()
@@ -220,6 +227,13 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     public void MarcarLembrete24hEnviado() => Lembrete24hEnviado = true;
 
     public void MarcarLembrete2hEnviado() => Lembrete2hEnviado = true;
+
+    public void RegistrarConsentimento(DateTimeOffset agora, string ip, string versaoTermos)
+    {
+        ConsentimentoData = agora;
+        ConsentimentoIp = ip;
+        ConsentimentoVersaoTermos = versaoTermos;
+    }
 
     /// <summary>Total sempre recalculado a partir da soma dos serviços menos o desconto (seção 6.2.4) — nunca guardado por fora.</summary>
     public decimal Total => _servicos.Sum(s => s.Preco) - DescontoAplicado;

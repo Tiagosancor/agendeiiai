@@ -60,7 +60,13 @@ public sealed record CriarReservaPublica(Guid ProfissionalId, IReadOnlyList<Guid
 
 public sealed record ConfirmarReservaPublica(
     Guid AgendamentoId, string NomeCliente, string TelefoneCliente, string? EmailCliente,
-    string? Observacoes, string? CodigoCupom);
+    string? Observacoes, string? CodigoCupom, string IpCliente);
+
+/// <summary>Versão atual dos termos aceitos no assistente público (seção 8.4) — subir manualmente quando o texto dos termos mudar.</summary>
+public static class VersaoTermos
+{
+    public const string Atual = "1.0";
+}
 
 public sealed record ResultadoPreVisualizacaoCupom(bool Sucesso, decimal Desconto = 0m, string? MensagemErro = null);
 

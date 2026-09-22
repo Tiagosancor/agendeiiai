@@ -45,4 +45,35 @@ public sealed class ClienteTestes
         var acao = () => Cliente.Criar(Guid.NewGuid(), "  ", TelefoneE164.Criar("+5571988887777"));
         acao.Should().Throw<ArgumentException>();
     }
+
+    [Fact]
+    public void Anonimizar_zera_dados_pessoais_e_marca_excluido()
+    {
+        var cliente = Cliente.Criar(
+            Guid.NewGuid(), "João", TelefoneE164.Criar("+5571988887777"), email: "joao@teste.com", observacoes: "Alérgico a tal produto");
+        var agora = DateTimeOffset.UtcNow;
+
+        cliente.Anonimizar(agora);
+
+        cliente.Nome.Should().Be("Cliente removido");
+        cliente.Email.Should().BeNull();
+        cliente.Observacoes.Should().BeNull();
+        cliente.Excluido.Should().BeTrue();
+        cliente.ExcluidoEm.Should().Be(agora);
+        cliente.Telefone.Valor.Should().NotBe("+5571988887777"); // não pode mais identificar/contatar a pessoa
+    }
+
+    [Fact]
+    public void Anonimizar_e_idempotente()
+    {
+        var cliente = Cliente.Criar(Guid.NewGuid(), "João", TelefoneE164.Criar("+5571988887777"));
+        cliente.Anonimizar(DateTimeOffset.UtcNow);
+        var telefoneAnonimo = cliente.Telefone;
+        var dataExclusao = cliente.ExcluidoEm;
+
+        cliente.Anonimizar(DateTimeOffset.UtcNow.AddMinutes(5)); // chamar de novo não deve mudar nada
+
+        cliente.Telefone.Should().Be(telefoneAnonimo);
+        cliente.ExcluidoEm.Should().Be(dataExclusao);
+    }
 }

@@ -45,4 +45,17 @@ public sealed class ClientesController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<IActionResult> Atualizar(Guid id, AtualizarCliente dados, CancellationToken cancellationToken) =>
         await _gerenciador.AtualizarAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+
+    /// <summary>Exportação de dados sob demanda (LGPD, seção 8.4).</summary>
+    [HttpGet("{id:guid}/exportar")]
+    public async Task<ActionResult<ExportacaoCliente>> Exportar(Guid id, CancellationToken cancellationToken)
+    {
+        var exportacao = await _gerenciador.ExportarAsync(id, cancellationToken);
+        return exportacao is null ? NotFound() : Ok(exportacao);
+    }
+
+    /// <summary>Exclusão sob demanda (LGPD, seção 8.4) — anonimiza, nunca apaga a linha.</summary>
+    [HttpPost("{id:guid}/excluir")]
+    public async Task<IActionResult> Excluir(Guid id, CancellationToken cancellationToken) =>
+        await _gerenciador.ExcluirAsync(id, cancellationToken) ? NoContent() : NotFound();
 }

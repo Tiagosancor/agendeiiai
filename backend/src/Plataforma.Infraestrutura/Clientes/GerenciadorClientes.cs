@@ -21,7 +21,7 @@ public sealed class GerenciadorClientes : IGerenciadorClientes
     public async Task<IReadOnlyList<ClienteResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Clientes
             .OrderBy(c => c.Nome)
-            .Select(c => new ClienteResumo(c.Id, c.Nome, c.Telefone.Valor, c.Email, c.Observacoes))
+            .Select(c => new ClienteResumo(c.Id, c.Nome, c.Telefone.Valor, c.Email, c.Observacoes, c.Excluido))
             .ToListAsync(cancellationToken);
 
     public async Task<ClienteResumo?> ObterAsync(Guid clienteId, CancellationToken cancellationToken = default)
@@ -67,6 +67,43 @@ public sealed class GerenciadorClientes : IGerenciadorClientes
         return true;
     }
 
+    public async Task<ExportacaoCliente?> ExportarAsync(Guid clienteId, CancellationToken cancellationToken = default)
+    {
+        var cliente = await _dbContext.Clientes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == clienteId, cancellationToken);
+        if (cliente is null)
+            return null;
+
+        var agendamentos = await _dbContext.Agendamentos.AsNoTracking()
+            .Include(a => a.Servicos)
+            .Where(a => a.ClienteId == clienteId)
+            .OrderByDescending(a => a.Inicio)
+            .ToListAsync(cancellationToken);
+
+        return new ExportacaoCliente(
+            cliente.Id, cliente.Nome, cliente.Telefone.Valor, cliente.Email, cliente.Observacoes,
+            cliente.Origem.ToString(), cliente.CriadoEm,
+            agendamentos.Select(a => new ExportacaoAgendamento(
+                a.Inicio, a.Fim, a.Status.ToString(), a.Servicos.Select(s => s.Nome).ToList(), a.Total, a.Observacoes)).ToList());
+    }
+
+    public async Task<bool> ExcluirAsync(Guid clienteId, CancellationToken cancellationToken = default)
+    {
+        var cliente = await _dbContext.Clientes.FindAsync([clienteId], cancellationToken);
+        if (cliente is null)
+            return false;
+
+        cliente.Anonimizar(DateTimeOffset.UtcNow);
+
+        // Zera também o que o cliente informou de próprio punho no link público (seção 8.1.4)
+        // nos agendamentos já feitos — o nome do cadastro já foi anonimizado acima.
+        await _dbContext.Agendamentos
+            .Where(a => a.ClienteId == clienteId)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.NomeInformado, (string?)null), cancellationToken);
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private static ClienteResumo Mapear(Cliente cliente) =>
-        new(cliente.Id, cliente.Nome, cliente.Telefone.Valor, cliente.Email, cliente.Observacoes);
+        new(cliente.Id, cliente.Nome, cliente.Telefone.Valor, cliente.Email, cliente.Observacoes, cliente.Excluido);
 }

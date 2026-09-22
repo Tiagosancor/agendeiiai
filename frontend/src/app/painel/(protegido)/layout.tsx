@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
+import { BotaoTema } from "@/components/BotaoTema";
 
 const ITENS_MENU = [
   { href: "/painel", rotulo: "Início" },
@@ -14,6 +15,7 @@ const ITENS_MENU = [
   { href: "/painel/cupons", rotulo: "Cupons" },
   { href: "/painel/clientes", rotulo: "Clientes" },
   { href: "/painel/financeiro", rotulo: "Financeiro" },
+  { href: "/painel/fidelidade", rotulo: "Fidelidade" },
   { href: "/painel/negocio", rotulo: "Meu negócio" },
 ];
 
@@ -46,15 +48,18 @@ export default function LayoutProtegido({ children }: { children: React.ReactNod
       <header className="border-b border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <span className="text-sm font-semibold text-gray-900 dark:text-neutral-50">Painel</span>
-          <button
-            onClick={async () => {
-              await sair();
-              roteador.replace("/painel/login");
-            }}
-            className="text-sm text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-neutral-100"
-          >
-            Sair
-          </button>
+          <div className="flex items-center gap-1">
+            <BotaoTema />
+            <button
+              onClick={async () => {
+                await sair();
+                roteador.replace("/painel/login");
+              }}
+              className="text-sm text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-neutral-100"
+            >
+              Sair
+            </button>
+          </div>
         </div>
         <nav className="mx-auto max-w-5xl overflow-x-auto px-4 pb-2">
           <ul className="flex gap-4 text-sm whitespace-nowrap">

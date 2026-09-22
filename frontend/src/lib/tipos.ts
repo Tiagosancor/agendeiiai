@@ -96,6 +96,27 @@ export interface ClienteResumo {
   telefone: string;
   email: string | null;
   observacoes: string | null;
+  excluido: boolean;
+}
+
+export interface ExportacaoAgendamento {
+  inicio: string;
+  fim: string;
+  status: string;
+  servicos: string[];
+  total: number;
+  observacoes: string | null;
+}
+
+export interface ExportacaoCliente {
+  id: string;
+  nome: string;
+  telefone: string;
+  email: string | null;
+  observacoes: string | null;
+  origem: string;
+  criadoEm: string;
+  agendamentos: ExportacaoAgendamento[];
 }
 
 export interface HorarioFuncionamentoDia {
@@ -316,5 +337,25 @@ export interface ResumoFinanceiro {
   quantidadeAtendimentos: number;
   porProfissional: FaturamentoPorProfissional[];
   porServico: FaturamentoPorServico[];
+}
+
+// --- Sprint 5: fidelidade e LGPD ---
+
+export interface ProgramaFidelidadeResumo {
+  selosNecessarios: number;
+  descricaoRecompensa: string;
+  ativo: boolean;
+}
+
+export interface DefinirProgramaFidelidade {
+  selosNecessarios: number;
+  descricaoRecompensa: string;
+}
+
+export interface ProgressoFidelidade {
+  selosAtuais: number;
+  selosNecessarios: number;
+  podeResgatar: boolean;
+  descricaoRecompensa: string | null;
 }
 
