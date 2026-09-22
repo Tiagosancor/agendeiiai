@@ -126,3 +126,52 @@ export interface PerfilNegocio {
 }
 
 export const NOMES_DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+// --- Sprint 2: agenda e disponibilidade ---
+
+export interface IntervaloTrabalho {
+  diaSemana: number;
+  inicio: string; // "HH:mm:ss"
+  fim: string;
+}
+
+export interface BloqueioResumo {
+  id: string;
+  profissionalId: string;
+  inicioUtc: string;
+  fimUtc: string;
+  motivo: string | null;
+}
+
+export interface ProfissionalServicoResumo {
+  servicoId: string;
+  nome: string;
+  preco: number;
+  duracaoMinutos: number;
+}
+
+export interface AgendamentoResumo {
+  id: string;
+  profissionalId: string;
+  clienteId: string;
+  clienteNome: string;
+  inicio: string;
+  fim: string;
+  status: string;
+  observacoes: string | null;
+  servicos: string[];
+  total: number;
+}
+
+export interface CriarAgendamento {
+  profissionalId: string;
+  clienteId: string;
+  servicoIds: string[];
+  inicio: string;
+  observacoes?: string | null;
+}
+
+export interface RespostaConflitoAgendamento {
+  title: string;
+  proximosHorariosLivres: string[];
+}

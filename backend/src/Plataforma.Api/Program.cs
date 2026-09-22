@@ -102,6 +102,18 @@ builder.Services.AddCors(opcoes => opcoes.AddPolicy("PadraoPlataforma", politica
 
 var app = builder.Build();
 
+// Expira reservas vencidas em todo o sistema, a cada minuto (seção 8.2.2) — cobre o caso
+// de alguém reservar um horário e simplesmente abandonar o fluxo, sem que ninguém mais
+// tente agendar justamente aquele profissional depois (o que também expira sob demanda).
+// API baseada em serviço (não a estática RecurringJob.*): a estática depende do singleton
+// global JobStorage.Current, que não isola bem entre containers de DI diferentes (quebra
+// o WebApplicationFactory dos testes de integração, que cria um container por teste).
+using (var escopoJobs = app.Services.CreateScope())
+{
+    escopoJobs.ServiceProvider.GetRequiredService<IRecurringJobManager>().AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobExpirarReservas>(
+        "expirar-reservas", job => job.ExecutarAsync(CancellationToken.None), "*/1 * * * *");
+}
+
 if (app.Environment.IsDevelopment())
 {
     // Em produção as migrations são um passo explícito de deploy (seção 8.5.5).

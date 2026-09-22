@@ -1,6 +1,8 @@
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Negocios;
@@ -45,6 +47,14 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<Cliente> Clientes => Set<Cliente>();
 
+    public DbSet<HorarioTrabalho> HorariosTrabalho => Set<HorarioTrabalho>();
+
+    public DbSet<BloqueioAgenda> BloqueiosAgenda => Set<BloqueioAgenda>();
+
+    public DbSet<ProfissionalServico> ProfissionalServicos => Set<ProfissionalServico>();
+
+    public DbSet<Agendamento> Agendamentos => Set<Agendamento>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Pré-requisito da exclusion constraint de horários (seção 8.2.1) — confirmado
@@ -72,6 +82,25 @@ public class PlataformaDbContext : DbContext
                 modelBuilder.Entity(tipoEntidade.ClrType)
                     .Property(nameof(EntidadeBase.Id))
                     .ValueGeneratedNever();
+            }
+
+            // O Npgsql só aceita gravar DateTimeOffset com Offset=0 em "timestamp with time
+            // zone" — um DateTimeOffset com o offset do fuso do negócio (ex.: -03:00, comum
+            // ao converter hora local pra UTC — seção 8.2.6) explode em tempo de execução.
+            // Normaliza pra UTC automaticamente em toda propriedade DateTimeOffset de todo
+            // mundo, pra ninguém precisar lembrar disso entidade por entidade.
+            foreach (var propriedade in tipoEntidade.GetProperties())
+            {
+                if (propriedade.ClrType == typeof(DateTimeOffset))
+                {
+                    propriedade.SetValueConverter(new ValueConverter<DateTimeOffset, DateTimeOffset>(
+                        v => v.ToUniversalTime(), v => v));
+                }
+                else if (propriedade.ClrType == typeof(DateTimeOffset?))
+                {
+                    propriedade.SetValueConverter(new ValueConverter<DateTimeOffset?, DateTimeOffset?>(
+                        v => v.HasValue ? v.Value.ToUniversalTime() : v, v => v));
+                }
             }
 
             if (!typeof(IEntidadeDoNegocio).IsAssignableFrom(tipoEntidade.ClrType))

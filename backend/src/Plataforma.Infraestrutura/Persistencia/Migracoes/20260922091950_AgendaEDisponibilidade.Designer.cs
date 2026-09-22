@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Plataforma.Infraestrutura.Persistencia;
@@ -11,9 +12,11 @@ using Plataforma.Infraestrutura.Persistencia;
 namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 {
     [DbContext(typeof(PlataformaDbContext))]
-    partial class PlataformaDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260922091950_AgendaEDisponibilidade")]
+    partial class AgendaEDisponibilidade
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -711,46 +714,6 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
             modelBuilder.Entity("Plataforma.Dominio.Negocios.Negocio", b =>
                 {
-                    b.OwnsOne("Plataforma.Dominio.Comum.Endereco", "Endereco", b1 =>
-                        {
-                            b1.Property<Guid>("NegocioId")
-                                .HasColumnType("uuid")
-                                .HasColumnName("id");
-
-                            b1.Property<string>("Bairro")
-                                .HasMaxLength(120)
-                                .HasColumnType("character varying(120)")
-                                .HasColumnName("endereco_bairro");
-
-                            b1.Property<string>("Cep")
-                                .HasMaxLength(9)
-                                .HasColumnType("character varying(9)")
-                                .HasColumnName("endereco_cep");
-
-                            b1.Property<string>("Cidade")
-                                .HasMaxLength(120)
-                                .HasColumnType("character varying(120)")
-                                .HasColumnName("endereco_cidade");
-
-                            b1.Property<string>("Numero")
-                                .HasMaxLength(20)
-                                .HasColumnType("character varying(20)")
-                                .HasColumnName("endereco_numero");
-
-                            b1.Property<string>("Rua")
-                                .HasMaxLength(200)
-                                .HasColumnType("character varying(200)")
-                                .HasColumnName("endereco_rua");
-
-                            b1.HasKey("NegocioId");
-
-                            b1.ToTable("negocios", (string)null);
-
-                            b1.WithOwner()
-                                .HasForeignKey("NegocioId")
-                                .HasConstraintName("fk_negocios_negocios_id");
-                        });
-
                     b.OwnsMany("Plataforma.Dominio.Negocios.HorarioFuncionamentoDia", "HorarioFuncionamento", b1 =>
                         {
                             b1.Property<Guid>("NegocioId")
@@ -784,6 +747,46 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                                 .HasConstraintName("fk_negocio_horario_funcionamento_negocios_negocio_id");
                         });
 
+                    b.OwnsOne("Plataforma.Dominio.Comum.Endereco", "Endereco", b1 =>
+                        {
+                            b1.Property<Guid>("NegocioId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("Bairro")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_bairro");
+
+                            b1.Property<string>("Cep")
+                                .HasMaxLength(9)
+                                .HasColumnType("character varying(9)")
+                                .HasColumnName("endereco_cep");
+
+                            b1.Property<string>("Cidade")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_cidade");
+
+                            b1.Property<string>("Numero")
+                                .HasMaxLength(20)
+                                .HasColumnType("character varying(20)")
+                                .HasColumnName("endereco_numero");
+
+                            b1.Property<string>("Rua")
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("endereco_rua");
+
+                            b1.HasKey("NegocioId");
+
+                            b1.ToTable("negocios");
+
+                            b1.WithOwner()
+                                .HasForeignKey("NegocioId")
+                                .HasConstraintName("fk_negocios_negocios_id");
+                        });
+
                     b.OwnsOne("Plataforma.Dominio.Negocios.RedesSociais", "RedesSociais", b1 =>
                         {
                             b1.Property<Guid>("NegocioId")
@@ -807,7 +810,7 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
                             b1.HasKey("NegocioId");
 
-                            b1.ToTable("negocios", (string)null);
+                            b1.ToTable("negocios");
 
                             b1.WithOwner()
                                 .HasForeignKey("NegocioId")
@@ -855,7 +858,7 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
                             b1.HasKey("ProfissionalId");
 
-                            b1.ToTable("profissionais", (string)null);
+                            b1.ToTable("profissionais");
 
                             b1.WithOwner()
                                 .HasForeignKey("ProfissionalId")
@@ -895,7 +898,7 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
                             b1.HasKey("ProfissionalId");
 
-                            b1.ToTable("profissionais", (string)null);
+                            b1.ToTable("profissionais");
 
                             b1.WithOwner()
                                 .HasForeignKey("ProfissionalId")
@@ -950,7 +953,7 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
                             b1.HasKey("UsuarioId");
 
-                            b1.ToTable("usuarios", (string)null);
+                            b1.ToTable("usuarios");
 
                             b1.WithOwner()
                                 .HasForeignKey("UsuarioId")
@@ -990,7 +993,7 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
                             b1.HasKey("UsuarioId");
 
-                            b1.ToTable("usuarios", (string)null);
+                            b1.ToTable("usuarios");
 
                             b1.WithOwner()
                                 .HasForeignKey("UsuarioId")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
@@ -58,7 +59,10 @@ export default function PaginaProfissionais() {
                 <tr key={profissional.id}>
                   <td className={classeTd}>{profissional.nome}</td>
                   <td className={classeTd}>{profissional.ativo ? "Ativo" : "Inativo"}</td>
-                  <td className={classeTd}>
+                  <td className={`${classeTd} space-x-3`}>
+                    <Link href={`/painel/profissionais/${profissional.id}`} className="text-blue-600 hover:underline dark:text-blue-400">
+                      Horários e serviços
+                    </Link>
                     <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => alternarAtivo(profissional)}>
                       {profissional.ativo ? "Desativar" : "Ativar"}
                     </button>
