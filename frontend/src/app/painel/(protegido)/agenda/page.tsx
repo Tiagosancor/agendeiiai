@@ -8,9 +8,12 @@ import type {
   AgendamentoResumo,
   ClienteResumo,
   CriarAgendamento,
+  FormaPagamento,
   ProfissionalResumo,
+  RegistrarPagamento,
   ServicoResumo,
 } from "@/lib/tipos";
+import { FORMAS_PAGAMENTO } from "@/lib/tipos";
 
 function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -37,6 +40,7 @@ export default function PaginaAgenda() {
   const [agenda, setAgenda] = useState<AgendamentoResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
+  const [agendamentoParaPagar, setAgendamentoParaPagar] = useState<AgendamentoResumo | null>(null);
 
   useEffect(() => {
     // Busca disparada pela montagem, não estado derivado de props.
@@ -124,6 +128,14 @@ export default function PaginaAgenda() {
                 </button>
               </div>
             )}
+            {item.status === "Concluido" && (
+              <button
+                className="text-sm text-green-700 hover:underline dark:text-green-400"
+                onClick={() => setAgendamentoParaPagar(item)}
+              >
+                Registrar pagamento
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -138,7 +150,87 @@ export default function PaginaAgenda() {
           await carregarAgenda();
         }}
       />
+
+      <ModalRegistrarPagamento
+        agendamento={agendamentoParaPagar}
+        aoFechar={() => setAgendamentoParaPagar(null)}
+        aoRegistrar={async () => {
+          setAgendamentoParaPagar(null);
+          await carregarAgenda();
+        }}
+      />
     </div>
+  );
+}
+
+function ModalRegistrarPagamento({
+  agendamento,
+  aoFechar,
+  aoRegistrar,
+}: {
+  agendamento: AgendamentoResumo | null;
+  aoFechar: () => void;
+  aoRegistrar: () => Promise<void>;
+}) {
+  const { chamarApi } = useAutenticacao();
+  const [valor, setValor] = useState("");
+  const [forma, setForma] = useState<FormaPagamento>("Pix");
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  useEffect(() => {
+    // Sincroniza o valor sugerido com o total do agendamento sempre que o modal abre.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (agendamento) setValor(agendamento.total.toFixed(2));
+  }, [agendamento]);
+
+  async function aoEnviar(evento: FormEvent) {
+    evento.preventDefault();
+    if (!agendamento) return;
+
+    setErro(null);
+    setEnviando(true);
+    try {
+      const dados: RegistrarPagamento = { agendamentoId: agendamento.id, valor: Number(valor), forma };
+      await chamarApi("/painel/pagamentos", { metodo: "POST", corpo: dados });
+      await aoRegistrar();
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível registrar o pagamento.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Modal titulo="Registrar pagamento" aberto={agendamento !== null} aoFechar={aoFechar}>
+      <form onSubmit={aoEnviar} className="space-y-3">
+        <label>
+          <span className={classeLabel}>Valor (R$)</span>
+          <input required type="number" min={0.01} step="0.01" className={classeInput} value={valor} onChange={(e) => setValor(e.target.value)} />
+        </label>
+        <label>
+          <span className={classeLabel}>Forma de pagamento</span>
+          <select className={classeInput} value={forma} onChange={(e) => setForma(e.target.value as FormaPagamento)}>
+            {FORMAS_PAGAMENTO.map((f) => (
+              <option key={f.valor} value={f.valor}>
+                {f.rotulo}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
+            Cancelar
+          </button>
+          <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
+            {enviando ? "Registrando..." : "Registrar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

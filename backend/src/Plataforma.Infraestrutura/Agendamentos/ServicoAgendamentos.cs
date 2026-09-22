@@ -42,8 +42,15 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         _opcoesMarca = opcoesMarca.Value;
     }
 
-    public Task<ResultadoAgendamento> CriarAsync(CriarAgendamento dados, CancellationToken cancellationToken = default) =>
-        CriarInternoAsync(dados, confirmarDeImediato: true, cancellationToken);
+    public async Task<ResultadoAgendamento> CriarAsync(CriarAgendamento dados, CancellationToken cancellationToken = default)
+    {
+        var resultado = await CriarInternoAsync(dados, confirmarDeImediato: true, cancellationToken);
+
+        if (resultado.Sucesso)
+            await NotificarProfissionalAsync(resultado.AgendamentoId!.Value, EventoAgendamentoProfissional.Novo, cancellationToken);
+
+        return resultado;
+    }
 
     public Task<ResultadoAgendamento> CriarReservaAsync(CriarAgendamento dados, CancellationToken cancellationToken = default) =>
         CriarInternoAsync(dados, confirmarDeImediato: false, cancellationToken);
@@ -290,6 +297,43 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         await _notificador.EnviarConfirmacaoAgendamentoAsync(new DadosNotificacaoAgendamento(
             cliente.Nome, cliente.Email, cliente.Telefone, agendamento.Inicio, agendamento.Fim,
             agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, linkCancelar, linkCancelar), cancellationToken);
+
+        await NotificarProfissionalAsync(agendamento, cliente.Nome, EventoAgendamentoProfissional.Novo, cancellationToken);
+    }
+
+    /// <summary>Novo/remarcado/cancelado ao profissional (seção 9, Sprint 4) — nunca falha o fluxo principal se der errado (ver <c>Notificador</c>).</summary>
+    private async Task NotificarProfissionalAsync(Guid agendamentoId, EventoAgendamentoProfissional evento, CancellationToken cancellationToken)
+    {
+        var agendamento = await _dbContext.Agendamentos.AsNoTracking()
+            .Include(a => a.Servicos)
+            .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
+
+        if (agendamento is null)
+            return;
+
+        var nomeCliente = "—";
+        if (agendamento.ClienteId is not null)
+        {
+            var cliente = await _dbContext.Clientes.AsNoTracking()
+                .FirstOrDefaultAsync(c => c.Id == agendamento.ClienteId, cancellationToken);
+            nomeCliente = cliente?.Nome ?? agendamento.NomeInformado ?? "—";
+        }
+
+        await NotificarProfissionalAsync(agendamento, nomeCliente, evento, cancellationToken);
+    }
+
+    private async Task NotificarProfissionalAsync(
+        Agendamento agendamento, string nomeCliente, EventoAgendamentoProfissional evento, CancellationToken cancellationToken)
+    {
+        var profissional = await _dbContext.Profissionais.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == agendamento.ProfissionalId, cancellationToken);
+
+        if (profissional is null)
+            return;
+
+        await _notificador.EnviarNotificacaoProfissionalAsync(new DadosNotificacaoProfissional(
+            evento, profissional.Email, nomeCliente, agendamento.Inicio, agendamento.Fim,
+            agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Observacoes), cancellationToken);
     }
 
     public async Task<ResultadoPreVisualizacaoCupom> PreVisualizarCupomAsync(
@@ -327,6 +371,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         agendamento.Cancelar();
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Cancelado, cancellationToken);
         return true;
     }
 
@@ -335,11 +381,16 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
 
-        return await estrategia.ExecuteAsync(async () =>
+        var resultado = await estrategia.ExecuteAsync(async () =>
         {
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-            var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
+            // FindAsync não carrega Servicos (não aceita Include) — sem isso, duracaoTotalMinutos
+            // sempre dava 0 e Agendamento.Mover sempre lançava "fim precisa ser depois do início".
+            // Bug pré-existente, nunca pego antes porque não havia teste de "mover com sucesso".
+            var agendamento = await _dbContext.Agendamentos
+                .Include(a => a.Servicos)
+                .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
             if (agendamento is null)
             {
                 await transacao.RollbackAsync(cancellationToken);
@@ -395,6 +446,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 return ResultadoAgendamento.ComConflito("Esse horário já está ocupado. Escolha outro.", proximos.Take(5).ToList());
             }
         });
+
+        if (resultado.Sucesso)
+            await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Remarcado, cancellationToken);
+
+        return resultado;
     }
 
     public async Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)

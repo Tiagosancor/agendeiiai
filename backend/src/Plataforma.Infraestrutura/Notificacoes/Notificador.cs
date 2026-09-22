@@ -118,6 +118,63 @@ public sealed class Notificador : INotificador
             "E-mail/fale-conosco");
     }
 
+    public async Task EnviarNotificacaoProfissionalAsync(DadosNotificacaoProfissional dados, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(dados.EmailProfissional))
+            return;
+
+        var negocio = await ObterNegocioAsync(cancellationToken);
+
+        var (assunto, titulo) = dados.Evento switch
+        {
+            EventoAgendamentoProfissional.Novo => ("Novo agendamento", "Novo agendamento"),
+            EventoAgendamentoProfissional.Remarcado => ("Agendamento remarcado", "Agendamento remarcado"),
+            EventoAgendamentoProfissional.Cancelado => ("Agendamento cancelado", "Agendamento cancelado"),
+            _ => ("Agendamento", "Agendamento"),
+        };
+
+        var corpo = $"""
+            <p><strong>{titulo}</strong> em {negocio.NomeExibido}.</p>
+            <p><strong>Cliente:</strong> {dados.NomeCliente}</p>
+            <p><strong>Quando:</strong> {dados.Inicio:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
+            {(string.IsNullOrWhiteSpace(dados.Observacoes) ? "" : $"<p><strong>Observações:</strong> {dados.Observacoes}</p>")}
+            """;
+
+        await ExecutarSemFalharAsync(
+            _email.EnviarAsync(dados.EmailProfissional, $"{assunto} — {negocio.NomeExibido}", corpo, cancellationToken),
+            "E-mail/profissional");
+    }
+
+    public async Task EnviarLembreteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default)
+    {
+        var negocio = await ObterNegocioAsync(cancellationToken);
+
+        var corpo = $"""
+            <p>Olá, {dados.NomeCliente}! Lembrete do seu agendamento em <strong>{negocio.NomeExibido}</strong>.</p>
+            <p><strong>Quando:</strong> {dados.Inicio:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
+            <p><a href="{dados.LinkRemarcar}">Remarcar</a> · <a href="{dados.LinkCancelar}">Cancelar</a></p>
+            """;
+
+        var tarefas = new List<Task>();
+
+        if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
+        {
+            tarefas.Add(ExecutarSemFalharAsync(
+                _email.EnviarAsync(dados.EmailCliente, $"Lembrete do seu agendamento — {negocio.NomeExibido}", corpo, cancellationToken),
+                "E-mail/lembrete"));
+        }
+
+        if (negocio.WhatsAppAtivoParaConfirmacoes)
+        {
+            var mensagem = $"Lembrete: você tem um agendamento em {negocio.NomeExibido} em {dados.Inicio:dd/MM/yyyy HH:mm}.";
+            tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/lembrete"));
+        }
+
+        await Task.WhenAll(tarefas);
+    }
+
     private Task<Negocio> ObterNegocioAsync(CancellationToken cancellationToken) =>
         _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
 

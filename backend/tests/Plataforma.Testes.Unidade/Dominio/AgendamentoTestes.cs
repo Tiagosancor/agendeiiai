@@ -219,4 +219,40 @@ public sealed class AgendamentoTestes
 
         agendamento.Total.Should().Be(80m);
     }
+
+    [Fact]
+    public void PrecisaLembrete24h_verdadeiro_dentro_da_janela_e_falso_fora_dela()
+    {
+        var agora = Inicio.AddHours(-25); // 25h antes — ainda fora da janela de 24h
+        var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+
+        agendamento.PrecisaLembrete24h(agora, antecedenciaHoras: 24).Should().BeFalse();
+        agendamento.PrecisaLembrete24h(Inicio.AddHours(-23), antecedenciaHoras: 24).Should().BeTrue();
+    }
+
+    [Fact]
+    public void PrecisaLembrete24h_falso_depois_de_marcado_enviado()
+    {
+        var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+        agendamento.MarcarLembrete24hEnviado();
+
+        agendamento.PrecisaLembrete24h(Inicio.AddHours(-1), antecedenciaHoras: 24).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PrecisaLembrete_falso_para_agendamento_que_ja_passou()
+    {
+        var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+
+        agendamento.PrecisaLembrete2h(Inicio.AddHours(1), antecedenciaHoras: 2).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PrecisaLembrete_falso_para_agendamento_cancelado()
+    {
+        var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+        agendamento.Cancelar();
+
+        agendamento.PrecisaLembrete24h(Inicio.AddHours(-1), antecedenciaHoras: 24).Should().BeFalse();
+    }
 }

@@ -48,6 +48,12 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Valor (em R$) descontado pelo cupom — o total exibido é sempre a soma dos serviços menos este valor.</summary>
     public decimal DescontoAplicado { get; private set; }
 
+    /// <summary>Lembrete configurável (padrão 24h antes, seção 9) — controla envio único mesmo se o job rodar mais de uma vez.</summary>
+    public bool Lembrete24hEnviado { get; private set; }
+
+    /// <summary>Lembrete configurável (padrão 2h antes, seção 9).</summary>
+    public bool Lembrete2hEnviado { get; private set; }
+
     public IReadOnlyCollection<AgendamentoServico> Servicos => _servicos.AsReadOnly();
 
     protected Agendamento()
@@ -203,6 +209,17 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     public void DefinirObservacoes(string? observacoes) => Observacoes = observacoes;
 
     public void DefinirNomeInformado(string? nomeInformado) => NomeInformado = nomeInformado;
+
+    /// <summary>Só envia lembrete de um agendamento que ainda vai acontecer (seção 8.5.6: descarta os vencidos ao voltar de hibernação).</summary>
+    public bool PrecisaLembrete24h(DateTimeOffset agora, int antecedenciaHoras) =>
+        Status == StatusAgendamento.Agendado && !Lembrete24hEnviado && Inicio > agora && Inicio <= agora.AddHours(antecedenciaHoras);
+
+    public bool PrecisaLembrete2h(DateTimeOffset agora, int antecedenciaHoras) =>
+        Status == StatusAgendamento.Agendado && !Lembrete2hEnviado && Inicio > agora && Inicio <= agora.AddHours(antecedenciaHoras);
+
+    public void MarcarLembrete24hEnviado() => Lembrete24hEnviado = true;
+
+    public void MarcarLembrete2hEnviado() => Lembrete2hEnviado = true;
 
     /// <summary>Total sempre recalculado a partir da soma dos serviços menos o desconto (seção 6.2.4) — nunca guardado por fora.</summary>
     public decimal Total => _servicos.Sum(s => s.Preco) - DescontoAplicado;

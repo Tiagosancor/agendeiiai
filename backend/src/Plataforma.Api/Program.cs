@@ -130,8 +130,15 @@ var app = builder.Build();
 // o WebApplicationFactory dos testes de integração, que cria um container por teste).
 using (var escopoJobs = app.Services.CreateScope())
 {
-    escopoJobs.ServiceProvider.GetRequiredService<IRecurringJobManager>().AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobExpirarReservas>(
+    var gerenciadorRecorrentes = escopoJobs.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+
+    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobExpirarReservas>(
         "expirar-reservas", job => job.ExecutarAsync(CancellationToken.None), "*/1 * * * *");
+
+    // Lembretes 24h/2h antes (seção 9, Sprint 4) — varre em vez de agendar um job por
+    // agendamento, justamente para sobreviver à hibernação da API (seção 8.5.6).
+    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobEnviarLembretes>(
+        "enviar-lembretes", job => job.ExecutarAsync(CancellationToken.None), "*/5 * * * *");
 }
 
 if (app.Environment.IsDevelopment())

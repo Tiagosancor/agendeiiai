@@ -272,3 +272,49 @@ export interface DetalhePublicoAgendamento {
   status: string;
 }
 
+// --- Sprint 4: notificações e financeiro ---
+
+export type FormaPagamento = "Dinheiro" | "Cartao" | "Pix" | "Outro";
+
+export const FORMAS_PAGAMENTO: { valor: FormaPagamento; rotulo: string }[] = [
+  { valor: "Dinheiro", rotulo: "Dinheiro" },
+  { valor: "Cartao", rotulo: "Cartão" },
+  { valor: "Pix", rotulo: "Pix" },
+  { valor: "Outro", rotulo: "Outro" },
+];
+
+export interface RegistrarPagamento {
+  agendamentoId: string;
+  valor: number;
+  forma: FormaPagamento;
+}
+
+export interface PagamentoResumo {
+  id: string;
+  agendamentoId: string;
+  valor: number;
+  forma: FormaPagamento;
+  criadoEm: string;
+}
+
+export interface FaturamentoPorProfissional {
+  profissionalId: string;
+  nomeProfissional: string;
+  total: number;
+  quantidade: number;
+}
+
+export interface FaturamentoPorServico {
+  servicoId: string;
+  nomeServico: string;
+  total: number;
+  quantidade: number;
+}
+
+export interface ResumoFinanceiro {
+  total: number;
+  quantidadeAtendimentos: number;
+  porProfissional: FaturamentoPorProfissional[];
+  porServico: FaturamentoPorServico[];
+}
+
