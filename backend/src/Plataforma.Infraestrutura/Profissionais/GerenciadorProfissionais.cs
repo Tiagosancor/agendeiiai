@@ -25,7 +25,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     public async Task<IReadOnlyList<ProfissionalResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Profissionais
             .OrderBy(p => p.Nome)
-            .Select(p => new ProfissionalResumo(p.Id, p.Nome, p.Ativo, p.FotoUrl))
+            .Select(p => new ProfissionalResumo(p.Id, p.Nome, p.Ativo, p.FotoUrl, p.Funcao))
             .ToListAsync(cancellationToken);
 
     public async Task<ProfissionalDetalhe?> ObterAsync(Guid profissionalId, CancellationToken cancellationToken = default)
@@ -41,7 +41,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
             : _criptografiaCpf.Proteger(Cpf.Criar(dados.Cpf));
 
         var profissional = Profissional.Criar(
-            _contextoNegocio.NegocioId!.Value, dados.Nome, dados.Telefone, dados.Email, cpf: cpfProtegido);
+            _contextoNegocio.NegocioId!.Value, dados.Nome, dados.Telefone, dados.Email, cpf: cpfProtegido, funcao: dados.Funcao);
 
         _dbContext.Profissionais.Add(profissional);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -56,7 +56,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         if (profissional is null)
             return false;
 
-        profissional.AtualizarDados(dados.Nome, dados.Telefone, dados.Email, profissional.Endereco);
+        profissional.AtualizarDados(dados.Nome, dados.Telefone, dados.Email, profissional.Endereco, dados.Funcao);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -90,5 +90,5 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
 
     private static ProfissionalDetalhe Mapear(Profissional profissional) => new(
         profissional.Id, profissional.Nome, profissional.Telefone, profissional.Email, profissional.Ativo,
-        profissional.FotoUrl, profissional.Cpf?.Mascarado);
+        profissional.FotoUrl, profissional.Cpf?.Mascarado, profissional.Funcao);
 }

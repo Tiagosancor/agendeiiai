@@ -34,11 +34,26 @@ services:
       Marca__NomeProduto: ${MARCA_NOME_PRODUTO:-Agendei}
       Marca__Dominio: ${MARCA_DOMINIO:-agendei.localhost}
       Marca__EmailRemetente: ${MARCA_EMAIL_REMETENTE:-nao-responda@agendei.localhost}
+      # Esquema/porta da página pública, usados para montar os links de cancelar/remarcar
+      # nos e-mails (seção 6.3) — em produção, deixe PORTA_URL_PUBLICA vazia (porta padrão do esquema).
+      Marca__EsquemaUrlPublica: ${MARCA_ESQUEMA_URL_PUBLICA:-http}
+      Marca__PortaUrlPublica: ${MARCA_PORTA_URL_PUBLICA:-3000}
       Jwt__ChaveSecreta: ${JWT_CHAVE_SECRETA:?defina JWT_CHAVE_SECRETA no .env (openssl rand -base64 64)}
       Jwt__Emissor: ${JWT_EMISSOR:-plataforma-dev}
       Jwt__Audiencia: ${JWT_AUDIENCIA:-plataforma-painel-dev}
       Cpf__ChaveId: ${CPF_CHAVE_ID:-dev-v1}
       Cpf__ChaveBase64: ${CPF_CHAVE_BASE64:?defina CPF_CHAVE_BASE64 no .env (openssl rand -base64 32)}
+      # Código de confirmação (seção 8.1) — pimenta do hash, nunca o código em si. Gere com: openssl rand -base64 32
+      Verificacao__ChaveHmac: ${VERIFICACAO_CHAVE_HMAC:?defina VERIFICACAO_CHAVE_HMAC no .env (openssl rand -base64 32)}
+      # E-mail/WhatsApp reais são opt-in — sem essas variáveis, os provedores Fake cobrem
+      # dev e testes (seção 4). Defina EMAIL_PROVEDOR=Resend / WHATSAPP_PROVEDOR=Oficial
+      # (e as chaves correspondentes) só quando as contas reais (seção 12) existirem.
+      Email__Provedor: ${EMAIL_PROVEDOR:-Fake}
+      Email__Resend__ApiKey: ${RESEND_API_KEY:-}
+      WhatsApp__Provedor: ${WHATSAPP_PROVEDOR:-Fake}
+      WhatsApp__Meta__Token: ${WHATSAPP_TOKEN_ACESSO:-}
+      WhatsApp__Meta__NumeroTelefoneId: ${WHATSAPP_ID_NUMERO_TELEFONE:-}
+      WhatsApp__PermitirNaoOficial: ${WHATSAPP__PERMITIRNAOOFICIAL:-false}
     ports:
       - "${API_PORTA_HOST:-5080}:8080"
 

@@ -18,11 +18,25 @@ namespace Plataforma.Api.Middlewares;
 ///   - <c>{slug}.{dominio}</c>, slug válido e negócio ativo   → tenant resolvido, segue o pipeline.
 ///   - <c>{slug}.{dominio}</c>, slug inválido/reservado/não   → 404 em rotas <c>/publico/**</c>;
 ///     encontrado                                               nas demais rotas, segue sem tenant.
-///   - host fora do padrão (ex.: localhost puro em testes)    → segue sem tenant.
+///   - host fora do padrão (ex.: localhost puro em testes)    → segue sem tenant, a não ser que
+///     o cabeçalho <see cref="CabecalhoSlugInterno"/> esteja presente (ver abaixo).
+///
+/// <see cref="CabecalhoSlugInterno"/>: usado só pelo proxy same-origin do Next.js
+/// (`app/api/publico/[...caminho]/route.ts`) — o navegador chama o próprio host da página
+/// (`{slug}.{dominio}:3000`, sem CORS), mas o `fetch()` do Node no servidor do Next.js NÃO
+/// consegue repassar um `Host` customizado pro `fetch` de saída até a API (o Node ignora
+/// silenciosamente um `Host` manual, sobrescrevendo com o da URL de destino — testado
+/// manualmente, não é bug deste projeto). O proxy já calculou o slug a partir do Host real
+/// recebido do navegador (a mesma fonte confiável de sempre — seção 8.3.2, nunca um valor
+/// arbitrário do cliente final), só não consegue repassar isso via `Host`; manda por este
+/// cabeçalho em vez disso. Só entra em jogo quando o Host da requisição em si não resolveu
+/// nenhum slug (ex.: chamada interna `api:8080`), então nunca é usado pra sobrepor uma
+/// resolução por Host que já funcionou.
 /// </summary>
 public sealed class ResolucaoNegocioMiddleware
 {
     private const string PrefixoRotasPublicas = "/publico";
+    private const string CabecalhoSlugInterno = "X-Slug-Negocio";
 
     private readonly RequestDelegate _proximo;
     private readonly IOptions<OpcoesMarca> _opcoesMarca;
@@ -45,13 +59,23 @@ public sealed class ResolucaoNegocioMiddleware
 
         var ehRotaPublica = contexto.Request.Path.StartsWithSegments(PrefixoRotasPublicas);
 
-        if (host == dominioBase || host == "app." + dominioBase || !host.EndsWith(sufixo, StringComparison.Ordinal))
+        string? candidatoSlug = null;
+
+        if (host != dominioBase && host != "app." + dominioBase && host.EndsWith(sufixo, StringComparison.Ordinal))
+        {
+            candidatoSlug = host[..^sufixo.Length];
+        }
+        else if (contexto.Request.Headers.TryGetValue(CabecalhoSlugInterno, out var valorCabecalho)
+            && !string.IsNullOrWhiteSpace(valorCabecalho))
+        {
+            candidatoSlug = valorCabecalho.ToString();
+        }
+
+        if (candidatoSlug is null)
         {
             await _proximo(contexto);
             return;
         }
-
-        var candidatoSlug = host[..^sufixo.Length];
 
         if (!Slug.TentarCriar(candidatoSlug, out var slug))
         {

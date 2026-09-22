@@ -35,7 +35,8 @@ public sealed class GerenciadorPerfilNegocio : IGerenciadorPerfilNegocio
 
         negocio.AtualizarPerfil(
             dados.NomeExibido, dados.LogoUrl, dados.CorPrimaria, dados.CorSecundaria,
-            dados.TituloPagina, dados.SubtituloPagina, dados.TextoSobre, endereco, dados.Telefone, redesSociais);
+            dados.TituloPagina, dados.SubtituloPagina, dados.TextoSobre, endereco, dados.Telefone,
+            dados.EmailContato, redesSociais, dados.WhatsAppAtivoParaConfirmacoes);
 
         negocio.DefinirHorarioFuncionamento(dados.HorarioFuncionamento.Select(h =>
             new HorarioFuncionamentoDia((DiaSemana)h.DiaSemana, h.Abertura, h.Fechamento, h.Fechado)));
@@ -60,8 +61,8 @@ public sealed class GerenciadorPerfilNegocio : IGerenciadorPerfilNegocio
         negocio.Slug.Valor, negocio.NomeExibido, negocio.Tipo.ToString(), negocio.LogoUrl,
         negocio.CorPrimaria, negocio.CorSecundaria, negocio.TituloPagina, negocio.SubtituloPagina, negocio.TextoSobre,
         negocio.Endereco.Bairro, negocio.Endereco.Cidade, negocio.Endereco.Rua, negocio.Endereco.Numero, negocio.Endereco.Cep,
-        negocio.Telefone, negocio.RedesSociais.Instagram, negocio.RedesSociais.Facebook, negocio.RedesSociais.WhatsApp,
-        negocio.HorarioFuncionamento
+        negocio.Telefone, negocio.EmailContato, negocio.RedesSociais.Instagram, negocio.RedesSociais.Facebook, negocio.RedesSociais.WhatsApp,
+        negocio.WhatsAppAtivoParaConfirmacoes, negocio.HorarioFuncionamento
             .Select(h => new HorarioFuncionamentoDiaDto((int)h.DiaSemana, h.Abertura, h.Fechamento, h.Fechado))
             .ToList());
 }

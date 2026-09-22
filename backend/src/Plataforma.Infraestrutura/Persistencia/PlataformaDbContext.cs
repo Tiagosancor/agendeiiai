@@ -5,10 +5,13 @@ using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
+using Plataforma.Dominio.Contato;
+using Plataforma.Dominio.Cupons;
 using Plataforma.Dominio.Negocios;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.Servicos;
 using Plataforma.Dominio.Usuarios;
+using Plataforma.Dominio.Verificacao;
 
 namespace Plataforma.Infraestrutura.Persistencia;
 
@@ -54,6 +57,12 @@ public class PlataformaDbContext : DbContext
     public DbSet<ProfissionalServico> ProfissionalServicos => Set<ProfissionalServico>();
 
     public DbSet<Agendamento> Agendamentos => Set<Agendamento>();
+
+    public DbSet<Cupom> Cupons => Set<Cupom>();
+
+    public DbSet<CodigoVerificacao> CodigosVerificacao => Set<CodigoVerificacao>();
+
+    public DbSet<MensagemContato> MensagensContato => Set<MensagemContato>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

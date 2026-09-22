@@ -70,9 +70,11 @@ export default function PaginaPerfilNegocio() {
           numero: perfil.numero || null,
           cep: perfil.cep || null,
           telefone: perfil.telefone || null,
+          emailContato: perfil.emailContato || null,
           instagram: perfil.instagram || null,
           facebook: perfil.facebook || null,
           whatsApp: perfil.whatsApp || null,
+          whatsAppAtivoParaConfirmacoes: perfil.whatsAppAtivoParaConfirmacoes,
           horarioFuncionamento: horario,
         },
       });
@@ -151,10 +153,21 @@ export default function PaginaPerfilNegocio() {
             <input className={classeInput} value={perfil.cep ?? ""} onChange={(e) => atualizarCampo("cep", e.target.value)} />
           </label>
         </div>
-        <label>
-          <span className={classeLabel}>Telefone</span>
-          <input className={classeInput} value={perfil.telefone ?? ""} onChange={(e) => atualizarCampo("telefone", e.target.value)} />
-        </label>
+        <div className="flex gap-3">
+          <label className="flex-1">
+            <span className={classeLabel}>Telefone</span>
+            <input className={classeInput} value={perfil.telefone ?? ""} onChange={(e) => atualizarCampo("telefone", e.target.value)} />
+          </label>
+          <label className="flex-1">
+            <span className={classeLabel}>E-mail de contato (Fale Conosco)</span>
+            <input
+              type="email"
+              className={classeInput}
+              value={perfil.emailContato ?? ""}
+              onChange={(e) => atualizarCampo("emailContato", e.target.value)}
+            />
+          </label>
+        </div>
         <div className="flex gap-3">
           <label className="flex-1">
             <span className={classeLabel}>Instagram</span>
@@ -169,6 +182,14 @@ export default function PaginaPerfilNegocio() {
             <input className={classeInput} value={perfil.whatsApp ?? ""} onChange={(e) => atualizarCampo("whatsApp", e.target.value)} />
           </label>
         </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-neutral-300">
+          <input
+            type="checkbox"
+            checked={perfil.whatsAppAtivoParaConfirmacoes}
+            onChange={(e) => atualizarCampo("whatsAppAtivoParaConfirmacoes", e.target.checked)}
+          />
+          Enviar confirmações e lembretes também por WhatsApp (além do código, que é sempre enviado)
+        </label>
       </section>
 
       <section className="space-y-2">

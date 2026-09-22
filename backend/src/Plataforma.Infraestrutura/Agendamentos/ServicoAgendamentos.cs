@@ -1,8 +1,14 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Agendamentos;
+using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
+using Plataforma.Dominio.Cupons;
+using Plataforma.Infraestrutura.Negocios;
+using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 
 namespace Plataforma.Infraestrutura.Agendamentos;
@@ -20,13 +26,20 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
     private readonly IConsultaDisponibilidade _consultaDisponibilidade;
+    private readonly INotificador _notificador;
+    private readonly IServicoTokenPublico _servicoToken;
+    private readonly OpcoesMarca _opcoesMarca;
 
     public ServicoAgendamentos(
-        PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade)
+        PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
+        INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _consultaDisponibilidade = consultaDisponibilidade;
+        _notificador = notificador;
+        _servicoToken = servicoToken;
+        _opcoesMarca = opcoesMarca.Value;
     }
 
     public Task<ResultadoAgendamento> CriarAsync(CriarAgendamento dados, CancellationToken cancellationToken = default) =>
@@ -34,6 +47,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
     public Task<ResultadoAgendamento> CriarReservaAsync(CriarAgendamento dados, CancellationToken cancellationToken = default) =>
         CriarInternoAsync(dados, confirmarDeImediato: false, cancellationToken);
+
+    public Task<ResultadoAgendamento> CriarReservaPublicaAsync(CriarReservaPublica dados, CancellationToken cancellationToken = default) =>
+        CriarInternoAsync(
+            new CriarAgendamento(dados.ProfissionalId, null, dados.ServicoIds, dados.Inicio), confirmarDeImediato: false, cancellationToken);
 
     private async Task<ResultadoAgendamento> CriarInternoAsync(
         CriarAgendamento dados, bool confirmarDeImediato, CancellationToken cancellationToken)
@@ -114,7 +131,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             // 4) Insere — se outra requisição venceu a corrida pro mesmo intervalo, a
             // exclusion constraint recusa aqui (seção 8.2.1), nunca antes.
             var agendamento = confirmarDeImediato
-                ? Agendamento.CriarConfirmado(negocioId, dados.ProfissionalId, dados.ClienteId, dados.Inicio, itens, dados.Observacoes)
+                ? Agendamento.CriarConfirmado(
+                    negocioId, dados.ProfissionalId,
+                    dados.ClienteId ?? throw new InvalidOperationException("Um agendamento confirmado de imediato precisa de um cliente."),
+                    dados.Inicio, itens, dados.Observacoes)
                 : Agendamento.CriarReserva(negocioId, dados.ProfissionalId, dados.ClienteId, dados.Inicio, itens, agora, DuracaoDaReserva);
 
             _dbContext.Agendamentos.Add(agendamento);
@@ -152,6 +172,151 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         return ResultadoAgendamento.ComSucesso(agendamento.Id);
+    }
+
+    public async Task<ResultadoAgendamento> ConfirmarReservaPublicaAsync(
+        ConfirmarReservaPublica dados, CancellationToken cancellationToken = default)
+    {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+        var telefone = TelefoneE164.Criar(dados.TelefoneCliente);
+
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+
+        var resultado = await estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            var agendamento = await _dbContext.Agendamentos
+                .Include(a => a.Servicos)
+                .FirstOrDefaultAsync(a => a.Id == dados.AgendamentoId, cancellationToken);
+
+            if (agendamento is null || agendamento.Status != StatusAgendamento.Reservado || agendamento.ReservadoAte < DateTimeOffset.UtcNow)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Essa reserva já expirou ou não existe mais.");
+            }
+
+            // Identificação automática do cliente pelo telefone, mesma transação (seção 8.1.4).
+            var (clienteId, nomeInformado) = await IdentificarOuCriarClienteAsync(
+                negocioId, telefone, dados.NomeCliente, dados.EmailCliente, cancellationToken);
+
+            agendamento.VincularCliente(clienteId);
+            agendamento.DefinirNomeInformado(nomeInformado);
+            agendamento.DefinirObservacoes(dados.Observacoes);
+
+            // Cupom revalidado no servidor (seção 6.2.4/7) — se inválido, ignora o desconto
+            // sem falhar o agendamento (o passo "Aplicar" do assistente já avisou o cliente antes).
+            if (!string.IsNullOrWhiteSpace(dados.CodigoCupom))
+            {
+                var cupom = await _dbContext.Cupons.FirstOrDefaultAsync(
+                    c => c.NegocioId == negocioId && c.Codigo == dados.CodigoCupom.Trim().ToUpperInvariant(), cancellationToken);
+
+                if (cupom is not null)
+                {
+                    var totalServicos = agendamento.Servicos.Sum(s => s.Preco);
+                    var servicoIds = agendamento.Servicos.Select(s => s.ServicoId).ToHashSet();
+                    var resultadoCupom = cupom.TentarAplicar(totalServicos, servicoIds, DateTimeOffset.UtcNow);
+
+                    if (resultadoCupom.Sucesso)
+                    {
+                        agendamento.AplicarCupom(cupom.Id, resultadoCupom.Desconto);
+                        cupom.RegistrarUso();
+                    }
+                }
+            }
+
+            agendamento.ConfirmarReserva();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+
+            return ResultadoAgendamento.ComSucesso(agendamento.Id);
+        });
+
+        if (resultado.Sucesso)
+            await NotificarConfirmacaoAsync(resultado.AgendamentoId!.Value, cancellationToken);
+
+        return resultado;
+    }
+
+    /// <summary>Busca o cliente por (negócio, telefone) — índice único (seção 8.1.4) — ou cria; nunca sobrescreve dado já existente, só preenche o vazio.</summary>
+    private async Task<(Guid ClienteId, string? NomeInformado)> IdentificarOuCriarClienteAsync(
+        Guid negocioId, TelefoneE164 telefone, string nome, string? email, CancellationToken cancellationToken)
+    {
+        var existente = await _dbContext.Clientes.FirstOrDefaultAsync(
+            c => c.NegocioId == negocioId && c.Telefone == telefone, cancellationToken);
+
+        if (existente is not null)
+            return (existente.Id, VincularDadosExistentes(existente, nome, email));
+
+        var novoCliente = Cliente.Criar(negocioId, nome, telefone, OrigemCliente.LinkPublico, email);
+        _dbContext.Clientes.Add(novoCliente);
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return (novoCliente.Id, null);
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            // Duas requisições simultâneas com o mesmo telefone (seção 8.1.4) — a outra venceu.
+            _dbContext.Entry(novoCliente).State = EntityState.Detached;
+
+            var clienteDaCorrida = await _dbContext.Clientes.FirstAsync(
+                c => c.NegocioId == negocioId && c.Telefone == telefone, cancellationToken);
+
+            return (clienteDaCorrida.Id, VincularDadosExistentes(clienteDaCorrida, nome, email));
+        }
+    }
+
+    private static string? VincularDadosExistentes(Cliente existente, string nome, string? email)
+    {
+        existente.PreencherEmailSeVazio(email);
+        var nomeNormalizado = nome.Trim();
+        return string.Equals(existente.Nome, nomeNormalizado, StringComparison.OrdinalIgnoreCase) ? null : nomeNormalizado;
+    }
+
+    private async Task NotificarConfirmacaoAsync(Guid agendamentoId, CancellationToken cancellationToken)
+    {
+        var agendamento = await _dbContext.Agendamentos.AsNoTracking()
+            .Include(a => a.Servicos)
+            .FirstAsync(a => a.Id == agendamentoId, cancellationToken);
+
+        var cliente = await _dbContext.Clientes.AsNoTracking().FirstAsync(c => c.Id == agendamento.ClienteId, cancellationToken);
+        var negocio = await _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == agendamento.NegocioId, cancellationToken);
+
+        var tokenAgendamento = _servicoToken.GerarTokenAgendamento(negocio.Id, agendamento.Id);
+        var linkCancelar = ConstrutorUrlPublica.Construir(_opcoesMarca, negocio.Slug.Valor, $"/agendamentos/{tokenAgendamento}");
+
+        await _notificador.EnviarConfirmacaoAgendamentoAsync(new DadosNotificacaoAgendamento(
+            cliente.Nome, cliente.Email, cliente.Telefone, agendamento.Inicio, agendamento.Fim,
+            agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, linkCancelar, linkCancelar), cancellationToken);
+    }
+
+    public async Task<ResultadoPreVisualizacaoCupom> PreVisualizarCupomAsync(
+        Guid agendamentoId, string codigoCupom, CancellationToken cancellationToken = default)
+    {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+
+        var agendamento = await _dbContext.Agendamentos.AsNoTracking()
+            .Include(a => a.Servicos)
+            .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
+
+        if (agendamento is null)
+            return new ResultadoPreVisualizacaoCupom(false, MensagemErro: "Reserva não encontrada.");
+
+        var cupom = await _dbContext.Cupons.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.NegocioId == negocioId && c.Codigo == codigoCupom.Trim().ToUpperInvariant(), cancellationToken);
+
+        if (cupom is null)
+            return new ResultadoPreVisualizacaoCupom(false, MensagemErro: "Cupom não encontrado.");
+
+        var totalServicos = agendamento.Servicos.Sum(s => s.Preco);
+        var servicoIds = agendamento.Servicos.Select(s => s.ServicoId).ToHashSet();
+        var resultado = cupom.TentarAplicar(totalServicos, servicoIds, DateTimeOffset.UtcNow);
+
+        return resultado.Sucesso
+            ? new ResultadoPreVisualizacaoCupom(true, resultado.Desconto)
+            : new ResultadoPreVisualizacaoCupom(false, MensagemErro: resultado.MensagemErro);
     }
 
     public async Task<bool> CancelarAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
@@ -274,13 +439,35 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         if (agendamentos.Count == 0)
             return [];
 
+        // ClienteId é nulo enquanto uma reserva do assistente público ainda não passou
+        // pela identificação do cliente (seção 8.1.4) — aparece como "Reservando..." na agenda.
+        var clienteIds = agendamentos.Where(a => a.ClienteId is not null).Select(a => a.ClienteId!.Value).ToList();
         var clientes = await _dbContext.Clientes.AsNoTracking()
-            .Where(c => agendamentos.Select(a => a.ClienteId).Contains(c.Id))
+            .Where(c => clienteIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, cancellationToken);
 
         return agendamentos.Select(a => new AgendamentoResumo(
-            a.Id, a.ProfissionalId, a.ClienteId, clientes.TryGetValue(a.ClienteId, out var cliente) ? cliente.Nome : "—",
+            a.Id, a.ProfissionalId, a.ClienteId,
+            a.ClienteId is not null && clientes.TryGetValue(a.ClienteId.Value, out var cliente) ? cliente.Nome : "Reservando...",
             a.Inicio, a.Fim, a.Status.ToString(), a.Observacoes,
             a.Servicos.Select(s => s.Nome).ToList(), a.Servicos.Sum(s => s.Preco))).ToList();
+    }
+
+    public async Task<DetalhePublicoAgendamento?> ObterDetalhePublicoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    {
+        var agendamento = await _dbContext.Agendamentos.AsNoTracking()
+            .Include(a => a.Servicos)
+            .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
+
+        if (agendamento is null)
+            return null;
+
+        var negocio = await _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == agendamento.NegocioId, cancellationToken);
+        var local = string.Join(", ", new[] { negocio.Endereco.Rua, negocio.Endereco.Numero, negocio.Endereco.Bairro, negocio.Endereco.Cidade }
+            .Where(parte => !string.IsNullOrWhiteSpace(parte)));
+
+        return new DetalhePublicoAgendamento(
+            agendamento.Id, negocio.NomeExibido, local, agendamento.Inicio, agendamento.Fim,
+            agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, agendamento.Status.ToString());
     }
 }

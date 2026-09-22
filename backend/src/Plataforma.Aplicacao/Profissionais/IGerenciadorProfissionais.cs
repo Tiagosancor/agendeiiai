@@ -17,11 +17,11 @@ public interface IGerenciadorProfissionais
     Task<string?> RevelarCpfAsync(Guid profissionalId, CancellationToken cancellationToken = default);
 }
 
-public sealed record ProfissionalResumo(Guid Id, string Nome, bool Ativo, string? FotoUrl);
+public sealed record ProfissionalResumo(Guid Id, string Nome, bool Ativo, string? FotoUrl, string? Funcao);
 
 public sealed record ProfissionalDetalhe(
-    Guid Id, string Nome, string? Telefone, string? Email, bool Ativo, string? FotoUrl, string? CpfMascarado);
+    Guid Id, string Nome, string? Telefone, string? Email, bool Ativo, string? FotoUrl, string? CpfMascarado, string? Funcao);
 
-public sealed record CriarProfissional(string Nome, string? Telefone = null, string? Email = null, string? Cpf = null);
+public sealed record CriarProfissional(string Nome, string? Telefone = null, string? Email = null, string? Cpf = null, string? Funcao = null);
 
-public sealed record AtualizarProfissional(string Nome, string? Telefone, string? Email);
+public sealed record AtualizarProfissional(string Nome, string? Telefone, string? Email, string? Funcao = null);

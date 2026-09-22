@@ -3,25 +3,38 @@ using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Aplicacao.Autenticacao;
 using Plataforma.Aplicacao.Clientes;
+using Plataforma.Aplicacao.Contato;
+using Plataforma.Aplicacao.Cupons;
+using Plataforma.Aplicacao.Ics;
 using Plataforma.Aplicacao.Negocios;
+using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Aplicacao.Publico;
 using Plataforma.Aplicacao.Servicos;
 using Plataforma.Aplicacao.Usuarios;
+using Plataforma.Aplicacao.Verificacao;
 using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Autenticacao;
 using Plataforma.Infraestrutura.Clientes;
+using Plataforma.Infraestrutura.Contato;
+using Plataforma.Infraestrutura.Cupons;
+using Plataforma.Infraestrutura.Ics;
 using Plataforma.Infraestrutura.MultiTenant;
 using Plataforma.Infraestrutura.Negocios;
+using Plataforma.Infraestrutura.Notificacoes;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 using Plataforma.Infraestrutura.Profissionais;
+using Plataforma.Infraestrutura.Publico;
 using Plataforma.Infraestrutura.Seguranca;
 using Plataforma.Infraestrutura.Servicos;
 using Plataforma.Infraestrutura.Usuarios;
+using Plataforma.Infraestrutura.Verificacao;
 
 namespace Plataforma.Infraestrutura.DependencyInjection;
 
@@ -66,6 +79,30 @@ public static class InfraestruturaServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        servicos
+            .AddOptions<OpcoesEmail>()
+            .Bind(configuracao.GetSection(OpcoesEmail.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicos
+            .AddOptions<OpcoesWhatsApp>()
+            .Bind(configuracao.GetSection(OpcoesWhatsApp.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicos
+            .AddOptions<OpcoesVerificacao>()
+            .Bind(configuracao.GetSection(OpcoesVerificacao.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicos
+            .AddOptions<OpcoesAgendamentoPublico>()
+            .Bind(configuracao.GetSection(OpcoesAgendamentoPublico.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         servicos.AddDbContext<PlataformaDbContext>((sp, opcoes) => opcoes
             .UseNpgsql(
                 ObterConnectionString(sp),
@@ -106,6 +143,32 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IConsultaDisponibilidade, ConsultaDisponibilidade>();
         servicos.AddScoped<IServicoAgendamentos, ServicoAgendamentos>();
         servicos.AddScoped<JobExpirarReservas>();
+
+        // Página pública, assistente e código de confirmação (Sprint 3 — seção 8.1/6).
+        servicos.AddSingleton<IServicoTokenPublico, ServicoTokenPublico>();
+        servicos.AddSingleton<IGeradorIcs, GeradorIcs>();
+        servicos.AddScoped<IServicoVerificacao, ServicoVerificacao>();
+        servicos.AddScoped<INotificador, Notificador>();
+        servicos.AddScoped<IGerenciadorCupons, GerenciadorCupons>();
+        servicos.AddScoped<IServicoContato, ServicoContato>();
+        servicos.AddScoped<IConsultaCatalogoPublico, ConsultaCatalogoPublico>();
+
+        // E-mail e WhatsApp: Fake em dev/testes, provedor real escolhido em runtime pela
+        // configuração (seção 4) — nunca hardcoded, senão os testes de integração (que não
+        // configuram Resend/Meta) tentariam bater numa API externa de verdade.
+        servicos.AddScoped<EmailSenderFake>();
+        servicos.AddHttpClient<EmailSenderResend>();
+        servicos.AddScoped<IEmailSender>(sp =>
+            sp.GetRequiredService<IOptions<OpcoesEmail>>().Value.Provedor == ProvedorEmail.Resend
+                ? sp.GetRequiredService<EmailSenderResend>()
+                : sp.GetRequiredService<EmailSenderFake>());
+
+        servicos.AddScoped<MensageriaWhatsAppFake>();
+        servicos.AddHttpClient<MensageriaWhatsAppOficial>();
+        servicos.AddScoped<IMensageriaWhatsApp>(sp =>
+            sp.GetRequiredService<IOptions<OpcoesWhatsApp>>().Value.Provedor == ProvedorWhatsApp.Oficial
+                ? sp.GetRequiredService<MensageriaWhatsAppOficial>()
+                : sp.GetRequiredService<MensageriaWhatsAppFake>());
 
         servicos
             .AddHealthChecks()

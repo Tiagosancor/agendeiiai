@@ -24,8 +24,16 @@ public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
             .Where(n => n.Ativo && n.Slug == slug)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return negocio is null
-            ? null
-            : new NegocioResumo(negocio.Id, negocio.Slug.Valor, negocio.NomeExibido, negocio.Tipo.ToString(), negocio.Fuso);
+        return negocio is null ? null : Mapear(negocio);
     }
+
+    private static NegocioResumo Mapear(Negocio negocio) => new(
+        negocio.Id, negocio.Slug.Valor, negocio.NomeExibido, negocio.Tipo.ToString(), negocio.Fuso,
+        negocio.LogoUrl, negocio.CorPrimaria, negocio.CorSecundaria,
+        negocio.TituloPagina, negocio.SubtituloPagina, negocio.TextoSobre,
+        negocio.Endereco.Bairro, negocio.Endereco.Cidade, negocio.Endereco.Rua, negocio.Endereco.Numero, negocio.Endereco.Cep,
+        negocio.Telefone, negocio.RedesSociais.Instagram, negocio.RedesSociais.Facebook, negocio.RedesSociais.WhatsApp,
+        negocio.HorarioFuncionamento
+            .Select(h => new HorarioFuncionamentoDiaDto((int)h.DiaSemana, h.Abertura, h.Fechamento, h.Fechado))
+            .ToList());
 }

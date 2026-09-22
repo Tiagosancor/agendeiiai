@@ -15,6 +15,7 @@ public sealed class ProfissionalConfiguracao : IEntityTypeConfiguration<Profissi
         builder.Property(p => p.Nome).HasMaxLength(200).IsRequired();
         builder.Property(p => p.Telefone).HasMaxLength(20);
         builder.Property(p => p.Email).HasMaxLength(320);
+        builder.Property(p => p.Funcao).HasMaxLength(100);
         builder.Property(p => p.Ativo).IsRequired();
 
         builder.OwnsOne(p => p.Endereco, endereco =>

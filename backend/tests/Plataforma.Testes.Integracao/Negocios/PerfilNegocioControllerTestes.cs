@@ -60,9 +60,11 @@ public sealed class PerfilNegocioControllerTestes : IAsyncLifetime
             Numero: "123",
             Cep: "40000-000",
             Telefone: "+557133334444",
+            EmailContato: "contato@acme.dev",
             Instagram: "@acme",
             Facebook: null,
             WhatsApp: "+5571988887777",
+            WhatsAppAtivoParaConfirmacoes: true,
             HorarioFuncionamento: horario);
 
         (await cliente.PutAsJsonAsync("/painel/negocio", atualizacao)).StatusCode.Should().Be(HttpStatusCode.NoContent);

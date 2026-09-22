@@ -18,6 +18,10 @@ public sealed class AgendamentoConfiguracao : IEntityTypeConfiguration<Agendamen
         builder.Property(a => a.Observacoes).HasMaxLength(2000);
         builder.Property(a => a.NomeInformado).HasMaxLength(200);
         builder.Property(a => a.ReservadoAte);
+        builder.Property(a => a.DescontoAplicado).HasColumnType("numeric(10,2)").HasDefaultValue(0m);
+
+        // Calculado a partir dos serviços e do desconto — nunca uma coluna própria (seção 6.2.4).
+        builder.Ignore(a => a.Total);
 
         // Índice de apoio às consultas de agenda/disponibilidade (por profissional e dia) —
         // a garantia de não-sobreposição de verdade é a exclusion constraint (migration

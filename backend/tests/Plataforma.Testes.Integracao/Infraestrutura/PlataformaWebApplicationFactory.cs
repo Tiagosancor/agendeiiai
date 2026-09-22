@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Plataforma.Aplicacao.Notificacoes;
 using Respawn;
 
 namespace Plataforma.Testes.Integracao.Infraestrutura;
@@ -40,7 +42,22 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
                 ["Jwt:Audiencia"] = "plataforma-testes-painel",
                 ["Cpf:ChaveId"] = "teste-v1",
                 ["Cpf:ChaveBase64"] = Convert.ToBase64String(new byte[32]), // chave zerada — só para teste
+                ["Verificacao:ChaveHmac"] = "chave-hmac-de-teste-0123456789-0123456789",
             });
+        });
+
+        // Espiões no lugar dos provedores Fake (seção 4) — os testes de verificação (seção
+        // 8.1) precisam ler o código "enviado" para validar o passo seguinte do fluxo, o que
+        // o Fake normal (só loga) não permite de forma prática. ConfigureServices (não
+        // ConfigureTestServices, que exigiria o pacote Microsoft.AspNetCore.TestHost) roda
+        // depois do ConfigureServices do próprio Program.cs, então este registro vence.
+        builder.ConfigureServices(servicos =>
+        {
+            servicos.AddSingleton<EspiaEmail>();
+            servicos.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<EspiaEmail>());
+
+            servicos.AddSingleton<EspiaWhatsApp>();
+            servicos.AddSingleton<IMensageriaWhatsApp>(sp => sp.GetRequiredService<EspiaWhatsApp>());
         });
     }
 

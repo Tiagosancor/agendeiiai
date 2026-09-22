@@ -19,7 +19,14 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
 
     public Guid ProfissionalId { get; private set; }
 
-    public Guid ClienteId { get; private set; }
+    /// <summary>
+    /// Nulo só enquanto uma reserva do assistente público ainda não passou pela
+    /// identificação do cliente (seção 8.1.4 — Sprint 3): o horário é reservado ao
+    /// escolher o slot, antes de telefone/código existirem; <see cref="VincularCliente"/>
+    /// preenche isso na confirmação. Todo outro caminho (painel) já cria com cliente
+    /// definido.
+    /// </summary>
+    public Guid? ClienteId { get; private set; }
 
     public DateTimeOffset Inicio { get; private set; }
 
@@ -35,6 +42,12 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Só tem valor enquanto <see cref="Status"/> é <see cref="StatusAgendamento.Reservado"/>.</summary>
     public DateTimeOffset? ReservadoAte { get; private set; }
 
+    /// <summary>Cupom aplicado no resumo do assistente público (seção 6.2.4), revalidado no servidor na confirmação.</summary>
+    public Guid? CupomId { get; private set; }
+
+    /// <summary>Valor (em R$) descontado pelo cupom — o total exibido é sempre a soma dos serviços menos este valor.</summary>
+    public decimal DescontoAplicado { get; private set; }
+
     public IReadOnlyCollection<AgendamentoServico> Servicos => _servicos.AsReadOnly();
 
     protected Agendamento()
@@ -42,7 +55,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     }
 
     private Agendamento(
-        Guid negocioId, Guid profissionalId, Guid clienteId, DateTimeOffset inicio, DateTimeOffset fim, StatusAgendamento status)
+        Guid negocioId, Guid profissionalId, Guid? clienteId, DateTimeOffset inicio, DateTimeOffset fim, StatusAgendamento status)
     {
         NegocioId = negocioId;
         ProfissionalId = profissionalId;
@@ -67,9 +80,13 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
         return agendamento;
     }
 
-    /// <summary>Reserva temporária de 10 minutos (seção 8.2.2) — usada pelo assistente público (Sprint 3); testada aqui como mecanismo de infraestrutura.</summary>
+    /// <summary>
+    /// Reserva temporária de 10 minutos (seção 8.2.2). <paramref name="clienteId"/> é nulo
+    /// no assistente público — o horário é reservado antes de o cliente informar telefone
+    /// e validar o código; <see cref="VincularCliente"/> completa isso na confirmação.
+    /// </summary>
     public static Agendamento CriarReserva(
-        Guid negocioId, Guid profissionalId, Guid clienteId, DateTimeOffset inicio,
+        Guid negocioId, Guid profissionalId, Guid? clienteId, DateTimeOffset inicio,
         IReadOnlyCollection<ItemServicoAgendamento> servicos, DateTimeOffset agora, TimeSpan duracaoDaReserva)
     {
         var agendamento = new Agendamento(
@@ -97,10 +114,39 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
             _servicos.Add(new AgendamentoServico(NegocioId, Id, item.ServicoId, item.Nome, item.Preco, item.DuracaoMinutos));
     }
 
+    /// <summary>
+    /// Vincula o cliente identificado/criado após a validação do código (seção 8.1.4) a
+    /// uma reserva anônima do assistente público. Chamado uma única vez, antes de
+    /// <see cref="ConfirmarReserva"/>.
+    /// </summary>
+    public void VincularCliente(Guid clienteId)
+    {
+        if (Status != StatusAgendamento.Reservado)
+            throw new InvalidOperationException("Só uma reserva pendente pode receber um cliente.");
+
+        if (ClienteId is not null)
+            throw new InvalidOperationException("Essa reserva já tem um cliente vinculado.");
+
+        ClienteId = clienteId;
+    }
+
+    /// <summary>Aplica (ou reaplica) o desconto de um cupom, revalidado no servidor (seção 6.2.4/7).</summary>
+    public void AplicarCupom(Guid cupomId, decimal desconto)
+    {
+        if (Status != StatusAgendamento.Reservado)
+            throw new InvalidOperationException("Só uma reserva pendente pode receber um cupom.");
+
+        CupomId = cupomId;
+        DescontoAplicado = desconto;
+    }
+
     public void ConfirmarReserva()
     {
         if (Status != StatusAgendamento.Reservado)
             throw new InvalidOperationException("Só uma reserva pendente pode ser confirmada.");
+
+        if (ClienteId is null)
+            throw new InvalidOperationException("A reserva precisa de um cliente vinculado antes de ser confirmada.");
 
         Status = StatusAgendamento.Agendado;
         ReservadoAte = null;
@@ -157,4 +203,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     public void DefinirObservacoes(string? observacoes) => Observacoes = observacoes;
 
     public void DefinirNomeInformado(string? nomeInformado) => NomeInformado = nomeInformado;
+
+    /// <summary>Total sempre recalculado a partir da soma dos serviços menos o desconto (seção 6.2.4) — nunca guardado por fora.</summary>
+    public decimal Total => _servicos.Sum(s => s.Preco) - DescontoAplicado;
 }
