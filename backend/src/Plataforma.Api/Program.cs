@@ -1,7 +1,14 @@
+using System.Text;
 using Hangfire;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Api.Autenticacao;
 using Plataforma.Api.Middlewares;
+using Plataforma.Dominio.Usuarios;
 using Plataforma.Infraestrutura.DependencyInjection;
 using Plataforma.Infraestrutura.Opcoes;
 using Serilog;
@@ -15,11 +22,56 @@ builder.Host.UseSerilog((contexto, configuracaoLog) => configuracaoLog
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Aplicacao", "Plataforma.Api"));
 
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    // Enums como texto no JSON ("Administrador", não "1") — mais legível pro frontend e
+    // pro Swagger. Continua aceitando número na entrada (comportamento padrão do
+    // conversor), então não quebra nada que já mandava o valor numérico.
+    .AddJsonOptions(opcoes => opcoes.JsonSerializerOptions.Converters.Add(
+        new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AdicionarInfraestrutura(builder.Configuration);
+
+// JWT do painel (seção 4). Os parâmetros de validação só são lidos quando o primeiro
+// token chega (via IOptions<OpcoesJwt>, resolvido em tempo de execução) — não aqui em
+// Program.cs, para não travar a configuração de antes de qualquer override de teste
+// (mesma armadilha documentada em docs/decisoes.md para a connection string).
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer();
+
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<Microsoft.Extensions.Options.IOptions<OpcoesJwt>>((jwtBearerOpcoes, opcoesJwt) =>
+    {
+        var opcoes = opcoesJwt.Value;
+
+        jwtBearerOpcoes.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidIssuer = opcoes.Emissor,
+            ValidAudience = opcoes.Audiencia,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(opcoes.ChaveSecreta)),
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+    });
+
+// Autorização por permissão, nunca só por perfil (seção 4) — uma policy por valor do
+// catálogo fixo de Permissao, checando a claim que o GeradorTokenAcesso emite.
+builder.Services.AddAuthorization(opcoes =>
+{
+    foreach (var permissao in Enum.GetValues<Permissao>())
+    {
+        var nomeDaPolicy = permissao.ToString();
+        opcoes.AddPolicy(nomeDaPolicy, politica => politica.RequireClaim(ClaimsPlataforma.Permissao, nomeDaPolicy));
+    }
+});
+
+builder.Services.AddTransient<IClaimsTransformation, ContextoNegocioClaimsTransformation>();
 
 var dominioBase = builder.Configuration[$"{OpcoesMarca.Secao}:Dominio"];
 builder.Services.AddCors(opcoes => opcoes.AddPolicy("PadraoPlataforma", politica =>
@@ -57,8 +109,9 @@ if (app.Environment.IsDevelopment())
     using var escopoInicializacao = app.Services.CreateScope();
     var dbContext = escopoInicializacao.ServiceProvider
         .GetRequiredService<Plataforma.Infraestrutura.Persistencia.PlataformaDbContext>();
+    var senhaHasher = escopoInicializacao.ServiceProvider.GetRequiredService<ISenhaHasher>();
     await dbContext.Database.MigrateAsync();
-    await Plataforma.Infraestrutura.Persistencia.SemeadorDesenvolvimento.SemearAsync(dbContext);
+    await Plataforma.Infraestrutura.Persistencia.SemeadorDesenvolvimento.SemearAsync(dbContext, senhaHasher);
 }
 
 app.UseSerilogRequestLogging();
@@ -79,6 +132,7 @@ app.UseCors("PadraoPlataforma");
 
 app.UseMiddleware<ResolucaoNegocioMiddleware>();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

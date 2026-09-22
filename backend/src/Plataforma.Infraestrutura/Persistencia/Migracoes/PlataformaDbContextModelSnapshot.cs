@@ -23,7 +23,152 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Plataforma.Dominio.Clientes.Cliente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nome");
+
+                    b.Property<string>("Observacoes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("observacoes");
+
+                    b.Property<string>("Origem")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("origem");
+
+                    b.Property<string>("Telefone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone");
+
+                    b.HasKey("Id")
+                        .HasName("pk_clientes");
+
+                    b.HasIndex("NegocioId", "Telefone")
+                        .IsUnique()
+                        .HasDatabaseName("ix_clientes_negocio_id_telefone");
+
+                    b.ToTable("clientes", (string)null);
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.Negocios.Negocio", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("CorPrimaria")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("cor_primaria");
+
+                    b.Property<string>("CorSecundaria")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("cor_secundaria");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Fuso")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("fuso");
+
+                    b.Property<string>("LogoUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("logo_url");
+
+                    b.Property<string>("NomeExibido")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nome_exibido");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("slug");
+
+                    b.Property<string>("SubtituloPagina")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("subtitulo_pagina");
+
+                    b.Property<string>("Telefone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone");
+
+                    b.Property<string>("TextoSobre")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("texto_sobre");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tipo");
+
+                    b.Property<string>("TituloPagina")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("titulo_pagina");
+
+                    b.HasKey("Id")
+                        .HasName("pk_negocios");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("ix_negocios_slug");
+
+                    b.ToTable("negocios", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Profissionais.Profissional", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -42,38 +187,588 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
 
-                    b.Property<string>("Fuso")
-                        .IsRequired()
-                        .HasMaxLength(60)
-                        .HasColumnType("character varying(60)")
-                        .HasColumnName("fuso");
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
 
-                    b.Property<string>("NomeExibido")
+                    b.Property<string>("FotoUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("foto_url");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Nome")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
-                        .HasColumnName("nome_exibido");
+                        .HasColumnName("nome");
 
-                    b.Property<string>("Slug")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("slug");
-
-                    b.Property<string>("Tipo")
-                        .IsRequired()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasColumnName("tipo");
+                    b.Property<string>("Telefone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone");
 
                     b.HasKey("Id")
-                        .HasName("pk_negocios");
+                        .HasName("pk_profissionais");
 
-                    b.HasIndex("Slug")
+                    b.ToTable("profissionais", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Servicos.Categoria", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Ativa")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativa");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("nome");
+
+                    b.HasKey("Id")
+                        .HasName("pk_categorias");
+
+                    b.ToTable("categorias", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Servicos.Servico", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid>("CategoriaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("categoria_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<int>("DuracaoMinutos")
+                        .HasColumnType("integer")
+                        .HasColumnName("duracao_minutos");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nome");
+
+                    b.Property<bool>("Popular")
+                        .HasColumnType("boolean")
+                        .HasColumnName("popular");
+
+                    b.Property<decimal>("Preco")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("preco");
+
+                    b.HasKey("Id")
+                        .HasName("pk_servicos");
+
+                    b.HasIndex("CategoriaId")
+                        .HasDatabaseName("ix_servicos_categoria_id");
+
+                    b.ToTable("servicos", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.TokenAtualizacao", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<DateTimeOffset>("ExpiraEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_em");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("hash");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<DateTimeOffset?>("RevogadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("revogado_em");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_tokens_atualizacao");
+
+                    b.HasIndex("Hash")
                         .IsUnique()
-                        .HasDatabaseName("ix_negocios_slug");
+                        .HasDatabaseName("ix_tokens_atualizacao_hash");
 
-                    b.ToTable("negocios", (string)null);
+                    b.ToTable("tokens_atualizacao", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.Usuario", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("FotoUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("foto_url");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nome");
+
+                    b.Property<string>("Perfil")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("perfil");
+
+                    b.Property<Guid?>("ProfissionalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("profissional_id");
+
+                    b.Property<string>("SenhaHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("senha_hash");
+
+                    b.Property<string>("Telefone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usuarios");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usuarios_email");
+
+                    b.ToTable("usuarios", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.UsuarioPermissao", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Permissao")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("permissao");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_usuario_permissoes");
+
+                    b.HasIndex("UsuarioId", "Permissao")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usuario_permissoes_usuario_id_permissao");
+
+                    b.ToTable("usuario_permissoes", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Negocios.Negocio", b =>
+                {
+                    b.OwnsOne("Plataforma.Dominio.Comum.Endereco", "Endereco", b1 =>
+                        {
+                            b1.Property<Guid>("NegocioId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("Bairro")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_bairro");
+
+                            b1.Property<string>("Cep")
+                                .HasMaxLength(9)
+                                .HasColumnType("character varying(9)")
+                                .HasColumnName("endereco_cep");
+
+                            b1.Property<string>("Cidade")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_cidade");
+
+                            b1.Property<string>("Numero")
+                                .HasMaxLength(20)
+                                .HasColumnType("character varying(20)")
+                                .HasColumnName("endereco_numero");
+
+                            b1.Property<string>("Rua")
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("endereco_rua");
+
+                            b1.HasKey("NegocioId");
+
+                            b1.ToTable("negocios", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("NegocioId")
+                                .HasConstraintName("fk_negocios_negocios_id");
+                        });
+
+                    b.OwnsMany("Plataforma.Dominio.Negocios.HorarioFuncionamentoDia", "HorarioFuncionamento", b1 =>
+                        {
+                            b1.Property<Guid>("NegocioId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("negocio_id");
+
+                            b1.Property<string>("DiaSemana")
+                                .HasMaxLength(15)
+                                .HasColumnType("character varying(15)")
+                                .HasColumnName("dia_semana");
+
+                            b1.Property<TimeOnly?>("Abertura")
+                                .HasColumnType("time without time zone")
+                                .HasColumnName("abertura");
+
+                            b1.Property<bool>("Fechado")
+                                .HasColumnType("boolean")
+                                .HasColumnName("fechado");
+
+                            b1.Property<TimeOnly?>("Fechamento")
+                                .HasColumnType("time without time zone")
+                                .HasColumnName("fechamento");
+
+                            b1.HasKey("NegocioId", "DiaSemana")
+                                .HasName("pk_negocio_horario_funcionamento");
+
+                            b1.ToTable("negocio_horario_funcionamento", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("NegocioId")
+                                .HasConstraintName("fk_negocio_horario_funcionamento_negocios_negocio_id");
+                        });
+
+                    b.OwnsOne("Plataforma.Dominio.Negocios.RedesSociais", "RedesSociais", b1 =>
+                        {
+                            b1.Property<Guid>("NegocioId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("Facebook")
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("rede_social_facebook");
+
+                            b1.Property<string>("Instagram")
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("rede_social_instagram");
+
+                            b1.Property<string>("WhatsApp")
+                                .HasMaxLength(30)
+                                .HasColumnType("character varying(30)")
+                                .HasColumnName("rede_social_whatsapp");
+
+                            b1.HasKey("NegocioId");
+
+                            b1.ToTable("negocios", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("NegocioId")
+                                .HasConstraintName("fk_negocios_negocios_id");
+                        });
+
+                    b.Navigation("Endereco")
+                        .IsRequired();
+
+                    b.Navigation("HorarioFuncionamento");
+
+                    b.Navigation("RedesSociais")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Profissionais.Profissional", b =>
+                {
+                    b.OwnsOne("Plataforma.Dominio.Seguranca.CpfProtegido", "Cpf", b1 =>
+                        {
+                            b1.Property<Guid>("ProfissionalId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("ChaveId")
+                                .IsRequired()
+                                .HasMaxLength(50)
+                                .HasColumnType("character varying(50)")
+                                .HasColumnName("cpf_chave_id");
+
+                            b1.Property<string>("Mascarado")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("character varying(20)")
+                                .HasColumnName("cpf_mascarado");
+
+                            b1.Property<byte[]>("Nonce")
+                                .IsRequired()
+                                .HasColumnType("bytea")
+                                .HasColumnName("cpf_nonce");
+
+                            b1.Property<byte[]>("TextoCifrado")
+                                .IsRequired()
+                                .HasColumnType("bytea")
+                                .HasColumnName("cpf_texto_cifrado");
+
+                            b1.HasKey("ProfissionalId");
+
+                            b1.ToTable("profissionais", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ProfissionalId")
+                                .HasConstraintName("fk_profissionais_profissionais_id");
+                        });
+
+                    b.OwnsOne("Plataforma.Dominio.Comum.Endereco", "Endereco", b1 =>
+                        {
+                            b1.Property<Guid>("ProfissionalId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("Bairro")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_bairro");
+
+                            b1.Property<string>("Cep")
+                                .HasMaxLength(9)
+                                .HasColumnType("character varying(9)")
+                                .HasColumnName("endereco_cep");
+
+                            b1.Property<string>("Cidade")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_cidade");
+
+                            b1.Property<string>("Numero")
+                                .HasMaxLength(20)
+                                .HasColumnType("character varying(20)")
+                                .HasColumnName("endereco_numero");
+
+                            b1.Property<string>("Rua")
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("endereco_rua");
+
+                            b1.HasKey("ProfissionalId");
+
+                            b1.ToTable("profissionais", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("ProfissionalId")
+                                .HasConstraintName("fk_profissionais_profissionais_id");
+                        });
+
+                    b.Navigation("Cpf");
+
+                    b.Navigation("Endereco")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Servicos.Servico", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Servicos.Categoria", null)
+                        .WithMany()
+                        .HasForeignKey("CategoriaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_servicos_categorias_categoria_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.Usuario", b =>
+                {
+                    b.OwnsOne("Plataforma.Dominio.Seguranca.CpfProtegido", "Cpf", b1 =>
+                        {
+                            b1.Property<Guid>("UsuarioId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("ChaveId")
+                                .IsRequired()
+                                .HasMaxLength(50)
+                                .HasColumnType("character varying(50)")
+                                .HasColumnName("cpf_chave_id");
+
+                            b1.Property<string>("Mascarado")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("character varying(20)")
+                                .HasColumnName("cpf_mascarado");
+
+                            b1.Property<byte[]>("Nonce")
+                                .IsRequired()
+                                .HasColumnType("bytea")
+                                .HasColumnName("cpf_nonce");
+
+                            b1.Property<byte[]>("TextoCifrado")
+                                .IsRequired()
+                                .HasColumnType("bytea")
+                                .HasColumnName("cpf_texto_cifrado");
+
+                            b1.HasKey("UsuarioId");
+
+                            b1.ToTable("usuarios", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("UsuarioId")
+                                .HasConstraintName("fk_usuarios_usuarios_id");
+                        });
+
+                    b.OwnsOne("Plataforma.Dominio.Comum.Endereco", "Endereco", b1 =>
+                        {
+                            b1.Property<Guid>("UsuarioId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("id");
+
+                            b1.Property<string>("Bairro")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_bairro");
+
+                            b1.Property<string>("Cep")
+                                .HasMaxLength(9)
+                                .HasColumnType("character varying(9)")
+                                .HasColumnName("endereco_cep");
+
+                            b1.Property<string>("Cidade")
+                                .HasMaxLength(120)
+                                .HasColumnType("character varying(120)")
+                                .HasColumnName("endereco_cidade");
+
+                            b1.Property<string>("Numero")
+                                .HasMaxLength(20)
+                                .HasColumnType("character varying(20)")
+                                .HasColumnName("endereco_numero");
+
+                            b1.Property<string>("Rua")
+                                .HasMaxLength(200)
+                                .HasColumnType("character varying(200)")
+                                .HasColumnName("endereco_rua");
+
+                            b1.HasKey("UsuarioId");
+
+                            b1.ToTable("usuarios", (string)null);
+
+                            b1.WithOwner()
+                                .HasForeignKey("UsuarioId")
+                                .HasConstraintName("fk_usuarios_usuarios_id");
+                        });
+
+                    b.Navigation("Cpf");
+
+                    b.Navigation("Endereco")
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.UsuarioPermissao", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Usuarios.Usuario", null)
+                        .WithMany("Permissoes")
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_usuario_permissoes_usuarios_usuario_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.Usuario", b =>
+                {
+                    b.Navigation("Permissoes");
                 });
 #pragma warning restore 612, 618
         }

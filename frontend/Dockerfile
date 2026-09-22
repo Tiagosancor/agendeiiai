@@ -11,6 +11,10 @@ FROM node:22-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+# NEXT_PUBLIC_* é embutido no bundle do navegador em tempo de BUILD (não de execução —
+# ver docs/decisoes.md), por isso precisa entrar como build arg aqui.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
 # --- runtime ---

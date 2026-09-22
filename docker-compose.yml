@@ -34,6 +34,11 @@ services:
       Marca__NomeProduto: ${MARCA_NOME_PRODUTO:-Agendei}
       Marca__Dominio: ${MARCA_DOMINIO:-agendei.localhost}
       Marca__EmailRemetente: ${MARCA_EMAIL_REMETENTE:-nao-responda@agendei.localhost}
+      Jwt__ChaveSecreta: ${JWT_CHAVE_SECRETA:?defina JWT_CHAVE_SECRETA no .env (openssl rand -base64 64)}
+      Jwt__Emissor: ${JWT_EMISSOR:-plataforma-dev}
+      Jwt__Audiencia: ${JWT_AUDIENCIA:-plataforma-painel-dev}
+      Cpf__ChaveId: ${CPF_CHAVE_ID:-dev-v1}
+      Cpf__ChaveBase64: ${CPF_CHAVE_BASE64:?defina CPF_CHAVE_BASE64 no .env (openssl rand -base64 32)}
     ports:
       - "${API_PORTA_HOST:-5080}:8080"
 
@@ -41,6 +46,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        # Embutida no bundle do navegador em tempo de build — precisa ser o endereço que
+        # o NAVEGADOR alcança (porta publicada no host), não o nome do serviço Docker.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5080}
     restart: unless-stopped
     depends_on:
       - api

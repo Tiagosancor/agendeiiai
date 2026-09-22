@@ -82,6 +82,16 @@ O nome do produto (**Agendei**) é configuração, nunca código:
   cacheado entre instâncias do `DbContext` e isso trava todo mundo no tenant da primeira
   requisição. Use o padrão em `PlataformaDbContext.AplicarFiltroDoNegocio<T>` (método de
   instância + reflection), que o EF reavalia por instância corretamente.
+- Toda entidade (`EntidadeBase`) tem o `Id` gerado no construtor (`Guid.NewGuid()`), nunca
+  pelo banco — por isso `PlataformaDbContext.OnModelCreating` configura
+  `ValueGeneratedNever()` no `Id` de todo mundo, centralizado. Sem isso, adicionar uma
+  entidade nova só por navegação (ex.: `usuario.ConcederPermissao(...)`, sem
+  `DbContext.Add()` explícito) faz o EF gerar `UPDATE` em vez de `INSERT` e estourar
+  `DbUpdateConcurrencyException` — ver docs/decisoes.md ("Sprint 1").
+- Agregados que encapsulam coleções (ex.: `Usuario.Permissoes`) expõem
+  `IReadOnlyCollection<T>` e guardam a lista real num campo privado; a configuração EF usa
+  `.Navigation(...).UsePropertyAccessMode(PropertyAccessMode.Field)` pra ler/escrever
+  direto no campo.
 - Configuração: **100% por variáveis de ambiente** (seção 8.5.2). Nunca eager-capture um
   valor de `IConfiguration` em uma variável local antes de registrar um serviço — isso
   quebra testes com `WebApplicationFactory`, que só consegue sobrescrever configuração
@@ -118,8 +128,23 @@ dotnet ef database update \
 ```
 
 Em **Development**, a API aplica migrations pendentes sozinha ao subir e semeia um
-negócio "acme" de exemplo se o banco estiver vazio (`SemeadorDesenvolvimento`). Em
-produção isso não acontece — migrations são passo explícito de deploy (seção 8.5.5).
+negócio "acme" de exemplo e um administrador (`admin@acme.dev` / `Admin!123`) se o banco
+estiver vazio (`SemeadorDesenvolvimento`). Em produção isso não acontece — migrations são
+passo explícito de deploy (seção 8.5.5).
+
+### Backup e restauração
+
+```bash
+scripts/backup.sh [pasta-de-destino]                          # requer docker compose up -d
+scripts/restore.sh <arquivo.dump.enc> [banco-destino] [--force]
+scripts/testar-backup-restore.sh                               # backup + restore num banco
+                                                                 # separado + confere integridade
+```
+
+Os scripts rodam `pg_dump`/`pg_restore` **dentro** do container Postgres via
+`docker compose exec` — não precisam de `pg_dump`/`psql` instalados no host. O dump é
+sempre cifrado (AES-256, `BACKUP_CHAVE_CRIPTOGRAFIA` no `.env`) antes de tocar o disco.
+Sem `BACKUP_S3_BUCKET`, o backup fica só local (não é erro).
 
 ### Frontend
 
@@ -191,10 +216,18 @@ cada regra.
 - CORS com lista de origens derivada do domínio base; proteção CSRF; cabeçalhos de segurança.
 
 ### 8.4 — LGPD e segurança geral
-- CPF criptografado em repouso, mascarado na interface, completo só com permissão.
-- Consentimento registrado (data, IP, versão dos termos); exportação/exclusão sob demanda.
-- HTTPS obrigatório em produção; senhas com Argon2/bcrypt; segredos só em variável de
-  ambiente/user-secrets — nunca hardcoded, nunca commitado (`.env` está no `.gitignore`).
+- **CPF criptografado (AES-256-GCM, implementado na Sprint 1):** `ICriptografiaCpf` /
+  `CriptografiaCpf`. Chave em `Cpf__ChaveBase64` + `Cpf__ChaveId` (versionada, mas rotação
+  de chave ainda não está implementada — só a chave atual decifra). `CpfProtegido` guarda
+  o texto cifrado, o nonce e o **mascarado em texto puro** (`***.456.789-**`), pra não
+  precisar decifrar só pra exibir a versão mascarada. Decifrar (`RevelarCpfAsync`) exige a
+  mesma permissão de gerenciar a entidade (`GerenciarUsuarios`/`GerenciarProfissionais`) —
+  não existe uma permissão separada "ver CPF completo" no MVP.
+- Consentimento registrado (data, IP, versão dos termos); exportação/exclusão sob demanda
+  — ainda não implementado (entra com o fluxo de agendamento público, Sprint 3).
+- HTTPS obrigatório em produção; senhas com **bcrypt** (`ISenhaHasher`/`SenhaHasher`,
+  fator de custo 12); segredos só em variável de ambiente — nunca hardcoded, nunca
+  commitado (`.env` está no `.gitignore`).
 
 ### 8.5 — Portabilidade, backup e migração
 - Tudo por variável de ambiente, com validação das obrigatórias na inicialização
@@ -204,8 +237,58 @@ cada regra.
 - `docker compose up` sobe tudo do zero (validado manualmente na Sprint 0).
 - Retry com backoff na conexão com o banco (`EnableRetryOnFailure`) — tolerância à
   hibernação de planos gratuitos.
-- Backup: `scripts/backup.sh`/`restore.sh` com teste automatizado de restauração
-  (a partir da Sprint 1).
+- Backup: `scripts/backup.sh`/`restore.sh` (implementado na Sprint 1 — rodam `pg_dump`/
+  `pg_restore` dentro do container Postgres via `docker compose exec`, dump cifrado com
+  AES-256). `scripts/testar-backup-restore.sh` é o teste automatizado de restauração
+  (roda contra o `docker compose` local, não contra Testcontainers — ver seção de comandos).
+
+## Autenticação e autorização (Sprint 1)
+
+- **Login:** `POST /painel/auth/login` (e-mail + senha) → JWT de acesso (`Jwt__AccessTokenMinutos`,
+  padrão 15 min) + refresh token opaco em cookie `httpOnly`, *host-only*, `Path=/painel/auth`
+  (seção 8.3.4). `POST /painel/auth/renovar` roda a partir do cookie e **rotaciona** o
+  refresh token (o antigo é revogado). `POST /painel/auth/logout` revoga o atual.
+- **E-mail é único globalmente**, não por negócio — o painel inteiro fica em
+  `app.{dominio}` (seção 5), então só o e-mail consegue apontar pro negócio certo antes de
+  existir qualquer token. Ver docs/decisoes.md.
+- **Claims do JWT:** `sub` (UsuarioId), `email`, `negocio_id`, `perfil`, `permissao`
+  (uma claim por permissão concedida). `ContextoNegocioClaimsTransformation`
+  (`Plataforma.Api.Autenticacao`) lê `negocio_id` e preenche o `IContextoNegocio` — é assim
+  que o painel cumpre a regra "negócio sempre do JWT" (seção 8.3.2).
+- **Autorização por permissão:** catálogo fixo em `Permissao` (enum,
+  `Plataforma.Dominio.Usuarios`) — `GerenciarUsuarios`, `GerenciarProfissionais`,
+  `GerenciarServicos`, `GerenciarClientes`, `GerenciarConfiguracoesDoNegocio`,
+  `VerAgendaDeOutrosProfissionais`, `GerenciarAgenda`, `VerFinanceiro`, `GerenciarCupons`,
+  `GerenciarFidelidade`. Uma *policy* do ASP.NET Core por valor do enum (`RequireClaim`),
+  registrada em `Program.cs`; controllers usam `[Authorize(Policy = nameof(Permissao.X))]`.
+  `Usuario.PermissoesPadrao(perfil)` só define o conjunto inicial ao criar o usuário —
+  o administrador concede/revoga por usuário depois (`POST`/`DELETE
+  /painel/usuarios/{id}/permissoes/{permissao}`).
+- Sem token → 401. Com token mas sem a permissão da policy → 403. Trocar a permissão de um
+  usuário só vale a partir do próximo login/renovação (as permissões vêm do token, não são
+  checadas no banco a cada requisição) — trade-off deliberado, ver docs/decisoes.md.
+
+## Painel (frontend, Sprint 1)
+
+- Rotas em `frontend/src/app/painel/`. `login/` fica fora do grupo `(protegido)/` (rotas
+  entre parênteses não entram na URL) — as demais (`usuarios/`, `profissionais/`,
+  `servicos/`, `clientes/`, `negocio/`) ficam dentro e são guardadas pelo
+  `(protegido)/layout.tsx`, que redireciona para `/painel/login` sem sessão.
+- `lib/auth-context.tsx` (`ProvedorAutenticacao`/`useAutenticacao`): o access token vive só
+  em memória (nunca `localStorage` — fica exposto a qualquer script). Ao montar, tenta
+  `POST /painel/auth/renovar` a partir do cookie httpOnly. `chamarApi()` injeta o token e,
+  se a API responder 401, tenta renovar uma vez antes de desistir.
+- `lib/api.ts`: `fetch` com `credentials: "include"` (manda o cookie do refresh token nas
+  chamadas de `/painel/auth/*`) e `NEXT_PUBLIC_API_URL` como base — essa variável é
+  embutida no bundle **em tempo de build** da imagem Docker (`Dockerfile` recebe
+  `ARG NEXT_PUBLIC_API_URL` do `docker-compose.yml`), então mudar
+  `API_PORTA_HOST`/`NEXT_PUBLIC_API_URL` exige `docker compose build frontend` de novo, não
+  só reiniciar o container.
+- `lib/tipos.ts` espelha os DTOs do backend manualmente (sem geração automática) — mantenha
+  em sincronia se mudar um DTO em `Plataforma.Aplicacao`.
+- Para testar o painel local: acesse via `http://app.agendei.localhost:3000` (não
+  `localhost:3000` puro) — é o host que bate com a política de CORS da API
+  (`SetIsOriginAllowed` checa `host == dominio || host.EndsWith(".{dominio}")`).
 
 ## Onde estão as coisas (referência rápida)
 
@@ -220,5 +303,16 @@ cada regra.
 | `ResolucaoNegocioMiddleware`, `TratamentoGlobalErrosMiddleware` | `backend/src/Plataforma.Api/Middlewares/` |
 | `Program.cs` (composition root) | `backend/src/Plataforma.Api/` |
 | `proxy.ts` (resolução de subdomínio no front) | `frontend/src/proxy.ts` |
+| Rotas e telas do painel | `frontend/src/app/painel/` |
+| `auth-context.tsx`, `api.ts`, `tipos.ts` (front) | `frontend/src/lib/` |
+| `Usuario`, `Permissao`, `Perfil`, `TokenAtualizacao` | `backend/src/Plataforma.Dominio/Usuarios/` |
+| `Profissional`, `Cliente`, `Servico`/`Categoria` | `backend/src/Plataforma.Dominio/{Profissionais,Clientes,Servicos}/` |
+| `Cpf`, `TelefoneE164`, `Endereco`, `DiaSemana` (value objects) | `backend/src/Plataforma.Dominio/Comum/` |
+| `CpfProtegido` | `backend/src/Plataforma.Dominio/Seguranca/` |
+| `SenhaHasher`, `CriptografiaCpf`, `GeradorTokenAcesso`, `ServicoAutenticacao` | `backend/src/Plataforma.Infraestrutura/{Seguranca,Autenticacao}/` |
+| Gerenciadores (CRUD: Usuarios, Profissionais, Servicos, Clientes, PerfilNegocio) | `backend/src/Plataforma.Infraestrutura/{Usuarios,Profissionais,Servicos,Clientes,Negocios}/` |
+| Controllers do painel | `backend/src/Plataforma.Api/Controllers/Painel/` |
+| `ContextoNegocioClaimsTransformation` | `backend/src/Plataforma.Api/Autenticacao/` |
+| `scripts/backup.sh`, `restore.sh`, `testar-backup-restore.sh` | `scripts/` |
 | Decisões técnicas registradas | `docs/decisoes.md` |
 | Especificação completa | `docs/prompt-agendei-claude-code-smart.md` |

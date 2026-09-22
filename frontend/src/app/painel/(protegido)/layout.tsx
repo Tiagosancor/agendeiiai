@@ -1,0 +1,79 @@
+"use client";
+
+import { useEffect } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { useAutenticacao } from "@/lib/auth-context";
+
+const ITENS_MENU = [
+  { href: "/painel", rotulo: "Início" },
+  { href: "/painel/usuarios", rotulo: "Usuários" },
+  { href: "/painel/profissionais", rotulo: "Profissionais" },
+  { href: "/painel/servicos", rotulo: "Serviços" },
+  { href: "/painel/clientes", rotulo: "Clientes" },
+  { href: "/painel/negocio", rotulo: "Meu negócio" },
+];
+
+export default function LayoutProtegido({ children }: { children: React.ReactNode }) {
+  const { autenticado, carregando, sair } = useAutenticacao();
+  const roteador = useRouter();
+  const caminhoAtual = usePathname();
+
+  useEffect(() => {
+    if (!carregando && !autenticado) {
+      roteador.replace("/painel/login");
+    }
+  }, [carregando, autenticado, roteador]);
+
+  if (carregando) {
+    return (
+      <main className="flex min-h-screen items-center justify-center text-sm text-gray-500 dark:text-neutral-400">
+        Carregando...
+      </main>
+    );
+  }
+
+  if (!autenticado) {
+    // Evita piscar o conteúdo protegido antes do redirecionamento do efeito acima.
+    return null;
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-neutral-950">
+      <header className="border-b border-gray-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+          <span className="text-sm font-semibold text-gray-900 dark:text-neutral-50">Painel</span>
+          <button
+            onClick={async () => {
+              await sair();
+              roteador.replace("/painel/login");
+            }}
+            className="text-sm text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-neutral-100"
+          >
+            Sair
+          </button>
+        </div>
+        <nav className="mx-auto max-w-5xl overflow-x-auto px-4 pb-2">
+          <ul className="flex gap-4 text-sm whitespace-nowrap">
+            {ITENS_MENU.map((item) => (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={
+                    caminhoAtual === item.href
+                      ? "font-medium text-blue-600 dark:text-blue-400"
+                      : "text-gray-500 hover:text-gray-800 dark:text-neutral-400 dark:hover:text-neutral-100"
+                  }
+                >
+                  {item.rotulo}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      </header>
+
+      <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
+    </div>
+  );
+}

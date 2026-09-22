@@ -4,11 +4,22 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Autenticacao;
+using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Negocios;
+using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Aplicacao.Servicos;
+using Plataforma.Aplicacao.Usuarios;
+using Plataforma.Infraestrutura.Autenticacao;
+using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.MultiTenant;
 using Plataforma.Infraestrutura.Negocios;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
+using Plataforma.Infraestrutura.Profissionais;
+using Plataforma.Infraestrutura.Seguranca;
+using Plataforma.Infraestrutura.Servicos;
+using Plataforma.Infraestrutura.Usuarios;
 
 namespace Plataforma.Infraestrutura.DependencyInjection;
 
@@ -41,6 +52,18 @@ public static class InfraestruturaServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        servicos
+            .AddOptions<OpcoesJwt>()
+            .Bind(configuracao.GetSection(OpcoesJwt.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicos
+            .AddOptions<OpcoesCriptografiaCpf>()
+            .Bind(configuracao.GetSection(OpcoesCriptografiaCpf.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         servicos.AddDbContext<PlataformaDbContext>((sp, opcoes) => opcoes
             .UseNpgsql(
                 ObterConnectionString(sp),
@@ -58,6 +81,21 @@ public static class InfraestruturaServiceCollectionExtensions
 
         servicos.AddScoped<IContextoNegocio, ContextoNegocio>();
         servicos.AddScoped<IConsultaNegocioPublico, ConsultaNegocioPublico>();
+
+        // Segurança (seção 8.4): hash de senha, criptografia de CPF, emissão de JWT.
+        servicos.AddSingleton<ISenhaHasher, SenhaHasher>();
+        servicos.AddSingleton<ICriptografiaCpf, CriptografiaCpf>();
+        servicos.AddSingleton<IGeradorTokenAcesso, GeradorTokenAcesso>();
+
+        servicos.AddScoped<IServicoAutenticacao, ServicoAutenticacao>();
+
+        // CRUDs da Sprint 1 (seção 7).
+        servicos.AddScoped<IGerenciadorUsuarios, GerenciadorUsuarios>();
+        servicos.AddScoped<IGerenciadorProfissionais, GerenciadorProfissionais>();
+        servicos.AddScoped<IGerenciadorCategorias, GerenciadorCategorias>();
+        servicos.AddScoped<IGerenciadorServicos, GerenciadorServicos>();
+        servicos.AddScoped<IGerenciadorClientes, GerenciadorClientes>();
+        servicos.AddScoped<IGerenciadorPerfilNegocio, GerenciadorPerfilNegocio>();
 
         servicos
             .AddHealthChecks()
