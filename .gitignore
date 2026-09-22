@@ -3,6 +3,11 @@
 .env.local
 *.env.local
 
+# Documentação interna — fica só local, não sobe para o GitHub (pedido do usuário).
+# decisoes.md/deploy.md/migracao.md continuam sendo escritos aqui normalmente; só não
+# entram no repositório remoto.
+/docs/
+
 # .NET
 backend/**/bin/
 backend/**/obj/
