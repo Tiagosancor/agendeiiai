@@ -13,6 +13,7 @@ const ITENS_MENU = [
   { href: "/painel/servicos", rotulo: "Serviços" },
   { href: "/painel/cupons", rotulo: "Cupons" },
   { href: "/painel/clientes", rotulo: "Clientes" },
+  { href: "/painel/financeiro", rotulo: "Financeiro" },
   { href: "/painel/negocio", rotulo: "Meu negócio" },
 ];
 

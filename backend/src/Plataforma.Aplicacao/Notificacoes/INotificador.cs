@@ -19,7 +19,24 @@ public interface INotificador
 
     /// <summary>Mensagem do formulário "Fale Conosco" (seção 6.1.6) ao e-mail de contato do negócio.</summary>
     Task EnviarMensagemContatoAsync(DadosNotificacaoContato dados, CancellationToken cancellationToken = default);
+
+    /// <summary>Novo/remarcado/cancelado ao profissional (seção 9, Sprint 4) — só e-mail no MVP; nunca falha se o profissional não tiver e-mail cadastrado.</summary>
+    Task EnviarNotificacaoProfissionalAsync(DadosNotificacaoProfissional dados, CancellationToken cancellationToken = default);
+
+    /// <summary>Lembrete 24h/2h antes (seção 9, Sprint 4) — antecedência configurável, ver <c>OpcoesLembretes</c>.</summary>
+    Task EnviarLembreteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default);
 }
+
+public enum EventoAgendamentoProfissional
+{
+    Novo,
+    Remarcado,
+    Cancelado,
+}
+
+public sealed record DadosNotificacaoProfissional(
+    EventoAgendamentoProfissional Evento, string? EmailProfissional, string NomeCliente,
+    DateTimeOffset Inicio, DateTimeOffset Fim, IReadOnlyList<string> Servicos, string? Observacoes);
 
 public sealed record DadosNotificacaoAgendamento(
     string NomeCliente, string? EmailCliente, TelefoneE164 TelefoneCliente,

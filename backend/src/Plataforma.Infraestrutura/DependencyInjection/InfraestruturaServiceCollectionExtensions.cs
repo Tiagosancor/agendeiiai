@@ -10,6 +10,7 @@ using Plataforma.Aplicacao.Autenticacao;
 using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Contato;
 using Plataforma.Aplicacao.Cupons;
+using Plataforma.Aplicacao.Financeiro;
 using Plataforma.Aplicacao.Ics;
 using Plataforma.Aplicacao.Negocios;
 using Plataforma.Aplicacao.Notificacoes;
@@ -23,6 +24,7 @@ using Plataforma.Infraestrutura.Autenticacao;
 using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.Contato;
 using Plataforma.Infraestrutura.Cupons;
+using Plataforma.Infraestrutura.Financeiro;
 using Plataforma.Infraestrutura.Ics;
 using Plataforma.Infraestrutura.MultiTenant;
 using Plataforma.Infraestrutura.Negocios;
@@ -103,6 +105,12 @@ public static class InfraestruturaServiceCollectionExtensions
             .ValidateDataAnnotations()
             .ValidateOnStart();
 
+        servicos
+            .AddOptions<OpcoesLembretes>()
+            .Bind(configuracao.GetSection(OpcoesLembretes.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
         servicos.AddDbContext<PlataformaDbContext>((sp, opcoes) => opcoes
             .UseNpgsql(
                 ObterConnectionString(sp),
@@ -152,6 +160,11 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGerenciadorCupons, GerenciadorCupons>();
         servicos.AddScoped<IServicoContato, ServicoContato>();
         servicos.AddScoped<IConsultaCatalogoPublico, ConsultaCatalogoPublico>();
+
+        // Notificações ao profissional, lembretes e financeiro (Sprint 4 — seção 9/7).
+        servicos.AddScoped<JobEnviarLembretes>();
+        servicos.AddScoped<IGerenciadorPagamentos, GerenciadorPagamentos>();
+        servicos.AddScoped<IServicoFinanceiro, ServicoFinanceiro>();
 
         // E-mail e WhatsApp: Fake em dev/testes, provedor real escolhido em runtime pela
         // configuração (seção 4) — nunca hardcoded, senão os testes de integração (que não
