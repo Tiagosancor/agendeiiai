@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Plataforma.Api/Plataforma.Api.csproj" />
+    <Project Path="src/Plataforma.Aplicacao/Plataforma.Aplicacao.csproj" />
+    <Project Path="src/Plataforma.Dominio/Plataforma.Dominio.csproj" />
+    <Project Path="src/Plataforma.Infraestrutura/Plataforma.Infraestrutura.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Plataforma.Testes.Integracao/Plataforma.Testes.Integracao.csproj" />
+    <Project Path="tests/Plataforma.Testes.Unidade/Plataforma.Testes.Unidade.csproj" />
+  </Folder>
+</Solution>

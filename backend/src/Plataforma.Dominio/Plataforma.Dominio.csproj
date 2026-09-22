@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Permite que a Infraestrutura (EF Core) preencha carimbos de auditoria (setters internos). -->
+    <InternalsVisibleTo Include="Plataforma.Infraestrutura" />
+    <InternalsVisibleTo Include="Plataforma.Testes.Unidade" />
+  </ItemGroup>
+
+</Project>

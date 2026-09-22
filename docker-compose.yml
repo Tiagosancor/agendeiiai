@@ -1,0 +1,56 @@
+name: plataforma
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-plataforma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-plataforma_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-plataforma}
+    ports:
+      # 5434 no host: 5432 e 5433 costumam já estar ocupadas por outros projetos locais.
+      - "${POSTGRES_PORTA_HOST:-5434}:5432"
+    volumes:
+      - dados_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-plataforma} -d ${POSTGRES_DB:-plataforma}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Padrao: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-plataforma};Username=${POSTGRES_USER:-plataforma};Password=${POSTGRES_PASSWORD:-plataforma_dev}"
+      Marca__NomeProduto: ${MARCA_NOME_PRODUTO:-Agendei}
+      Marca__Dominio: ${MARCA_DOMINIO:-agendei.localhost}
+      Marca__EmailRemetente: ${MARCA_EMAIL_REMETENTE:-nao-responda@agendei.localhost}
+    ports:
+      - "${API_PORTA_HOST:-5080}:8080"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # Lidas em runtime por middleware/server components (sem prefixo NEXT_PUBLIC_,
+      # então não dependem de build-time inlining — ver docs/decisoes.md).
+      MARCA_DOMINIO: ${MARCA_DOMINIO:-agendei.localhost}
+      API_URL_INTERNA: http://api:8080
+    ports:
+      - "${FRONTEND_PORTA_HOST:-3000}:3000"
+
+volumes:
+  dados_postgres:

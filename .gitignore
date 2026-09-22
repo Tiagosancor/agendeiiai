@@ -1,0 +1,25 @@
+# Segredos e configuração local — nunca commitar (seção 8.5.2).
+.env
+.env.local
+*.env.local
+
+# .NET
+backend/**/bin/
+backend/**/obj/
+backend/**/*.user
+backend/.vs/
+
+# Node / Next.js (o frontend também tem seu próprio .gitignore mais detalhado)
+frontend/node_modules/
+frontend/.next/
+
+# Dados locais (volumes montados por bind mount, se algum dia usarmos)
+**/dados-locais/
+
+# IDE / SO
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
