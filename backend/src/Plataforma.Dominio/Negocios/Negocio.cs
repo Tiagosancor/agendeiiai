@@ -5,11 +5,14 @@ namespace Plataforma.Dominio.Negocios;
 /// <summary>
 /// Raiz do multi-tenant: cada negócio (barbearia, salão, clínica de estética ou
 /// autônomo) é um tenant isolado, resolvido pelo <see cref="Slug"/> no subdomínio.
-/// Campos de marca, endereço e horário de funcionamento entram na Sprint 1 —
-/// aqui fica só o essencial para a Sprint 0 (fundação e resolução por subdomínio).
+/// Os campos de marca/perfil (logo, cores, textos, endereço, redes sociais, horário de
+/// funcionamento) entraram na Sprint 1 — na Sprint 0 só existia o essencial para a
+/// resolução por subdomínio.
 /// </summary>
 public class Negocio : EntidadeBase
 {
+    private readonly List<HorarioFuncionamentoDia> _horarioFuncionamento = [];
+
     public Slug Slug { get; private set; } = null!;
 
     public string NomeExibido { get; private set; } = string.Empty;
@@ -20,6 +23,26 @@ public class Negocio : EntidadeBase
     public string Fuso { get; private set; } = "America/Sao_Paulo";
 
     public bool Ativo { get; private set; } = true;
+
+    public string? LogoUrl { get; private set; }
+
+    public string? CorPrimaria { get; private set; }
+
+    public string? CorSecundaria { get; private set; }
+
+    public string? TituloPagina { get; private set; }
+
+    public string? SubtituloPagina { get; private set; }
+
+    public string? TextoSobre { get; private set; }
+
+    public Endereco Endereco { get; private set; } = Endereco.Vazio;
+
+    public string? Telefone { get; private set; }
+
+    public RedesSociais RedesSociais { get; private set; } = RedesSociais.Vazio;
+
+    public IReadOnlyCollection<HorarioFuncionamentoDia> HorarioFuncionamento => _horarioFuncionamento.AsReadOnly();
 
     protected Negocio()
     {
@@ -45,6 +68,39 @@ public class Negocio : EntidadeBase
             throw new ArgumentException("O fuso horário é obrigatório.", nameof(fuso));
 
         return new Negocio(slug, nomeExibido.Trim(), tipo, fuso);
+    }
+
+    /// <summary>Atualiza o perfil do negócio (marca, textos, endereço, contato — seção 5 / Sprint 1). Todo texto é sempre tratado como texto puro pelo front (seção 5), nunca HTML.</summary>
+    public void AtualizarPerfil(
+        string nomeExibido, string? logoUrl, string? corPrimaria, string? corSecundaria,
+        string? tituloPagina, string? subtituloPagina, string? textoSobre,
+        Endereco endereco, string? telefone, RedesSociais redesSociais)
+    {
+        if (string.IsNullOrWhiteSpace(nomeExibido))
+            throw new ArgumentException("O nome exibido é obrigatório.", nameof(nomeExibido));
+
+        NomeExibido = nomeExibido.Trim();
+        LogoUrl = logoUrl;
+        CorPrimaria = corPrimaria;
+        CorSecundaria = corSecundaria;
+        TituloPagina = tituloPagina;
+        SubtituloPagina = subtituloPagina;
+        TextoSobre = textoSobre;
+        Endereco = endereco;
+        Telefone = telefone;
+        RedesSociais = redesSociais;
+    }
+
+    /// <summary>Substitui o horário de funcionamento inteiro — sempre os 7 dias da semana, um registro cada.</summary>
+    public void DefinirHorarioFuncionamento(IEnumerable<HorarioFuncionamentoDia> horario)
+    {
+        var dias = horario.ToList();
+
+        if (dias.Select(d => d.DiaSemana).Distinct().Count() != dias.Count)
+            throw new ArgumentException("Cada dia da semana só pode aparecer uma vez.", nameof(horario));
+
+        _horarioFuncionamento.Clear();
+        _horarioFuncionamento.AddRange(dias);
     }
 
     public void Desativar() => Ativo = false;

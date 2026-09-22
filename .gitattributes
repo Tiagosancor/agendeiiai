@@ -1,0 +1,3 @@
+# Scripts precisam de LF sempre, senão o shebang quebra em Linux/macOS (onde de fato
+# rodam — servidor de produção, CI) mesmo commitando do Windows.
+*.sh text eol=lf

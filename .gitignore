@@ -21,6 +21,9 @@ frontend/.next/
 # Dados locais (volumes montados por bind mount, se algum dia usarmos)
 **/dados-locais/
 
+# Backups locais gerados por scripts/backup.sh — nunca commitar (dado pessoal cifrado, mas ainda assim).
+/backups/
+
 # IDE / SO
 .vscode/*
 !.vscode/extensions.json

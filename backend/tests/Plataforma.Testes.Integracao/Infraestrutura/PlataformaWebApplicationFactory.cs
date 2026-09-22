@@ -35,6 +35,11 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
                 ["Marca:NomeProduto"] = "Plataforma de Testes",
                 ["Marca:Dominio"] = DominioDeTeste.Valor,
                 ["Marca:EmailRemetente"] = $"nao-responda@{DominioDeTeste.Valor}",
+                ["Jwt:ChaveSecreta"] = "chave-secreta-de-teste-0123456789-0123456789-0123456789",
+                ["Jwt:Emissor"] = "plataforma-testes",
+                ["Jwt:Audiencia"] = "plataforma-testes-painel",
+                ["Cpf:ChaveId"] = "teste-v1",
+                ["Cpf:ChaveBase64"] = Convert.ToBase64String(new byte[32]), // chave zerada — só para teste
             });
         });
     }
