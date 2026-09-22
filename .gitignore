@@ -5,8 +5,9 @@
 
 # Documentação interna — fica só local, não sobe para o GitHub (pedido do usuário).
 # decisoes.md/deploy.md/migracao.md continuam sendo escritos aqui normalmente; só não
-# entram no repositório remoto.
+# entram no repositório remoto. CLAUDE.md pelo mesmo motivo.
 /docs/
+/CLAUDE.md
 
 # .NET
 backend/**/bin/
