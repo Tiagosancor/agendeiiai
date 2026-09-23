@@ -28,14 +28,25 @@ export default function PaginaDetalheProfissional({ params }: { params: Promise<
   );
 }
 
+// Intervalo com uma chave só do front (nunca enviada à API) — mantém a identidade de
+// cada linha estável entre re-renderizações agrupadas por dia (o índice no array plano
+// muda de sentido quando filtramos por diaSemana, então não dá pra usar como chave/alvo
+// de edição).
+interface IntervaloEditavel extends IntervaloTrabalho {
+  chave: string;
+}
+
 function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
   const { chamarApi } = useAutenticacao();
-  const [intervalos, setIntervalos] = useState<IntervaloTrabalho[]>([]);
+  const [intervalos, setIntervalos] = useState<IntervaloEditavel[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [mensagem, setMensagem] = useState<string | null>(null);
+  const [diaReplicando, setDiaReplicando] = useState<number | null>(null);
+  const [diasAlvo, setDiasAlvo] = useState<number[]>([]);
 
   const carregar = useCallback(async () => {
-    setIntervalos(await chamarApi<IntervaloTrabalho[]>(`/painel/profissionais/${profissionalId}/horarios`));
+    const resposta = await chamarApi<IntervaloTrabalho[]>(`/painel/profissionais/${profissionalId}/horarios`);
+    setIntervalos(resposta.map((intervalo) => ({ ...intervalo, chave: crypto.randomUUID() })));
   }, [chamarApi, profissionalId]);
 
   useEffect(() => {
@@ -44,23 +55,51 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
     carregar();
   }, [carregar]);
 
-  function adicionarIntervalo() {
-    setIntervalos((atual) => [...atual, { diaSemana: 1, inicio: "09:00:00", fim: "18:00:00" }]);
+  function adicionarIntervalo(dia: number) {
+    setIntervalos((atual) => [...atual, { chave: crypto.randomUUID(), diaSemana: dia, inicio: "09:00:00", fim: "18:00:00" }]);
   }
 
-  function removerIntervalo(indice: number) {
-    setIntervalos((atual) => atual.filter((_, i) => i !== indice));
+  function removerIntervalo(chave: string) {
+    setIntervalos((atual) => atual.filter((i) => i.chave !== chave));
   }
 
-  function atualizarIntervalo(indice: number, alteracao: Partial<IntervaloTrabalho>) {
-    setIntervalos((atual) => atual.map((intervalo, i) => (i === indice ? { ...intervalo, ...alteracao } : intervalo)));
+  function atualizarIntervalo(chave: string, alteracao: Partial<IntervaloTrabalho>) {
+    setIntervalos((atual) => atual.map((intervalo) => (intervalo.chave === chave ? { ...intervalo, ...alteracao } : intervalo)));
+  }
+
+  function abrirReplicar(dia: number) {
+    setDiaReplicando(dia);
+    setDiasAlvo([]);
+  }
+
+  function alternarDiaAlvo(dia: number) {
+    setDiasAlvo((atual) => (atual.includes(dia) ? atual.filter((d) => d !== dia) : [...atual, dia]));
+  }
+
+  function aplicarReplicar() {
+    if (diaReplicando === null || diasAlvo.length === 0) return;
+
+    const nomesAlvo = diasAlvo.map((d) => NOMES_DIAS_SEMANA[d]).join(", ");
+    if (!confirm(`Substituir o horário de ${nomesAlvo} pelo horário de ${NOMES_DIAS_SEMANA[diaReplicando]}? Essa ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    const origem = intervalos.filter((i) => i.diaSemana === diaReplicando);
+    setIntervalos((atual) => [
+      // Descarta o que já existia nos dias de destino — é uma cópia de valores, não um
+      // vínculo: cada dia continua editável depois, independente dos outros.
+      ...atual.filter((i) => !diasAlvo.includes(i.diaSemana)),
+      ...diasAlvo.flatMap((dia) => origem.map((i) => ({ chave: crypto.randomUUID(), diaSemana: dia, inicio: i.inicio, fim: i.fim }))),
+    ]);
+    setDiaReplicando(null);
   }
 
   async function salvar() {
     setSalvando(true);
     setMensagem(null);
     try {
-      await chamarApi(`/painel/profissionais/${profissionalId}/horarios`, { metodo: "PUT", corpo: intervalos });
+      const corpo: IntervaloTrabalho[] = intervalos.map(({ diaSemana, inicio, fim }) => ({ diaSemana, inicio, fim }));
+      await chamarApi(`/painel/profissionais/${profissionalId}/horarios`, { metodo: "PUT", corpo });
       setMensagem("Horário de trabalho salvo.");
     } catch {
       setMensagem("Não foi possível salvar.");
@@ -73,51 +112,94 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
     <section>
       <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Horário de trabalho</h2>
       <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
-        Um dia com almoço vira dois intervalos (ex.: 09:00–12:00 e 13:00–18:00).
+        Um dia com almoço vira dois intervalos (ex.: 09:00–12:00 e 13:00–18:00). Use &quot;Replicar para...&quot; para copiar o
+        horário de um dia pra outros dias da semana.
       </p>
 
-      <div className={`${classeCartao} space-y-2 p-4`}>
-        {intervalos.map((intervalo, indice) => (
-          <div key={indice} className="flex flex-wrap items-center gap-2">
-            <select
-              className={`${classeInput} w-36`}
-              value={intervalo.diaSemana}
-              onChange={(e) => atualizarIntervalo(indice, { diaSemana: Number(e.target.value) })}
-            >
-              {NOMES_DIAS_SEMANA.map((nome, dia) => (
-                <option key={dia} value={dia}>
-                  {nome}
-                </option>
-              ))}
-            </select>
-            <input
-              type="time"
-              className={`${classeInput} w-28`}
-              value={intervalo.inicio.slice(0, 5)}
-              onChange={(e) => atualizarIntervalo(indice, { inicio: `${e.target.value}:00` })}
-            />
-            <span>até</span>
-            <input
-              type="time"
-              className={`${classeInput} w-28`}
-              value={intervalo.fim.slice(0, 5)}
-              onChange={(e) => atualizarIntervalo(indice, { fim: `${e.target.value}:00` })}
-            />
-            <button type="button" className="text-sm text-red-600 hover:underline dark:text-red-400" onClick={() => removerIntervalo(indice)}>
-              Remover
-            </button>
-          </div>
-        ))}
-        {intervalos.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Nenhum intervalo cadastrado.</p>}
+      <div className="space-y-3">
+        {NOMES_DIAS_SEMANA.map((nome, dia) => {
+          const doDia = intervalos.filter((i) => i.diaSemana === dia);
 
-        <div className="flex items-center justify-between pt-2">
-          <button type="button" className={classeBotaoSecundario} onClick={adicionarIntervalo}>
-            Adicionar intervalo
-          </button>
-          <button type="button" disabled={salvando} className={classeBotaoPrimario} onClick={salvar}>
-            {salvando ? "Salvando..." : "Salvar horário"}
-          </button>
-        </div>
+          return (
+            <div key={dia} className={`${classeCartao} p-4`} data-testid={`dia-horario-${dia}`}>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-medium text-gray-900 dark:text-neutral-50">{nome}</h3>
+                <div className="flex gap-2">
+                  <button type="button" className={classeBotaoSecundario} onClick={() => adicionarIntervalo(dia)}>
+                    Adicionar intervalo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={doDia.length === 0}
+                    className={classeBotaoSecundario}
+                    onClick={() => abrirReplicar(dia)}
+                  >
+                    Replicar para...
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {doDia.map((intervalo) => (
+                  <div key={intervalo.chave} className="flex flex-wrap items-center gap-2">
+                    <input
+                      type="time"
+                      className={`${classeInput} w-28`}
+                      value={intervalo.inicio.slice(0, 5)}
+                      onChange={(e) => atualizarIntervalo(intervalo.chave, { inicio: `${e.target.value}:00` })}
+                    />
+                    <span>até</span>
+                    <input
+                      type="time"
+                      className={`${classeInput} w-28`}
+                      value={intervalo.fim.slice(0, 5)}
+                      onChange={(e) => atualizarIntervalo(intervalo.chave, { fim: `${e.target.value}:00` })}
+                    />
+                    <button
+                      type="button"
+                      className="text-sm text-red-600 hover:underline dark:text-red-400"
+                      onClick={() => removerIntervalo(intervalo.chave)}
+                    >
+                      Remover
+                    </button>
+                  </div>
+                ))}
+                {doDia.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Sem expediente nesse dia.</p>}
+              </div>
+
+              {diaReplicando === dia && (
+                <div className="mt-3 space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950">
+                  <p className="text-sm font-medium text-gray-700 dark:text-neutral-200">Replicar {nome} para:</p>
+                  <div className="flex flex-wrap gap-3">
+                    {NOMES_DIAS_SEMANA.map(
+                      (nomeAlvo, diaAlvo) =>
+                        diaAlvo !== dia && (
+                          <label key={diaAlvo} className="flex items-center gap-1 text-sm text-gray-700 dark:text-neutral-200">
+                            <input type="checkbox" checked={diasAlvo.includes(diaAlvo)} onChange={() => alternarDiaAlvo(diaAlvo)} />
+                            {nomeAlvo}
+                          </label>
+                        ),
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={diasAlvo.length === 0} className={classeBotaoPrimario} onClick={aplicarReplicar}>
+                      Aplicar
+                    </button>
+                    <button type="button" className={classeBotaoSecundario} onClick={() => setDiaReplicando(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex items-center justify-between">
+        <button type="button" disabled={salvando} className={classeBotaoPrimario} onClick={salvar}>
+          {salvando ? "Salvando..." : "Salvar horário"}
+        </button>
         {mensagem && <p className="text-sm text-gray-600 dark:text-neutral-300">{mensagem}</p>}
       </div>
     </section>
