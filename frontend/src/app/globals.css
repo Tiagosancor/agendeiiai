@@ -11,31 +11,44 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #faf9f6;
+  --foreground: #1c1c1a;
 }
 
+/*
+ * Identidade visual da marca do PRODUTO (seção 5.1) — só para landing/site de vendas,
+ * painel administrativo e e-mails transacionais. NUNCA se aplica à página pública de cada
+ * negócio (PaginaNegocio), que continua livre para configurar seu próprio logo/cores via
+ * --cor-primaria/--cor-secundaria (seção 5) — por isso esses tokens ficam com o prefixo
+ * "marca-", nunca "primaria"/"secundaria", que já têm outro significado no projeto.
+ */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-plex-sans);
+  --font-display: var(--font-roboto-slab);
   --font-mono: var(--font-geist-mono);
+
+  --color-marca-primaria: #1e2a38;
+  --color-marca-primaria-hover: #141d27;
+  --color-marca-acento: #d98e3b;
+  --color-marca-madeira: #8b5a2b;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-tema-manual]) {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #12181f;
+    --foreground: #f0efec;
   }
 }
 
 :root.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --background: #12181f;
+  --foreground: #f0efec;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-plex-sans), Arial, Helvetica, sans-serif;
 }

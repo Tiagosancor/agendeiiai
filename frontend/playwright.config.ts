@@ -13,7 +13,7 @@ export default defineConfig({
   workers: 1,
   reporter: "list",
   use: {
-    baseURL: "http://acme.agendei.localhost:3000",
+    baseURL: "http://acme.agendeiiai.localhost:3000",
     trace: "retain-on-failure",
   },
   projects: [

@@ -38,7 +38,8 @@ export default function PaginaLogin() {
         onSubmit={aoEnviar}
         className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
       >
-        <h1 className="mb-1 text-xl font-semibold text-gray-900 dark:text-neutral-50">Entrar no painel</h1>
+        <img src="/brand/agendeiiai-icone-reduzido.svg" alt="" width={40} height={40} className="mb-4 rounded-lg" />
+        <h1 className="font-display mb-1 text-xl font-bold text-gray-900 dark:text-neutral-50">Entrar no painel</h1>
         <p className="mb-6 text-sm text-gray-500 dark:text-neutral-400">Acesse com o e-mail e a senha do seu negócio.</p>
 
         <label className="mb-3 block text-sm">
@@ -49,7 +50,7 @@ export default function PaginaLogin() {
             autoComplete="username"
             value={email}
             onChange={(evento) => setEmail(evento.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-marca-primaria focus:ring-1 focus:ring-marca-primaria dark:focus:border-marca-acento dark:focus:ring-marca-acento dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
           />
         </label>
 
@@ -61,7 +62,7 @@ export default function PaginaLogin() {
             autoComplete="current-password"
             value={senha}
             onChange={(evento) => setSenha(evento.target.value)}
-            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-marca-primaria focus:ring-1 focus:ring-marca-primaria dark:focus:border-marca-acento dark:focus:ring-marca-acento dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
           />
         </label>
 
@@ -74,7 +75,7 @@ export default function PaginaLogin() {
         <button
           type="submit"
           disabled={enviando}
-          className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60"
+          className="w-full rounded-lg bg-marca-primaria px-3 py-2 text-sm font-medium text-white transition hover:bg-marca-primaria-hover disabled:opacity-60"
         >
           {enviando ? "Entrando..." : "Entrar"}
         </button>

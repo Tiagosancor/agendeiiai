@@ -32,15 +32,20 @@ export default async function Home() {
     return <PaginaNegocio negocio={negocio} />;
   }
 
+  const nomeProduto = process.env.MARCA_NOME_PRODUTO ?? "Plataforma";
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="text-2xl font-semibold text-gray-900 dark:text-neutral-50">Agendei</h1>
+      {/* Marca completa (seção 5.1) — único contexto "grande" que a marca do produto em si
+          tem hoje (sem tenant resolvido); não existe landing/site de vendas neste MVP. */}
+      <img src="/brand/agendeiiai-marca-completa.svg" alt="" width={96} height={96} />
+      <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-neutral-50">{nomeProduto}</h1>
       <p className="max-w-sm text-sm text-gray-500 dark:text-neutral-400">
         Acesse pelo endereço do seu negócio para ver a página de agendamento, ou entre no painel.
       </p>
       <Link
         href="/painel/login"
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+        className="rounded-lg bg-marca-primaria px-4 py-2 text-sm font-medium text-white transition hover:bg-marca-primaria-hover"
       >
         Entrar no painel
       </Link>
