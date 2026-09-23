@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ErroApi, requisicaoApi } from "./api";
+import { ErroApi, requisicaoApi, requisicaoAutenticacaoPainel } from "./api";
 
 interface RespostaLogin {
   accessToken: string;
@@ -33,7 +33,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
   // tenta renovar a partir do cookie httpOnly do refresh token (seção 8.3.4).
   const renovar = useCallback(async (): Promise<string | null> => {
     try {
-      const resposta = await requisicaoApi<RespostaLogin>("/painel/auth/renovar", { metodo: "POST" });
+      const resposta = await requisicaoAutenticacaoPainel<RespostaLogin>("renovar");
       setTokenAcesso(resposta.accessToken);
       return resposta.accessToken;
     } catch {
@@ -50,16 +50,13 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
   }, []);
 
   const entrar = useCallback(async (email: string, senha: string) => {
-    const resposta = await requisicaoApi<RespostaLogin>("/painel/auth/login", {
-      metodo: "POST",
-      corpo: { email, senha },
-    });
+    const resposta = await requisicaoAutenticacaoPainel<RespostaLogin>("login", { email, senha });
     setTokenAcesso(resposta.accessToken);
   }, []);
 
   const sair = useCallback(async () => {
     try {
-      await requisicaoApi("/painel/auth/logout", { metodo: "POST" });
+      await requisicaoAutenticacaoPainel("logout");
     } finally {
       setTokenAcesso(null);
     }

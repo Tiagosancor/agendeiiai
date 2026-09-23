@@ -59,6 +59,38 @@ async function lerCorpoJson<T>(resposta: Response): Promise<T> {
 }
 
 /**
+ * Login, renovação e logout do painel (seção 8.3.4) passam pelo proxy same-origin
+ * `/painel/auth/*` (`app/painel/auth/[...caminho]/route.ts`), nunca direto em
+ * `NEXT_PUBLIC_API_URL` — é a única forma do cookie httpOnly do refresh token não ser
+ * tratado como cross-site pelo navegador (front e API em hosts diferentes, tanto em dev
+ * quanto no "Caminho 1" de docs/deploy.md), o que faria o `SameSite=Strict` nunca devolver
+ * o cookie. O proxy vive exatamente em `/painel/auth/*` (não `/api/painel/auth/*`) porque
+ * o cookie tem `Path=/painel/auth` (definido pela API) — um prefixo `/api` faria o
+ * navegador nunca anexar o cookie de volta nessa chamada (path não bate mais). As demais
+ * chamadas do painel continuam em `requisicaoApi` (Bearer token, sem depender de cookie).
+ */
+export async function requisicaoAutenticacaoPainel<T>(caminho: "login" | "renovar" | "logout", corpo?: unknown): Promise<T> {
+  const resposta = await fetch(`/painel/auth/${caminho}`, {
+    method: "POST",
+    headers: corpo !== undefined ? { "Content-Type": "application/json" } : {},
+    body: corpo !== undefined ? JSON.stringify(corpo) : undefined,
+  });
+
+  if (!resposta.ok) {
+    let mensagem = `Erro ${resposta.status}`;
+    try {
+      const corpoErro = await resposta.json();
+      mensagem = corpoErro.detail ?? corpoErro.title ?? mensagem;
+    } catch {
+      // corpo não é JSON (ex.: 401 sem corpo) — mantém a mensagem genérica.
+    }
+    throw new ErroApi(resposta.status, mensagem);
+  }
+
+  return lerCorpoJson<T>(resposta);
+}
+
+/**
  * Chamadas públicas (assistente de agendamento, seção 6.2) passam pelo proxy same-origin
  * `/api/publico/*` (`app/api/publico/[...caminho]/route.ts`), nunca direto em
  * `NEXT_PUBLIC_API_URL` — o navegador não consegue definir o cabeçalho `Host`, que é como
