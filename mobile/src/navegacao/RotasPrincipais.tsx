@@ -27,7 +27,7 @@ export default function RotasPrincipais() {
         <Stack.Screen
           name="Inicial"
           component={TelaInicial}
-          options={{ title: 'Agendei' }}
+          options={{ title: 'Agendeiiai' }}
         />
         <Stack.Screen
           name="Sobre"

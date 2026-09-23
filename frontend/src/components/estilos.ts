@@ -1,12 +1,12 @@
 // Classes Tailwind compartilhadas pelas telas do painel — evita repetir a mesma string
 // gigante em cada formulário.
 export const classeInput =
-  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50";
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-marca-primaria focus:ring-1 focus:ring-marca-primaria dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50 dark:focus:border-marca-acento dark:focus:ring-marca-acento";
 
 export const classeLabel = "mb-1 block text-sm font-medium text-gray-700 dark:text-neutral-300";
 
 export const classeBotaoPrimario =
-  "rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-60";
+  "rounded-lg bg-marca-primaria px-3 py-2 text-sm font-medium text-white transition hover:bg-marca-primaria-hover disabled:opacity-60";
 
 export const classeBotaoSecundario =
   "rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800";

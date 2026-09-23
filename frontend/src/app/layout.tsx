@@ -1,12 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Roboto_Slab, IBM_Plex_Sans, Geist_Mono } from "next/font/google";
 import { ProvedorTema, scriptTemaInicial } from "@/lib/tema";
 import { RegistroServiceWorker } from "@/components/RegistroServiceWorker";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Tipografia da marca (seção 5.1): Roboto Slab pros títulos e pro nome "Agendeiiai" por
+// extenso (dá o ar "carimbado" que combina com a marca); IBM Plex Sans pra interface e
+// conteúdo funcional — nunca Geist/Inter puro sem nenhuma escolha própria.
+const robotoSlab = Roboto_Slab({
+  variable: "--font-roboto-slab",
   subsets: ["latin"],
+  weight: ["600", "700"],
+});
+
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const geistMono = Geist_Mono({
@@ -22,7 +32,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#2563eb",
+  themeColor: "#1e2a38",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -33,7 +43,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       // "tema claro/escuro", Sprint 5) — sem suppressHydrationWarning o React reclamaria
       // da tag <html> ter mudado por fora do próprio ciclo de render dele.
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${robotoSlab.variable} ${plexSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
         {/* Roda antes da pintura, senão a página pisca no tema errado (FOUC). */}

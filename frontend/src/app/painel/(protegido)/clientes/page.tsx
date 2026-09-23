@@ -84,7 +84,7 @@ export default function PaginaClientes() {
                       <span className="text-xs text-gray-400">Dados excluídos</span>
                     ) : (
                       <>
-                        <button className="text-blue-600 hover:underline dark:text-blue-400" onClick={() => setClienteEditando(cliente)}>
+                        <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => setClienteEditando(cliente)}>
                           Editar
                         </button>
                         <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => setClienteFidelidade(cliente)}>

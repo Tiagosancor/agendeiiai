@@ -31,9 +31,9 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__Padrao: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-plataforma};Username=${POSTGRES_USER:-plataforma};Password=${POSTGRES_PASSWORD:-plataforma_dev}"
-      Marca__NomeProduto: ${MARCA_NOME_PRODUTO:-Agendei}
-      Marca__Dominio: ${MARCA_DOMINIO:-agendei.localhost}
-      Marca__EmailRemetente: ${MARCA_EMAIL_REMETENTE:-nao-responda@agendei.localhost}
+      Marca__NomeProduto: ${MARCA_NOME_PRODUTO:-Agendeiiai}
+      Marca__Dominio: ${MARCA_DOMINIO:-agendeiiai.localhost}
+      Marca__EmailRemetente: ${MARCA_EMAIL_REMETENTE:-nao-responda@agendeiiai.localhost}
       # Esquema/porta da página pública, usados para montar os links de cancelar/remarcar
       # nos e-mails (seção 6.3) — em produção, deixe PORTA_URL_PUBLICA vazia (porta padrão do esquema).
       Marca__EsquemaUrlPublica: ${MARCA_ESQUEMA_URL_PUBLICA:-http}
@@ -71,8 +71,8 @@ services:
     environment:
       # Lidas em runtime por middleware/server components (sem prefixo NEXT_PUBLIC_,
       # então não dependem de build-time inlining — ver docs/decisoes.md).
-      MARCA_DOMINIO: ${MARCA_DOMINIO:-agendei.localhost}
-      MARCA_NOME_PRODUTO: ${MARCA_NOME_PRODUTO:-Agendei}
+      MARCA_DOMINIO: ${MARCA_DOMINIO:-agendeiiai.localhost}
+      MARCA_NOME_PRODUTO: ${MARCA_NOME_PRODUTO:-Agendeiiai}
       API_URL_INTERNA: http://api:8080
     ports:
       - "${FRONTEND_PORTA_HOST:-3000}:3000"

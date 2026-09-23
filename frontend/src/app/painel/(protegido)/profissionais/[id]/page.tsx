@@ -17,7 +17,7 @@ export default function PaginaDetalheProfissional({ params }: { params: Promise<
 
   return (
     <div className="space-y-8">
-      <Link href="/painel/profissionais" className="text-sm text-blue-600 hover:underline dark:text-blue-400">
+      <Link href="/painel/profissionais" className="text-sm text-marca-primaria hover:underline dark:text-marca-acento">
         ← Voltar para profissionais
       </Link>
 
@@ -168,7 +168,7 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
               </div>
 
               {diaReplicando === dia && (
-                <div className="mt-3 space-y-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950">
+                <div className="mt-3 space-y-2 rounded-lg border border-marca-acento/40 bg-amber-50 p-3 dark:border-marca-acento/30 dark:bg-amber-950/40">
                   <p className="text-sm font-medium text-gray-700 dark:text-neutral-200">Replicar {nome} para:</p>
                   <div className="flex flex-wrap gap-3">
                     {NOMES_DIAS_SEMANA.map(

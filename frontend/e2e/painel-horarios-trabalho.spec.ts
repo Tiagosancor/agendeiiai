@@ -9,7 +9,7 @@ import { test, expect, type APIRequestContext } from "@playwright/test";
  */
 
 const API_BASE = "http://localhost:5080";
-const PAINEL_BASE = "http://app.agendei.localhost:3000";
+const PAINEL_BASE = "http://app.agendeiiai.localhost:3000";
 const ADMIN_EMAIL = "admin@acme.dev";
 const ADMIN_SENHA = "Admin!123";
 
@@ -37,7 +37,7 @@ test("replicar horário de um dia para vários dias, editar um depois não afeta
   // "Painel (frontend)" do CLAUDE.md — não dá pra injetar sessão sem passar pela tela).
   // Navega depois só por <Link> (client-side), nunca por page.goto: um reload completo
   // reinicia o React e depende do cookie de refresh sobreviver entre origens diferentes
-  // (front em app.agendei.localhost:3000, API em localhost:5080 no dev local), o que
+  // (front em app.agendeiiai.localhost:3000, API em localhost:5080 no dev local), o que
   // esbarra num bug separado do refresh_token (SameSite=Strict entre origens distintas —
   // reportado à parte, fora do escopo deste ajuste). ---
   await page.goto(`${PAINEL_BASE}/painel/login`);

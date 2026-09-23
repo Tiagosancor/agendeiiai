@@ -78,7 +78,7 @@ export default function PaginaUsuarios() {
                   <td className={classeTd}>{usuario.perfil}</td>
                   <td className={classeTd}>{usuario.ativo ? "Ativo" : "Inativo"}</td>
                   <td className={`${classeTd} space-x-3`}>
-                    <button className="text-blue-600 hover:underline dark:text-blue-400" onClick={() => abrirPermissoes(usuario.id)}>
+                    <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => abrirPermissoes(usuario.id)}>
                       Permissões
                     </button>
                     <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => alternarAtivo(usuario)}>

@@ -3,7 +3,7 @@
 // é uma aplicação multi-tenant com autenticação e dados que mudam a toda hora (agenda,
 // disponibilidade, financeiro) — cachear "primeiro" arriscaria mostrar dado velho ou vazar
 // tela de outro negócio/sessão. O cache só entra como ÚLTIMO recurso, quando a rede falha.
-const CACHE = "agendei-shell-v1";
+const CACHE = "agendeiiai-shell-v1";
 const RECURSOS_DO_SHELL = ["/", "/favicon.ico"];
 
 self.addEventListener("install", (evento) => {

@@ -17,7 +17,7 @@ type Props = NativeStackScreenProps<RotasParametros, 'Inicial'>;
 export default function TelaInicial({ navigation }: Props) {
   return (
     <View style={estilos.container}>
-      <Text style={estilos.titulo}>Agendei — esqueleto mobile</Text>
+      <Text style={estilos.titulo}>Agendeiiai — esqueleto mobile</Text>
       <Text style={estilos.subtitulo}>
         Fase 2: app do profissional. Ainda sem telas de domínio.
       </Text>
