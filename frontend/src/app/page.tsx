@@ -36,10 +36,24 @@ export default async function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-      {/* Marca completa (seção 5.1) — único contexto "grande" que a marca do produto em si
-          tem hoje (sem tenant resolvido); não existe landing/site de vendas neste MVP. */}
-      <img src="/brand/agendeiiai-marca-completa.svg" alt="" width={96} height={96} />
-      <h1 className="font-display text-2xl font-bold text-gray-900 dark:text-neutral-50">{nomeProduto}</h1>
+      {/* Logotipo completo (ícone + palavra + tagline, seção 5.1) — único contexto "grande"
+          que a marca do produto em si tem hoje (sem tenant resolvido); não existe
+          landing/site de vendas neste MVP. Troca de variante pela mesma classe `.dark` que
+          `ProvedorTema` liga/desliga na <html> (globals.css), nunca fixo numa só. */}
+      <img
+        src="/brand/agendeiiai-logotipo-completo-texto-escuro.svg"
+        alt={nomeProduto}
+        width={680}
+        height={460}
+        className="h-auto w-60 dark:hidden sm:w-72"
+      />
+      <img
+        src="/brand/agendeiiai-logotipo-completo.svg"
+        alt={nomeProduto}
+        width={680}
+        height={460}
+        className="hidden h-auto w-60 dark:block sm:w-72"
+      />
       <p className="max-w-sm text-sm text-gray-500 dark:text-neutral-400">
         Acesse pelo endereço do seu negócio para ver a página de agendamento, ou entre no painel.
       </p>
