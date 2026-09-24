@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
+import { BotaoTema } from "@/components/BotaoTema";
 
 export default function PaginaLogin() {
   const { entrar } = useAutenticacao();
@@ -34,6 +35,7 @@ export default function PaginaLogin() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-neutral-950">
+      <BotaoTema className="fixed right-4 top-4" />
       <form
         onSubmit={aoEnviar}
         className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"

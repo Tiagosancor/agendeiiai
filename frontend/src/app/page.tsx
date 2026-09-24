@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { extrairSlugDoHost } from "@/lib/dominio";
 import { buscarNegocioPorSlug } from "@/lib/api-servidor";
 import { PaginaNegocio } from "@/components/publico/PaginaNegocio";
+import { BotaoTema } from "@/components/BotaoTema";
 
 /**
  * Serve dois papéis, dependendo do host resolvido pelo `proxy.ts` (seção 8.3.3):
@@ -36,15 +37,17 @@ export default async function Home() {
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+      <BotaoTema className="fixed right-4 top-4" />
       {/* Logotipo completo (ícone + palavra + tagline, seção 5.1) — único contexto "grande"
           que a marca do produto em si tem hoje (sem tenant resolvido); não existe
-          landing/site de vendas neste MVP. Troca de variante pela mesma classe `.dark` que
-          `ProvedorTema` liga/desliga na <html> (globals.css), nunca fixo numa só. */}
+          landing/site de vendas neste MVP. A variante sai da variante `dark:`, que lê o
+          mesmo data-theme do fundo (lib/tema.tsx) — nunca uma lógica separada. */}
       <img
         src="/brand/agendeiiai-logotipo-completo-texto-escuro.svg"
         alt={nomeProduto}
         width={680}
         height={460}
+        data-testid="logo-claro"
         className="h-auto w-60 dark:hidden sm:w-72"
       />
       <img
@@ -52,6 +55,7 @@ export default async function Home() {
         alt={nomeProduto}
         width={680}
         height={460}
+        data-testid="logo-escuro"
         className="hidden h-auto w-60 dark:block sm:w-72"
       />
       <p className="max-w-sm text-sm text-gray-500 dark:text-neutral-400">

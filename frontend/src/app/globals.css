@@ -1,14 +1,12 @@
 @import "tailwindcss";
 
 /*
- * Tema claro/escuro manual (Sprint 5) — por padrão o Tailwind decide `dark:` só pela
- * preferência do sistema (media query); esta linha troca pra decidir pela classe `.dark`
- * na tag <html>, que `ProvedorTema` (lib/tema.tsx) liga/desliga. Um script inline no
- * <head> (app/layout.tsx) já aplica a classe certa ANTES da hidratação — sem isso, a
- * página pisca no tema errado por uma fração de segundo (FOUC) toda vez que o usuário
- * escolheu um tema diferente do padrão do sistema.
+ * Tema claro/escuro: `data-theme` na <html> é a fonte ÚNICA (lib/tema.tsx). A variante
+ * `dark:` do Tailwind e o fundo abaixo leem só esse atributo — nunca uma media query
+ * própria, senão fundo e logo podem divergir. O script inline no <head> (app/layout.tsx)
+ * grava o atributo antes da pintura (evita FOUC).
  */
-@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 :root {
   --background: #faf9f6;
@@ -35,14 +33,7 @@
   --color-marca-madeira: #8b5a2b;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:not([data-tema-manual]) {
-    --background: #12181f;
-    --foreground: #f0efec;
-  }
-}
-
-:root.dark {
+:root[data-theme="dark"] {
   --background: #12181f;
   --foreground: #f0efec;
 }

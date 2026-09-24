@@ -39,9 +39,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="pt-BR"
-      // A classe "dark" é decidida pelo script abaixo, antes da hidratação (seção
-      // "tema claro/escuro", Sprint 5) — sem suppressHydrationWarning o React reclamaria
-      // da tag <html> ter mudado por fora do próprio ciclo de render dele.
+      // O data-theme é gravado pelo script abaixo, antes da hidratação (lib/tema.tsx) —
+      // sem suppressHydrationWarning o React reclamaria da tag <html> ter mudado por fora
+      // do próprio ciclo de render dele.
       suppressHydrationWarning
       className={`${robotoSlab.variable} ${plexSans.variable} ${geistMono.variable} h-full antialiased`}
     >

@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { extrairSlugDoHost } from "@/lib/dominio";
 import { buscarNegocioPorSlug } from "@/lib/api-servidor";
+import { BotaoTema } from "@/components/BotaoTema";
 
 /**
  * Política de privacidade (seção 8.4) — precisa estar acessível na página pública de cada
@@ -19,6 +20,7 @@ export default async function PaginaPrivacidade() {
 
   return (
     <main className="mx-auto max-w-2xl space-y-4 px-6 py-12 text-sm text-gray-700 dark:text-neutral-300">
+      <BotaoTema className="fixed right-4 top-4" />
       <h1 className="text-xl font-semibold text-gray-900 dark:text-neutral-50">Política de privacidade</h1>
       <p>
         Esta página descreve como {nome} trata os dados pessoais coletados no agendamento online, em
