@@ -41,22 +41,24 @@ export default async function Home() {
       {/* Logotipo completo (ícone + palavra + tagline, seção 5.1) — único contexto "grande"
           que a marca do produto em si tem hoje (sem tenant resolvido); não existe
           landing/site de vendas neste MVP. A variante sai da variante `dark:`, que lê o
-          mesmo data-theme do fundo (lib/tema.tsx) — nunca uma lógica separada. */}
+          mesmo data-theme do fundo (lib/tema.tsx) — nunca uma lógica separada.
+          Versão "-enquadrado": mesmo desenho, só o viewBox sem a margem lateral vazia do
+          original — senão a tagline fica minúscula em qualquer largura razoável. */}
       <img
-        src="/brand/agendeiiai-logotipo-completo-texto-escuro.svg"
+        src="/brand/agendeiiai-logotipo-completo-texto-escuro-enquadrado.svg"
         alt={nomeProduto}
-        width={680}
-        height={460}
+        width={440}
+        height={440}
         data-testid="logo-claro"
-        className="h-auto w-60 dark:hidden sm:w-72"
+        className="h-auto w-full max-w-[440px] dark:hidden sm:max-w-[480px]"
       />
       <img
-        src="/brand/agendeiiai-logotipo-completo.svg"
+        src="/brand/agendeiiai-logotipo-completo-enquadrado.svg"
         alt={nomeProduto}
-        width={680}
-        height={460}
+        width={440}
+        height={440}
         data-testid="logo-escuro"
-        className="hidden h-auto w-60 dark:block sm:w-72"
+        className="hidden h-auto w-full max-w-[440px] dark:block sm:max-w-[480px]"
       />
       <p className="max-w-sm text-sm text-gray-500 dark:text-neutral-400">
         Acesse pelo endereço do seu negócio para ver a página de agendamento, ou entre no painel.
