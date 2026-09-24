@@ -50,7 +50,7 @@ export default async function Home() {
         width={440}
         height={440}
         data-testid="logo-claro"
-        className="h-auto w-full max-w-[440px] dark:hidden sm:max-w-[480px]"
+        className="h-auto w-full max-w-[308px] dark:hidden sm:max-w-[336px]"
       />
       <img
         src="/brand/agendeiiai-logotipo-completo-enquadrado.svg"
@@ -58,7 +58,7 @@ export default async function Home() {
         width={440}
         height={440}
         data-testid="logo-escuro"
-        className="hidden h-auto w-full max-w-[440px] dark:block sm:max-w-[480px]"
+        className="hidden h-auto w-full max-w-[308px] dark:block sm:max-w-[336px]"
       />
       <p className="max-w-sm text-sm text-gray-500 dark:text-neutral-400">
         Acesse pelo endereço do seu negócio para ver a página de agendamento, ou entre no painel.
