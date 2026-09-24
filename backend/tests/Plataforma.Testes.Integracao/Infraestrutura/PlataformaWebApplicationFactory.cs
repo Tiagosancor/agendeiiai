@@ -46,6 +46,7 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
                 // Todos os testes saem do mesmo "IP" — o limite real por IP é testado à parte.
                 ["Cadastro:LimitePorIpPorMinuto"] = "10000",
                 ["Cadastro:LimiteSlugPorIpPorMinuto"] = "10000",
+                ["Plataforma:LimiteLoginPorIpPorMinuto"] = "10000",
             });
         });
 

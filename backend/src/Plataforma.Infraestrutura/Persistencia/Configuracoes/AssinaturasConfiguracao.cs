@@ -134,3 +134,19 @@ public sealed class LogAuditoriaPlataformaConfiguracao : IEntityTypeConfiguratio
         builder.HasIndex(l => l.NegocioId);
     }
 }
+
+public sealed class AdministradorPlataformaConfiguracao : IEntityTypeConfiguration<AdministradorPlataforma>
+{
+    public void Configure(EntityTypeBuilder<AdministradorPlataforma> builder)
+    {
+        builder.ToTable("administradores_plataforma");
+
+        builder.HasKey(a => a.Id);
+
+        builder.Property(a => a.Email).HasMaxLength(320).IsRequired();
+        builder.Property(a => a.Nome).HasMaxLength(200).IsRequired();
+        builder.Property(a => a.SenhaHash).HasMaxLength(200).IsRequired();
+
+        builder.HasIndex(a => a.Email).IsUnique();
+    }
+}

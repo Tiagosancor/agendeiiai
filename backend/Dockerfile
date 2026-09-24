@@ -23,7 +23,9 @@ WORKDIR /app
 # Alpine não traz o banco de fusos horários IANA por padrão — sem isso,
 # TimeZoneInfo.FindSystemTimeZoneById("America/Sao_Paulo") (seção 8.2.6) explode em
 # runtime mesmo funcionando em dev (Windows/a maioria das distros Linux já tem tzdata).
-RUN apk add --no-cache tzdata
+# krb5-libs: o Npgsql tenta carregar o GSSAPI ao conectar e, sem ele, polui o log com
+# "Cannot load library libgssapi_krb5.so.2" (inofensivo — não usamos Kerberos).
+RUN apk add --no-cache tzdata krb5-libs
 
 # Usuário sem privilégios (seção 8.5.1) — a imagem base já traz o usuário "app" (uid 64198) no Alpine.
 USER app

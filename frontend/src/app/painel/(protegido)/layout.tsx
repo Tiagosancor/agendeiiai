@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
 import { BotaoTema } from "@/components/BotaoTema";
+import { AvisoAssinatura } from "@/components/painel/AvisoAssinatura";
 
 const ITENS_MENU = [
   { href: "/painel", rotulo: "Início" },
@@ -17,6 +18,7 @@ const ITENS_MENU = [
   { href: "/painel/financeiro", rotulo: "Financeiro" },
   { href: "/painel/fidelidade", rotulo: "Fidelidade" },
   { href: "/painel/negocio", rotulo: "Meu negócio" },
+  { href: "/painel/assinatura", rotulo: "Assinatura" },
 ];
 
 export default function LayoutProtegido({ children }: { children: React.ReactNode }) {
@@ -85,6 +87,8 @@ export default function LayoutProtegido({ children }: { children: React.ReactNod
           </ul>
         </nav>
       </header>
+
+      <AvisoAssinatura />
 
       <main className="mx-auto max-w-5xl px-4 py-6">{children}</main>
     </div>

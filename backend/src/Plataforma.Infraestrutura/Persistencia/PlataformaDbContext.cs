@@ -93,6 +93,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<ChaveIdempotencia> ChavesIdempotencia => Set<ChaveIdempotencia>();
 
+    public DbSet<AdministradorPlataforma> AdministradoresPlataforma => Set<AdministradorPlataforma>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Pré-requisito da exclusion constraint de horários (seção 8.2.1) — confirmado

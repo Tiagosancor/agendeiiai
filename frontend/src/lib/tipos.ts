@@ -396,3 +396,51 @@ export const TIPOS_NEGOCIO: { valor: string; rotulo: string }[] = [
   { valor: "ClinicaEstetica", rotulo: "Clínica de estética" },
   { valor: "Autonomo", rotulo: "Profissional autônomo" },
 ];
+
+export type EstadoAssinatura = "EmTeste" | "Ativa" | "Atrasada" | "Suspensa" | "Cancelada";
+
+export interface AvisoAssinatura {
+  estado: EstadoAssinatura;
+  prazo: string | null;
+  diasRestantes: number | null;
+  destacado: boolean;
+}
+
+export interface CobrancaAssinatura {
+  pagoEm: string;
+  valor: number;
+  forma: string;
+  periodoInicio: string;
+  periodoFim: string;
+  origem: string;
+}
+
+export interface DetalheAssinatura {
+  planoId: string;
+  plano: string;
+  periodicidade: Periodicidade;
+  estado: EstadoAssinatura;
+  precoMensalTravado: number;
+  valorDoPeriodo: number;
+  fimTeste: string | null;
+  proximoVencimento: string | null;
+  carenciaAte: string | null;
+  profissionaisAtivos: number;
+  maximoProfissionais: number;
+  cobrancas: CobrancaAssinatura[];
+}
+
+export interface InstrucoesPagamento {
+  link: string | null;
+  chavePix: string | null;
+  whatsAppContato: string | null;
+  texto: string;
+}
+
+export const ROTULOS_ESTADO_ASSINATURA: Record<EstadoAssinatura, string> = {
+  EmTeste: "Em teste",
+  Ativa: "Ativa",
+  Atrasada: "Pagamento pendente",
+  Suspensa: "Suspensa",
+  Cancelada: "Cancelada",
+};

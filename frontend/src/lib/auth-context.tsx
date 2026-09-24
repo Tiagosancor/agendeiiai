@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { ErroApi, requisicaoApi, requisicaoAutenticacaoPainel } from "./api";
 
 interface RespostaLogin {
@@ -26,6 +27,7 @@ const Contexto = createContext<ContextoAutenticacao | null>(null);
 
 export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
   const [tokenAcesso, setTokenAcesso] = useState<string | null>(null);
+  const roteador = useRouter();
   const [carregando, setCarregando] = useState(true);
 
   // O access token some ao recarregar a página (fica só em memória — nunca em
@@ -67,6 +69,10 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
       try {
         return await requisicaoApi<T>(caminho, { ...opcoes, tokenAcesso });
       } catch (erro) {
+        // Assinatura suspensa (seção 7): a API só libera a tela de assinatura — leva direto pra lá.
+        if (erro instanceof ErroApi && erro.codigo === "assinatura_suspensa" && window.location.pathname !== "/painel/assinatura") {
+          roteador.push("/painel/assinatura");
+        }
         if (erro instanceof ErroApi && erro.status === 401) {
           const novoToken = await renovar();
           if (novoToken) {
@@ -76,7 +82,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
         throw erro;
       }
     },
-    [tokenAcesso, renovar],
+    [tokenAcesso, renovar, roteador],
   );
 
   const valor = useMemo<ContextoAutenticacao>(

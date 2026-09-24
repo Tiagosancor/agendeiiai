@@ -42,7 +42,29 @@ builder.Services.AdicionarInfraestrutura(builder.Configuration);
 // (mesma armadilha documentada em docs/decisoes.md para a connection string).
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer();
+    .AddJwtBearer()
+    // Administração da plataforma: mesma chave, audiência própria — o token do painel de um
+    // negócio nunca passa aqui, e o da plataforma nunca passa no painel (seção 8.6.7).
+    .AddJwtBearer(ClaimsPlataforma.EsquemaPlataforma);
+
+builder.Services
+    .AddOptions<JwtBearerOptions>(ClaimsPlataforma.EsquemaPlataforma)
+    .Configure<Microsoft.Extensions.Options.IOptions<OpcoesJwt>>((jwtBearerOpcoes, opcoesJwt) =>
+    {
+        var opcoes = opcoesJwt.Value;
+
+        jwtBearerOpcoes.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidIssuer = opcoes.Emissor,
+            ValidAudience = opcoes.AudienciaPlataforma,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(opcoes.ChaveSecreta)),
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+    });
 
 builder.Services
     .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
@@ -72,6 +94,14 @@ builder.Services.AddAuthorization(opcoes =>
         var nomeDaPolicy = permissao.ToString();
         opcoes.AddPolicy(nomeDaPolicy, politica => politica.RequireClaim(ClaimsPlataforma.Permissao, nomeDaPolicy));
     }
+
+    // Tela de assinatura: só o perfil Administrador do negócio (seção 7), não uma permissão avulsa.
+    opcoes.AddPolicy(ClaimsPlataforma.PoliticaSomenteAdministradorNegocio, politica =>
+        politica.RequireClaim(ClaimsPlataforma.Perfil, nameof(Perfil.Administrador)));
+
+    opcoes.AddPolicy(ClaimsPlataforma.PoliticaAdministradorPlataforma, politica => politica
+        .AddAuthenticationSchemes(ClaimsPlataforma.EsquemaPlataforma)
+        .RequireClaim(ClaimsPlataforma.Perfil, ClaimsPlataforma.PerfilAdministradorPlataforma));
 });
 
 builder.Services.AddTransient<IClaimsTransformation, ContextoNegocioClaimsTransformation>();
@@ -100,6 +130,8 @@ builder.Services.AddRateLimiter(opcoes =>
         LimitePorIpPorMinuto(contexto, "Cadastro:LimitePorIpPorMinuto", padrao: 10));
     opcoes.AddPolicy(Plataforma.Api.Controllers.Cadastro.CadastroController.PoliticaSlugPorIp, contexto =>
         LimitePorIpPorMinuto(contexto, "Cadastro:LimiteSlugPorIpPorMinuto", padrao: 60));
+    opcoes.AddPolicy(Plataforma.Api.Controllers.Administracao.AutenticacaoPlataformaController.PoliticaLoginPorIp, contexto =>
+        LimitePorIpPorMinuto(contexto, "Plataforma:LimiteLoginPorIpPorMinuto", padrao: 5));
 
     static RateLimitPartition<string> LimitePorIpPorMinuto(HttpContext contexto, string chaveConfiguracao, int padrao)
     {
@@ -138,6 +170,11 @@ builder.Services.AddCors(opcoes => opcoes.AddPolicy("PadraoPlataforma", politica
 }));
 
 var app = builder.Build();
+
+// Comandos de linha (ex.: `dotnet Plataforma.Api.dll criar-admin-plataforma --email ...`):
+// rodam e saem, sem subir o servidor nem registrar jobs.
+if (await Plataforma.Api.Comandos.ComandosDeLinha.ExecutarSeHouverAsync(app.Services, args))
+    return;
 
 // Expira reservas vencidas em todo o sistema, a cada minuto (seção 8.2.2) — cobre o caso
 // de alguém reservar um horário e simplesmente abandonar o fluxo, sem que ninguém mais

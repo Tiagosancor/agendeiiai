@@ -6,11 +6,13 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { ProfissionalResumo } from "@/lib/tipos";
+import { ErroApi } from "@/lib/api";
 
 export default function PaginaProfissionais() {
   const { chamarApi } = useAutenticacao();
   const [profissionais, setProfissionais] = useState<ProfissionalResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [limiteAtingido, setLimiteAtingido] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
 
   const carregar = useCallback(async () => {
@@ -29,7 +31,13 @@ export default function PaginaProfissionais() {
 
   async function alternarAtivo(profissional: ProfissionalResumo) {
     const acao = profissional.ativo ? "desativar" : "ativar";
-    await chamarApi(`/painel/profissionais/${profissional.id}/${acao}`, { metodo: "POST" });
+    setLimiteAtingido(null);
+    try {
+      await chamarApi(`/painel/profissionais/${profissional.id}/${acao}`, { metodo: "POST" });
+    } catch (excecao) {
+      if (excecao instanceof ErroApi && excecao.codigo === "limite_profissionais") setLimiteAtingido(excecao.message);
+      else setErro("Não foi possível alterar o profissional.");
+    }
     await carregar();
   }
 
@@ -43,6 +51,7 @@ export default function PaginaProfissionais() {
       </div>
 
       {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
+      {limiteAtingido && <AvisoLimitePlano mensagem={limiteAtingido} />}
 
       <div className={classeCartao}>
         <div className="overflow-x-auto">
@@ -109,6 +118,7 @@ function ModalCriarProfissional({
   const [email, setEmail] = useState("");
   const [cpf, setCpf] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [limiteDoPlano, setLimiteDoPlano] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
   async function aoEnviar(evento: FormEvent) {
@@ -126,8 +136,11 @@ function ModalCriarProfissional({
       setEmail("");
       setCpf("");
       await aoCriar();
-    } catch {
-      setErro("Não foi possível criar o profissional.");
+    } catch (excecao) {
+      setErro(
+        excecao instanceof ErroApi && excecao.codigo === "limite_profissionais" ? excecao.message : "Não foi possível criar o profissional.",
+      );
+      setLimiteDoPlano(excecao instanceof ErroApi && excecao.codigo === "limite_profissionais");
     } finally {
       setEnviando(false);
     }
@@ -157,7 +170,7 @@ function ModalCriarProfissional({
           <input className={classeInput} value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" />
         </label>
 
-        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        {erro && (limiteDoPlano ? <AvisoLimitePlano mensagem={erro} /> : <p className="text-sm text-red-600">{erro}</p>)}
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
@@ -169,5 +182,17 @@ function ModalCriarProfissional({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Limite de profissionais do plano (seção 7): mensagem clara e o caminho para mudar de plano. */
+function AvisoLimitePlano({ mensagem }: { mensagem: string }) {
+  return (
+    <div role="alert" className="mb-4 rounded-lg border border-marca-acento/40 bg-marca-acento/10 px-3 py-2 text-sm text-gray-800 dark:text-neutral-200">
+      {mensagem}{" "}
+      <Link href="/painel/assinatura" className="font-semibold underline">
+        Mudar de plano
+      </Link>
+    </div>
   );
 }

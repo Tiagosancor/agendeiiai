@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Administracao;
 using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Autenticacao;
@@ -22,6 +23,7 @@ using Plataforma.Aplicacao.Publico;
 using Plataforma.Aplicacao.Servicos;
 using Plataforma.Aplicacao.Usuarios;
 using Plataforma.Aplicacao.Verificacao;
+using Plataforma.Infraestrutura.Administracao;
 using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Assinaturas;
 using Plataforma.Infraestrutura.Autenticacao;
@@ -189,6 +191,10 @@ public static class InfraestruturaServiceCollectionExtensions
         // Cadastro de negócio novo e checklist do primeiro acesso (seção 6.5).
         servicos.AddScoped<IServicoCadastro, ServicoCadastro>();
         servicos.AddScoped<IServicoPrimeirosPassos, ServicoPrimeirosPassos>();
+
+        // Tela de assinatura do negócio e administração da plataforma (seção 7).
+        servicos.AddScoped<IServicoAssinaturaNegocio, ServicoAssinaturaNegocio>();
+        servicos.AddScoped<IAdministracaoPlataforma, AdministracaoPlataforma>();
         servicos.AddOptions<OpcoesCaptcha>().Bind(configuracao.GetSection(OpcoesCaptcha.Secao));
         servicos.AddHttpClient<IVerificadorCaptcha, VerificadorCaptchaTurnstile>();
 
