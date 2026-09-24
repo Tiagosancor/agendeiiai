@@ -54,6 +54,9 @@ services:
       WhatsApp__Meta__Token: ${WHATSAPP_TOKEN_ACESSO:-}
       WhatsApp__Meta__NumeroTelefoneId: ${WHATSAPP_ID_NUMERO_TELEFONE:-}
       WhatsApp__PermitirNaoOficial: ${WHATSAPP__PERMITIRNAOOFICIAL:-false}
+      # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
+      Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
+      Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}
     ports:
       - "${API_PORTA_HOST:-5080}:8080"
 

@@ -140,6 +140,12 @@ using (var escopoJobs = app.Services.CreateScope())
     // agendamento, justamente para sobreviver à hibernação da API (seção 8.5.6).
     gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobEnviarLembretes>(
         "enviar-lembretes", job => job.ExecutarAsync(CancellationToken.None), "*/5 * * * *");
+
+    // Teste → carência → suspensa e avisos de 7/3/1 dias (seção 7). De hora em hora em vez
+    // de diário: mesma varredura idempotente, mas sem um negócio passar quase um dia inteiro
+    // no estado errado se a API hibernar no horário do job.
+    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Assinaturas.JobAtualizarAssinaturas>(
+        "atualizar-assinaturas", job => job.ExecutarAsync(CancellationToken.None), "0 * * * *");
 }
 
 if (app.Environment.IsDevelopment())

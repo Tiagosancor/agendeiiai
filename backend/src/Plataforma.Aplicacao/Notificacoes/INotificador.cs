@@ -25,7 +25,14 @@ public interface INotificador
 
     /// <summary>Lembrete 24h/2h antes (seção 9, Sprint 4) — antecedência configurável, ver <c>OpcoesLembretes</c>.</summary>
     Task EnviarLembreteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default);
+
+    /// <summary>Fim do teste ou vencimento chegando (seção 7) — aos administradores do negócio, do produto para o negócio.</summary>
+    Task EnviarAvisoAssinaturaAsync(DadosAvisoAssinatura dados, CancellationToken cancellationToken = default);
 }
+
+public sealed record DadosAvisoAssinatura(
+    IReadOnlyList<string> EmailsAdministradores, string NomeNegocio, bool EmTeste, int DiasRestantes,
+    DateTimeOffset Prazo, string NomePlano, decimal ValorDoPeriodo, string LinkAssinatura);
 
 public enum EventoAgendamentoProfissional
 {

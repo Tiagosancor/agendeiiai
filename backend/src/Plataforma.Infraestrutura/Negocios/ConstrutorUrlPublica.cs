@@ -10,4 +10,7 @@ public static class ConstrutorUrlPublica
         var porta = opcoes.PortaUrlPublica is int p ? $":{p}" : string.Empty;
         return $"{opcoes.EsquemaUrlPublica}://{slug}.{opcoes.Dominio}{porta}{caminho}";
     }
+
+    /// <summary>URL do painel (<c>app.{dominio}</c>, seção 5).</summary>
+    public static string ConstruirPainel(OpcoesMarca opcoes, string caminho) => Construir(opcoes, "app", caminho);
 }

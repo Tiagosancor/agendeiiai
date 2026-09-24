@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Autenticacao;
 using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Contato;
@@ -21,6 +22,7 @@ using Plataforma.Aplicacao.Servicos;
 using Plataforma.Aplicacao.Usuarios;
 using Plataforma.Aplicacao.Verificacao;
 using Plataforma.Infraestrutura.Agendamentos;
+using Plataforma.Infraestrutura.Assinaturas;
 using Plataforma.Infraestrutura.Autenticacao;
 using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.Contato;
@@ -173,6 +175,13 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGerenciadorPagamentos, GerenciadorPagamentos>();
         servicos.AddScoped<IServicoFinanceiro, ServicoFinanceiro>();
         servicos.AddScoped<IGerenciadorFidelidade, GerenciadorFidelidade>();
+
+        // Planos e assinatura do negócio (seção 7). Um gateway real entra como mais um
+        // IGatewayPagamento registrado aqui — o webhook descobre o provedor pela rota.
+        servicos.AddOptions<OpcoesCobranca>().Bind(configuracao.GetSection(OpcoesCobranca.Secao));
+        servicos.AddScoped<IGatewayPagamento, GatewayPagamentoManual>();
+        servicos.AddScoped<IProcessadorWebhookPagamento, ProcessadorWebhookPagamento>();
+        servicos.AddScoped<JobAtualizarAssinaturas>();
 
         // E-mail e WhatsApp: Fake em dev/testes, provedor real escolhido em runtime pela
         // configuração (seção 4) — nunca hardcoded, senão os testes de integração (que não

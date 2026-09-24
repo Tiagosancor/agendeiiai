@@ -71,7 +71,8 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
         {
             DbAdapter = DbAdapter.Postgres,
             SchemasToInclude = ["public"],
-            TablesToIgnore = ["__EFMigrationsHistory"],
+            // "planos" vem do seed da migration (dados, não estado de teste).
+            TablesToIgnore = ["__EFMigrationsHistory", "planos"],
         });
 
         await _respawner.ResetAsync(conexao);
