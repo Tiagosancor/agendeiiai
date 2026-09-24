@@ -60,6 +60,18 @@ public sealed class ServicoTokenPublico : IServicoTokenPublico
         return Guid.TryParse(ObterClaim(resultado, "agendamento_id"), out var agendamentoId) ? agendamentoId : null;
     }
 
+    public string GerarTokenCadastro(string email) =>
+        Gerar(AudienciaCadastro(_opcoes.Audiencia), TimeSpan.FromMinutes(30), new Dictionary<string, object>
+        {
+            ["email"] = email,
+        });
+
+    public async Task<string?> ValidarTokenCadastroAsync(string token)
+    {
+        var resultado = await ValidarAsync(token, AudienciaCadastro(_opcoes.Audiencia));
+        return resultado.IsValid ? ObterClaim(resultado, "email") : null;
+    }
+
     private string Gerar(string audiencia, TimeSpan validade, Dictionary<string, object> claims)
     {
         var agora = DateTime.UtcNow;
@@ -97,4 +109,6 @@ public sealed class ServicoTokenPublico : IServicoTokenPublico
     private static string AudienciaVerificacao(string audienciaBase) => $"{audienciaBase}:verificacao";
 
     private static string AudienciaAgendamento(string audienciaBase) => $"{audienciaBase}:agendamento-publico";
+
+    private static string AudienciaCadastro(string audienciaBase) => $"{audienciaBase}:cadastro";
 }

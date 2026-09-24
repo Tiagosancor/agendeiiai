@@ -8,6 +8,7 @@ using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Autenticacao;
+using Plataforma.Aplicacao.Cadastro;
 using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Contato;
 using Plataforma.Aplicacao.Cupons;
@@ -24,6 +25,7 @@ using Plataforma.Aplicacao.Verificacao;
 using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Assinaturas;
 using Plataforma.Infraestrutura.Autenticacao;
+using Plataforma.Infraestrutura.Cadastro;
 using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.Contato;
 using Plataforma.Infraestrutura.Cupons;
@@ -183,6 +185,12 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IProcessadorWebhookPagamento, ProcessadorWebhookPagamento>();
         servicos.AddScoped<JobAtualizarAssinaturas>();
         servicos.AddScoped<IConsultaSituacaoAssinatura, ConsultaSituacaoAssinatura>();
+
+        // Cadastro de negócio novo e checklist do primeiro acesso (seção 6.5).
+        servicos.AddScoped<IServicoCadastro, ServicoCadastro>();
+        servicos.AddScoped<IServicoPrimeirosPassos, ServicoPrimeirosPassos>();
+        servicos.AddOptions<OpcoesCaptcha>().Bind(configuracao.GetSection(OpcoesCaptcha.Secao));
+        servicos.AddHttpClient<IVerificadorCaptcha, VerificadorCaptchaTurnstile>();
 
         // E-mail e WhatsApp: Fake em dev/testes, provedor real escolhido em runtime pela
         // configuração (seção 4) — nunca hardcoded, senão os testes de integração (que não

@@ -18,6 +18,8 @@ public sealed partial class Slug : IEquatable<Slug>
         "assets", "blog", "docs", "help", "support", "status",
         "ftp", "smtp", "ns1", "ns2", "webmail", "cpanel",
         "autoconfig", "autodiscover", "painel",
+        "cadastro", "entrar", "conta", "planos", "suporte", "ajuda", "contato",
+        "termos", "privacidade", "webhooks", "site",
     };
 
     public string Valor { get; }

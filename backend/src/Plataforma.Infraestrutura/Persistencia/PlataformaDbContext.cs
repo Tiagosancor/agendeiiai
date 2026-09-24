@@ -5,6 +5,7 @@ using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Dominio.Administracao;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Assinaturas;
+using Plataforma.Dominio.Cadastro;
 using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Contato;
@@ -85,6 +86,12 @@ public class PlataformaDbContext : DbContext
     public DbSet<EventoWebhookPagamento> EventosWebhookPagamento => Set<EventoWebhookPagamento>();
 
     public DbSet<LogAuditoriaPlataforma> LogsAuditoriaPlataforma => Set<LogAuditoriaPlataforma>();
+
+    public DbSet<CodigoCadastro> CodigosCadastro => Set<CodigoCadastro>();
+
+    public DbSet<RegistroTesteGratis> RegistrosTesteGratis => Set<RegistroTesteGratis>();
+
+    public DbSet<ChaveIdempotencia> ChavesIdempotencia => Set<ChaveIdempotencia>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -54,6 +54,16 @@ public class Negocio : EntidadeBase
 
     public IReadOnlyCollection<HorarioFuncionamentoDia> HorarioFuncionamento => _horarioFuncionamento.AsReadOnly();
 
+    /// <summary>Checklist de primeiros passos do painel dispensado pelo usuário (seção 6.5).</summary>
+    public bool ChecklistDispensado { get; private set; }
+
+    /// <summary>Único passo do checklist que o sistema não deduz dos dados: copiar o link de agendamento.</summary>
+    public bool LinkAgendamentoCopiado { get; private set; }
+
+    public void DispensarChecklist() => ChecklistDispensado = true;
+
+    public void MarcarLinkAgendamentoCopiado() => LinkAgendamentoCopiado = true;
+
     protected Negocio()
     {
         // Uso exclusivo do EF Core.

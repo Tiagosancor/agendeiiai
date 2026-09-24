@@ -92,6 +92,22 @@ builder.Services.AddRateLimiter(opcoes =>
             PermitLimit = 10,
             QueueLimit = 0,
         }));
+
+    // Cadastro de negócio (seção 8.6.1): envio de código, validação e criação da conta; e a
+    // checagem de slug, mais frouxa porque roda enquanto a pessoa digita. Limites lidos na
+    // hora (não antes do Build) para os testes poderem sobrescrever.
+    opcoes.AddPolicy(Plataforma.Api.Controllers.Cadastro.CadastroController.PoliticaPorIp, contexto =>
+        LimitePorIpPorMinuto(contexto, "Cadastro:LimitePorIpPorMinuto", padrao: 10));
+    opcoes.AddPolicy(Plataforma.Api.Controllers.Cadastro.CadastroController.PoliticaSlugPorIp, contexto =>
+        LimitePorIpPorMinuto(contexto, "Cadastro:LimiteSlugPorIpPorMinuto", padrao: 60));
+
+    static RateLimitPartition<string> LimitePorIpPorMinuto(HttpContext contexto, string chaveConfiguracao, int padrao)
+    {
+        var limite = contexto.RequestServices.GetRequiredService<IConfiguration>().GetValue(chaveConfiguracao, padrao);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"{chaveConfiguracao}:{contexto.Connection.RemoteIpAddress?.ToString() ?? "sem-ip"}",
+            _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = limite, QueueLimit = 0 });
+    }
 });
 
 var dominioBase = builder.Configuration[$"{OpcoesMarca.Secao}:Dominio"];

@@ -197,6 +197,39 @@ public sealed class Notificador : INotificador
             ExecutarSemFalharAsync(_email.EnviarAsync(email, $"{assunto} — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/aviso-assinatura")));
     }
 
+    public Task EnviarCodigoCadastroAsync(string email, string codigo, CancellationToken cancellationToken = default)
+    {
+        var corpo = Envelope(null, $"<p>Seu código para criar a conta:</p><h2>{codigo}</h2><p>Válido por 5 minutos. Se não foi você, ignore este e-mail.</p>");
+        return ExecutarSemFalharAsync(
+            _email.EnviarAsync(email, $"Seu código de cadastro — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/código-cadastro");
+    }
+
+    public Task EnviarAvisoContaExistenteAsync(string email, string linkLogin, CancellationToken cancellationToken = default)
+    {
+        var corpo = Envelope(null, $"""
+            <p>Alguém tentou criar uma conta nova com este e-mail, mas ele já tem uma conta.</p>
+            <p><a href="{linkLogin}">Entrar no painel</a></p>
+            <p>Se não lembra a senha, fale com o suporte do {_opcoesMarca.NomeProduto}. Se não foi você, ignore esta mensagem.</p>
+            """);
+        return ExecutarSemFalharAsync(
+            _email.EnviarAsync(email, $"Você já tem uma conta — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/conta-existente");
+    }
+
+    public Task EnviarBoasVindasAsync(DadosBoasVindas dados, CancellationToken cancellationToken = default)
+    {
+        var nomeUsuario = System.Net.WebUtility.HtmlEncode(dados.NomeUsuario);
+        var nomeNegocio = System.Net.WebUtility.HtmlEncode(dados.NomeNegocio);
+        var corpo = Envelope(null, $"""
+            <p>Olá, {nomeUsuario}! A conta de <strong>{nomeNegocio}</strong> está pronta.</p>
+            <p>Seu teste grátis vai até <strong>{dados.FimTeste:dd/MM/yyyy}</strong>, com todos os recursos do plano.</p>
+            <p><strong>Painel:</strong> <a href="{dados.LinkPainel}">{dados.LinkPainel}</a></p>
+            <p><strong>Seu link de agendamento:</strong> <a href="{dados.LinkPublico}">{dados.LinkPublico}</a></p>
+            <p>Comece cadastrando serviços e equipe, e configure os horários de trabalho.</p>
+            """);
+        return ExecutarSemFalharAsync(
+            _email.EnviarAsync(dados.Email, $"Bem-vindo ao {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/boas-vindas");
+    }
+
     /// <summary>
     /// Envolve o conteúdo (que fala sempre do NEGÓCIO — seção 5) com o cabeçalho e o rodapé
     /// da marca do PRODUTO (seção 5.1) — o único lugar em que o nome do produto aparece

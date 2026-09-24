@@ -360,3 +360,39 @@ export interface ProgressoFidelidade {
   descricaoRecompensa: string | null;
 }
 
+
+// --- Ajuste 4: planos, cadastro e primeiros passos (seções 6.4, 6.5 e 7) ---
+
+export type Periodicidade = "Mensal" | "Anual";
+
+export interface PlanoPublico {
+  id: string;
+  nome: string;
+  minimoProfissionais: number;
+  maximoProfissionais: number;
+  precoMensal: number;
+  precoAnualPorMes: number;
+  destaque: boolean;
+}
+
+export interface DisponibilidadeSlug {
+  disponivel: boolean;
+  motivo: string | null;
+}
+
+export interface PrimeirosPassos {
+  servicosCadastrados: boolean;
+  profissionaisCadastrados: boolean;
+  horariosConfigurados: boolean;
+  linkCopiado: boolean;
+  dispensado: boolean;
+  linkAgendamento: string;
+  exibir: boolean;
+}
+
+export const TIPOS_NEGOCIO: { valor: string; rotulo: string }[] = [
+  { valor: "Barbearia", rotulo: "Barbearia" },
+  { valor: "Salao", rotulo: "Salão de beleza" },
+  { valor: "ClinicaEstetica", rotulo: "Clínica de estética" },
+  { valor: "Autonomo", rotulo: "Profissional autônomo" },
+];
