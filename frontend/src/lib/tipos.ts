@@ -237,6 +237,7 @@ export interface NegocioPublico {
   facebook: string | null;
   whatsApp: string | null;
   horarioFuncionamento: HorarioFuncionamentoDia[];
+  aceitaAgendamentoOnline: boolean;
 }
 
 export interface ServicoPublico {

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Plataforma.Api.Assinaturas;
 using Plataforma.Aplicacao.Clientes;
 using Plataforma.Dominio.Usuarios;
 
@@ -18,10 +19,12 @@ public sealed class ClientesController : ControllerBase
     }
 
     [HttpGet]
+    [PermitirComAssinaturaSuspensa]
     public async Task<ActionResult<IReadOnlyList<ClienteResumo>>> Listar(CancellationToken cancellationToken) =>
         Ok(await _gerenciador.ListarAsync(cancellationToken));
 
     [HttpGet("{id:guid}")]
+    [PermitirComAssinaturaSuspensa]
     public async Task<ActionResult<ClienteResumo>> Obter(Guid id, CancellationToken cancellationToken)
     {
         var cliente = await _gerenciador.ObterAsync(id, cancellationToken);
@@ -48,6 +51,7 @@ public sealed class ClientesController : ControllerBase
 
     /// <summary>Exportação de dados sob demanda (LGPD, seção 8.4).</summary>
     [HttpGet("{id:guid}/exportar")]
+    [PermitirComAssinaturaSuspensa]
     public async Task<ActionResult<ExportacaoCliente>> Exportar(Guid id, CancellationToken cancellationToken)
     {
         var exportacao = await _gerenciador.ExportarAsync(id, cancellationToken);
@@ -56,6 +60,7 @@ public sealed class ClientesController : ControllerBase
 
     /// <summary>Exclusão sob demanda (LGPD, seção 8.4) — anonimiza, nunca apaga a linha.</summary>
     [HttpPost("{id:guid}/excluir")]
+    [PermitirComAssinaturaSuspensa]
     public async Task<IActionResult> Excluir(Guid id, CancellationToken cancellationToken) =>
         await _gerenciador.ExcluirAsync(id, cancellationToken) ? NoContent() : NotFound();
 }

@@ -45,6 +45,10 @@ public sealed class AssinaturaConfiguracao : IEntityTypeConfiguration<Assinatura
         builder.Property(a => a.ProvedorGateway).HasMaxLength(40);
         builder.Property(a => a.IdExternoGateway).HasMaxLength(200);
 
+        // Concorrência otimista pela coluna de sistema xmin do Postgres: job, requisições e
+        // administração podem aplicar transições ao mesmo tempo — só uma grava, sem histórico duplicado.
+        builder.Property<uint>("Versao").IsRowVersion();
+
         // Uma assinatura por negócio.
         builder.HasIndex(a => a.NegocioId).IsUnique();
         builder.HasIndex(a => a.Estado);

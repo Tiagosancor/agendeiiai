@@ -26,6 +26,19 @@ async function loginAdmin(request: APIRequestContext): Promise<string> {
   return corpo.accessToken as string;
 }
 
+// O plano do negócio de dev limita os profissionais ativos (seção 7): cada execução
+// desativa o profissional que criou, senão as execuções acumulam até estourar o limite.
+let profissionalCriado: string | null = null;
+
+test.afterEach(async ({ request }) => {
+  if (!profissionalCriado) return;
+  const token = await loginAdmin(request);
+  await request.post(`${API_BASE}/painel/profissionais/${profissionalCriado}/desativar`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  profissionalCriado = null;
+});
+
 function extrairCodigoDoLog(telefone: string): string {
   // Só funciona rodando local/CI com acesso ao daemon Docker do docker-compose deste
   // repositório — é exatamente o público-alvo deste teste (validação manual/CI local).
@@ -55,7 +68,9 @@ test("cliente agenda um serviço do início ao fim pelo assistente público", as
     headers: cabecalhos,
     data: { nome: `Profissional Playwright ${sufixo}`, funcao: "Barbeiro" },
   });
+  expect(respProfissional.ok()).toBeTruthy();
   const profissionalId = await respProfissional.json();
+  profissionalCriado = profissionalId;
 
   await request.put(`${API_BASE}/painel/profissionais/${profissionalId}/horarios`, {
     headers: cabecalhos,

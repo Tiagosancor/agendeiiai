@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Plataforma.Api.Assinaturas;
 using Plataforma.Aplicacao.Verificacao;
 using Plataforma.Dominio.Comum;
 
@@ -21,6 +22,7 @@ public sealed class CodigosPublicoController : ControllerBase
     public sealed record SolicitarCodigoRequisicao(string Telefone, string? Email);
 
     [HttpPost]
+    [BloquearComAssinaturaSuspensa]
     public async Task<IActionResult> Solicitar(SolicitarCodigoRequisicao requisicao, CancellationToken cancellationToken)
     {
         if (!TelefoneE164.TentarCriar(requisicao.Telefone, out var telefone))

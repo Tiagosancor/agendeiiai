@@ -182,6 +182,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGatewayPagamento, GatewayPagamentoManual>();
         servicos.AddScoped<IProcessadorWebhookPagamento, ProcessadorWebhookPagamento>();
         servicos.AddScoped<JobAtualizarAssinaturas>();
+        servicos.AddScoped<IConsultaSituacaoAssinatura, ConsultaSituacaoAssinatura>();
 
         // E-mail e WhatsApp: Fake em dev/testes, provedor real escolhido em runtime pela
         // configuração (seção 4) — nunca hardcoded, senão os testes de integração (que não

@@ -22,6 +22,19 @@ async function loginAdmin(request: APIRequestContext): Promise<string> {
   return corpo.accessToken as string;
 }
 
+// O plano do negócio de dev limita os profissionais ativos (seção 7): cada execução
+// desativa o profissional que criou, senão as execuções acumulam até estourar o limite.
+let profissionalCriado: string | null = null;
+
+test.afterEach(async ({ request }) => {
+  if (!profissionalCriado) return;
+  const token = await loginAdmin(request);
+  await request.post(`${API_BASE}/painel/profissionais/${profissionalCriado}/desativar`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  profissionalCriado = null;
+});
+
 test("replicar horário de um dia para vários dias, editar um depois não afeta os demais", async ({ page, request }) => {
   const sufixo = Date.now().toString().slice(-8);
 
@@ -31,7 +44,9 @@ test("replicar horário de um dia para vários dias, editar um depois não afeta
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     data: { nome: `Profissional Horarios ${sufixo}`, funcao: "Barbeiro" },
   });
+  expect(respProfissional.ok()).toBeTruthy();
   const profissionalId = await respProfissional.json();
+  profissionalCriado = profissionalId;
 
   // --- Ato: login pela UI de verdade (o access token vive só em memória, seção
   // "Painel (frontend)" do CLAUDE.md — não dá pra injetar sessão sem passar pela tela).

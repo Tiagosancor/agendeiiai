@@ -61,6 +61,8 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
   }
 
   const populares = (categorias ?? []).flatMap((c) => c.servicos.filter((s) => s.popular));
+  // Falso com a assinatura suspensa (seção 7): a página continua no ar, só sem agendar online.
+  const aceitaAgendamento = negocio.aceitaAgendamentoOnline;
 
   return (
     <div style={{ "--cor-primaria": corPrimaria, "--cor-secundaria": corSecundaria } as React.CSSProperties}>
@@ -71,12 +73,14 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
         </div>
         <div className="flex items-center gap-2">
           <BotaoTema />
-          <button
-            onClick={() => abrirAssistente()}
-            className="rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
-          >
-            Agendar
-          </button>
+          {aceitaAgendamento && (
+            <button
+              onClick={() => abrirAssistente()}
+              className="rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+            >
+              Agendar
+            </button>
+          )}
         </div>
       </header>
 
@@ -88,12 +92,28 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           {negocio.subtituloPagina && (
             <p className="mx-auto mt-2 max-w-sm text-sm text-gray-600 dark:text-neutral-400">{negocio.subtituloPagina}</p>
           )}
-          <button
-            onClick={() => abrirAssistente()}
-            className="mt-6 rounded-lg bg-(--cor-primaria) px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
-          >
-            Agendar Agora
-          </button>
+          {aceitaAgendamento ? (
+            <button
+              onClick={() => abrirAssistente()}
+              className="mt-6 rounded-lg bg-(--cor-primaria) px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+            >
+              Agendar Agora
+            </button>
+          ) : (
+            <p data-testid="agendamento-por-telefone" className="mx-auto mt-6 max-w-sm text-sm text-gray-700 dark:text-neutral-300">
+              No momento, os agendamentos são feitos por telefone
+              {negocio.telefone ? (
+                <>
+                  :{" "}
+                  <a href={`tel:${negocio.telefone}`} className="font-semibold text-(--cor-primaria) underline">
+                    {negocio.telefone}
+                  </a>
+                </>
+              ) : (
+                "."
+              )}
+            </p>
+          )}
         </section>
 
         {profissionais && profissionais.length > 0 && (
@@ -130,6 +150,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
                   <button
                     key={s.id}
                     onClick={() => abrirAssistente(s.id)}
+                    disabled={!aceitaAgendamento}
                     className="flex w-full items-center justify-between rounded-lg border border-gray-200 px-3 py-2 text-left text-sm dark:border-neutral-800"
                   >
                     <span>
@@ -163,6 +184,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
                         <button
                           key={s.id}
                           onClick={() => abrirAssistente(s.id)}
+                          disabled={!aceitaAgendamento}
                           className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-left text-sm hover:bg-gray-50 dark:hover:bg-neutral-900"
                         >
                           <span>
@@ -208,14 +230,16 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
         </a>
       </footer>
 
-      <AssistenteAgendamento
-        aberto={assistenteAberto}
-        aoFechar={() => setAssistenteAberto(false)}
-        negocio={negocio}
-        categorias={categorias ?? []}
-        profissionais={profissionais ?? []}
-        servicoInicialId={servicoInicialId}
-      />
+      {aceitaAgendamento && (
+        <AssistenteAgendamento
+          aberto={assistenteAberto}
+          aoFechar={() => setAssistenteAberto(false)}
+          negocio={negocio}
+          categorias={categorias ?? []}
+          profissionais={profissionais ?? []}
+          servicoInicialId={servicoInicialId}
+        />
+      )}
     </div>
   );
 }

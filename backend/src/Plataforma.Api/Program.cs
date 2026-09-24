@@ -25,7 +25,7 @@ builder.Host.UseSerilog((contexto, configuracaoLog) => configuracaoLog
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Aplicacao", "Plataforma.Api"));
 
-builder.Services.AddControllers()
+builder.Services.AddControllers(opcoes => opcoes.Filters.Add<Plataforma.Api.Assinaturas.FiltroAssinaturaSuspensa>())
     // Enums como texto no JSON ("Administrador", não "1") — mais legível pro frontend e
     // pro Swagger. Continua aceitando número na entrada (comportamento padrão do
     // conversor), então não quebra nada que já mandava o valor numérico.
