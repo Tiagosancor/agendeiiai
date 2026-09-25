@@ -179,6 +179,57 @@ public sealed class Notificador : INotificador
         await Task.WhenAll(tarefas);
     }
 
+    public async Task EnviarAvisoAssinaturaAsync(DadosAvisoAssinatura dados, CancellationToken cancellationToken = default)
+    {
+        var nomeNegocio = System.Net.WebUtility.HtmlEncode(dados.NomeNegocio);
+        var quando = dados.DiasRestantes == 1 ? "amanhã" : $"em {dados.DiasRestantes} dias";
+        var (assunto, abertura) = dados.EmTeste
+            ? ($"Seu teste grátis termina {quando}", $"O teste grátis de <strong>{nomeNegocio}</strong> termina {quando} ({dados.Prazo:dd/MM/yyyy}).")
+            : ($"Sua assinatura vence {quando}", $"A assinatura de <strong>{nomeNegocio}</strong> vence {quando} ({dados.Prazo:dd/MM/yyyy}).");
+
+        var corpo = Envelope(null, $"""
+            <p>{abertura}</p>
+            <p>Plano {dados.NomePlano}: R$ {dados.ValorDoPeriodo:F2}. Para continuar recebendo agendamentos sem interrupção, é só assinar.</p>
+            <p><a href="{dados.LinkAssinatura}">Assinar agora</a></p>
+            """);
+
+        await Task.WhenAll(dados.EmailsAdministradores.Select(email =>
+            ExecutarSemFalharAsync(_email.EnviarAsync(email, $"{assunto} — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/aviso-assinatura")));
+    }
+
+    public Task EnviarCodigoCadastroAsync(string email, string codigo, CancellationToken cancellationToken = default)
+    {
+        var corpo = Envelope(null, $"<p>Seu código para criar a conta:</p><h2>{codigo}</h2><p>Válido por 5 minutos. Se não foi você, ignore este e-mail.</p>");
+        return ExecutarSemFalharAsync(
+            _email.EnviarAsync(email, $"Seu código de cadastro — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/código-cadastro");
+    }
+
+    public Task EnviarAvisoContaExistenteAsync(string email, string linkLogin, CancellationToken cancellationToken = default)
+    {
+        var corpo = Envelope(null, $"""
+            <p>Alguém tentou criar uma conta nova com este e-mail, mas ele já tem uma conta.</p>
+            <p><a href="{linkLogin}">Entrar no painel</a></p>
+            <p>Se não lembra a senha, fale com o suporte do {_opcoesMarca.NomeProduto}. Se não foi você, ignore esta mensagem.</p>
+            """);
+        return ExecutarSemFalharAsync(
+            _email.EnviarAsync(email, $"Você já tem uma conta — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/conta-existente");
+    }
+
+    public Task EnviarBoasVindasAsync(DadosBoasVindas dados, CancellationToken cancellationToken = default)
+    {
+        var nomeUsuario = System.Net.WebUtility.HtmlEncode(dados.NomeUsuario);
+        var nomeNegocio = System.Net.WebUtility.HtmlEncode(dados.NomeNegocio);
+        var corpo = Envelope(null, $"""
+            <p>Olá, {nomeUsuario}! A conta de <strong>{nomeNegocio}</strong> está pronta.</p>
+            <p>Seu teste grátis vai até <strong>{dados.FimTeste:dd/MM/yyyy}</strong>, com todos os recursos do plano.</p>
+            <p><strong>Painel:</strong> <a href="{dados.LinkPainel}">{dados.LinkPainel}</a></p>
+            <p><strong>Seu link de agendamento:</strong> <a href="{dados.LinkPublico}">{dados.LinkPublico}</a></p>
+            <p>Comece cadastrando serviços e equipe, e configure os horários de trabalho.</p>
+            """);
+        return ExecutarSemFalharAsync(
+            _email.EnviarAsync(dados.Email, $"Bem-vindo ao {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/boas-vindas");
+    }
+
     /// <summary>
     /// Envolve o conteúdo (que fala sempre do NEGÓCIO — seção 5) com o cabeçalho e o rodapé
     /// da marca do PRODUTO (seção 5.1) — o único lugar em que o nome do produto aparece
@@ -186,8 +237,9 @@ public sealed class Notificador : INotificador
     /// `<style>`) e sem web font nem imagem externa — clientes de e-mail bloqueiam imagem
     /// por padrão e não têm suporte confiável a SVG (Outlook não suporta de jeito nenhum),
     /// então o "carimbado" da marca vem só da pilha de fontes serifadas do sistema.
+    /// Sem <paramref name="nomeNegocio"/>, é um e-mail do próprio produto para o negócio.
     /// </summary>
-    private string Envelope(string nomeNegocio, string conteudoHtml) => $"""
+    private string Envelope(string? nomeNegocio, string conteudoHtml) => $"""
         <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1c1c1a;">
           <div style="background-color: #1e2a38; padding: 18px 24px; border-radius: 8px 8px 0 0;">
             <span style="font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 20px; color: #faf9f6;">agendeiiai</span>
@@ -196,7 +248,7 @@ public sealed class Notificador : INotificador
             {conteudoHtml}
           </div>
           <p style="font-size: 11px; color: #9a9a9a; text-align: center; margin-top: 16px;">
-            Enviado por {_opcoesMarca.NomeProduto} em nome de {nomeNegocio}.
+            {(nomeNegocio is null ? $"Enviado por {_opcoesMarca.NomeProduto}." : $"Enviado por {_opcoesMarca.NomeProduto} em nome de {nomeNegocio}.")}
           </p>
         </div>
         """;

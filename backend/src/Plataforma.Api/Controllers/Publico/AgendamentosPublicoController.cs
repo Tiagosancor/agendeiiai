@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Plataforma.Api.Assinaturas;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Dominio.Comum;
@@ -29,6 +30,7 @@ public sealed class AgendamentosPublicoController : ControllerBase
     public sealed record CriarReservaRequisicao(Guid ProfissionalId, IReadOnlyList<Guid> ServicoIds, DateTimeOffset Inicio);
 
     [HttpPost("reservas")]
+    [BloquearComAssinaturaSuspensa]
     public async Task<IActionResult> CriarReserva(CriarReservaRequisicao requisicao, CancellationToken cancellationToken)
     {
         var resultado = await _servicoAgendamentos.CriarReservaPublicaAsync(
@@ -55,6 +57,7 @@ public sealed class AgendamentosPublicoController : ControllerBase
 
     /// <summary>Confirmação final (seção 8.1.1.d) — o agendamento só existe de verdade depois desta chamada, com o código validado.</summary>
     [HttpPost("agendamentos")]
+    [BloquearComAssinaturaSuspensa]
     public async Task<IActionResult> Confirmar(ConfirmarAgendamentoRequisicao requisicao, CancellationToken cancellationToken)
     {
         if (!TelefoneE164.TentarCriar(requisicao.Telefone, out var telefone))

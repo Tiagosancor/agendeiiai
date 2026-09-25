@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Negocios;
 using Plataforma.Dominio.Usuarios;
 
@@ -30,6 +31,10 @@ public static class SemeadorDesenvolvimento
             negocio.Id, "Administrador (dev)", EmailAdministradorDev, Perfil.Administrador,
             senhaHasher.Hash(SenhaAdministradorDev));
         dbContext.Usuarios.Add(administrador);
+
+        var plano = await dbContext.Planos.OrderBy(p => p.Ordem).FirstAsync(cancellationToken);
+        dbContext.Assinaturas.Add(ServicoAssinatura.IniciarTeste(
+            negocio.Id, plano, Periodicidade.Mensal, "semeador-dev", DateTimeOffset.UtcNow));
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }

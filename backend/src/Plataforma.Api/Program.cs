@@ -25,7 +25,7 @@ builder.Host.UseSerilog((contexto, configuracaoLog) => configuracaoLog
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Aplicacao", "Plataforma.Api"));
 
-builder.Services.AddControllers()
+builder.Services.AddControllers(opcoes => opcoes.Filters.Add<Plataforma.Api.Assinaturas.FiltroAssinaturaSuspensa>())
     // Enums como texto no JSON ("Administrador", não "1") — mais legível pro frontend e
     // pro Swagger. Continua aceitando número na entrada (comportamento padrão do
     // conversor), então não quebra nada que já mandava o valor numérico.
@@ -42,7 +42,29 @@ builder.Services.AdicionarInfraestrutura(builder.Configuration);
 // (mesma armadilha documentada em docs/decisoes.md para a connection string).
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer();
+    .AddJwtBearer()
+    // Administração da plataforma: mesma chave, audiência própria — o token do painel de um
+    // negócio nunca passa aqui, e o da plataforma nunca passa no painel (seção 8.6.7).
+    .AddJwtBearer(ClaimsPlataforma.EsquemaPlataforma);
+
+builder.Services
+    .AddOptions<JwtBearerOptions>(ClaimsPlataforma.EsquemaPlataforma)
+    .Configure<Microsoft.Extensions.Options.IOptions<OpcoesJwt>>((jwtBearerOpcoes, opcoesJwt) =>
+    {
+        var opcoes = opcoesJwt.Value;
+
+        jwtBearerOpcoes.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidIssuer = opcoes.Emissor,
+            ValidAudience = opcoes.AudienciaPlataforma,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(opcoes.ChaveSecreta)),
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+        };
+    });
 
 builder.Services
     .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
@@ -72,6 +94,14 @@ builder.Services.AddAuthorization(opcoes =>
         var nomeDaPolicy = permissao.ToString();
         opcoes.AddPolicy(nomeDaPolicy, politica => politica.RequireClaim(ClaimsPlataforma.Permissao, nomeDaPolicy));
     }
+
+    // Tela de assinatura: só o perfil Administrador do negócio (seção 7), não uma permissão avulsa.
+    opcoes.AddPolicy(ClaimsPlataforma.PoliticaSomenteAdministradorNegocio, politica =>
+        politica.RequireClaim(ClaimsPlataforma.Perfil, nameof(Perfil.Administrador)));
+
+    opcoes.AddPolicy(ClaimsPlataforma.PoliticaAdministradorPlataforma, politica => politica
+        .AddAuthenticationSchemes(ClaimsPlataforma.EsquemaPlataforma)
+        .RequireClaim(ClaimsPlataforma.Perfil, ClaimsPlataforma.PerfilAdministradorPlataforma));
 });
 
 builder.Services.AddTransient<IClaimsTransformation, ContextoNegocioClaimsTransformation>();
@@ -92,6 +122,24 @@ builder.Services.AddRateLimiter(opcoes =>
             PermitLimit = 10,
             QueueLimit = 0,
         }));
+
+    // Cadastro de negócio (seção 8.6.1): envio de código, validação e criação da conta; e a
+    // checagem de slug, mais frouxa porque roda enquanto a pessoa digita. Limites lidos na
+    // hora (não antes do Build) para os testes poderem sobrescrever.
+    opcoes.AddPolicy(Plataforma.Api.Controllers.Cadastro.CadastroController.PoliticaPorIp, contexto =>
+        LimitePorIpPorMinuto(contexto, "Cadastro:LimitePorIpPorMinuto", padrao: 10));
+    opcoes.AddPolicy(Plataforma.Api.Controllers.Cadastro.CadastroController.PoliticaSlugPorIp, contexto =>
+        LimitePorIpPorMinuto(contexto, "Cadastro:LimiteSlugPorIpPorMinuto", padrao: 60));
+    opcoes.AddPolicy(Plataforma.Api.Controllers.Administracao.AutenticacaoPlataformaController.PoliticaLoginPorIp, contexto =>
+        LimitePorIpPorMinuto(contexto, "Plataforma:LimiteLoginPorIpPorMinuto", padrao: 5));
+
+    static RateLimitPartition<string> LimitePorIpPorMinuto(HttpContext contexto, string chaveConfiguracao, int padrao)
+    {
+        var limite = contexto.RequestServices.GetRequiredService<IConfiguration>().GetValue(chaveConfiguracao, padrao);
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"{chaveConfiguracao}:{contexto.Connection.RemoteIpAddress?.ToString() ?? "sem-ip"}",
+            _ => new FixedWindowRateLimiterOptions { Window = TimeSpan.FromMinutes(1), PermitLimit = limite, QueueLimit = 0 });
+    }
 });
 
 var dominioBase = builder.Configuration[$"{OpcoesMarca.Secao}:Dominio"];
@@ -123,24 +171,14 @@ builder.Services.AddCors(opcoes => opcoes.AddPolicy("PadraoPlataforma", politica
 
 var app = builder.Build();
 
-// Expira reservas vencidas em todo o sistema, a cada minuto (seção 8.2.2) — cobre o caso
-// de alguém reservar um horário e simplesmente abandonar o fluxo, sem que ninguém mais
-// tente agendar justamente aquele profissional depois (o que também expira sob demanda).
-// API baseada em serviço (não a estática RecurringJob.*): a estática depende do singleton
-// global JobStorage.Current, que não isola bem entre containers de DI diferentes (quebra
-// o WebApplicationFactory dos testes de integração, que cria um container por teste).
-using (var escopoJobs = app.Services.CreateScope())
-{
-    var gerenciadorRecorrentes = escopoJobs.ServiceProvider.GetRequiredService<IRecurringJobManager>();
+// Comandos de linha (ex.: `dotnet Plataforma.Api.dll criar-admin-plataforma --email ...`):
+// rodam e saem, sem subir o servidor nem registrar jobs.
+if (await Plataforma.Api.Comandos.ComandosDeLinha.ExecutarSeHouverAsync(app.Services, args))
+    return;
 
-    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobExpirarReservas>(
-        "expirar-reservas", job => job.ExecutarAsync(CancellationToken.None), "*/1 * * * *");
-
-    // Lembretes 24h/2h antes (seção 9, Sprint 4) — varre em vez de agendar um job por
-    // agendamento, justamente para sobreviver à hibernação da API (seção 8.5.6).
-    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobEnviarLembretes>(
-        "enviar-lembretes", job => job.ExecutarAsync(CancellationToken.None), "*/5 * * * *");
-}
+// Jobs recorrentes (expirar-reservas, enviar-lembretes, atualizar-assinaturas): registrados
+// em segundo plano por RegistroJobsRecorrentes (AdicionarInfraestrutura), nunca aqui — um
+// lock do Hangfire preso por um container anterior derrubava a subida da API inteira.
 
 if (app.Environment.IsDevelopment())
 {

@@ -22,4 +22,10 @@ public interface IServicoTokenPublico
 
     /// <summary>Retorna o id do agendamento se o token for válido e pertencer a este negócio; <c>null</c> caso contrário.</summary>
     Task<Guid?> ValidarTokenAgendamentoAsync(string token, Guid negocioId);
+
+    /// <summary>E-mail confirmado por código no cadastro de um negócio novo (seção 6.5) — 30 minutos para terminar o cadastro.</summary>
+    string GerarTokenCadastro(string email);
+
+    /// <summary>O e-mail confirmado, ou <c>null</c> se o token for inválido ou tiver expirado.</summary>
+    Task<string?> ValidarTokenCadastroAsync(string token);
 }

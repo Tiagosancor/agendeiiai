@@ -2,7 +2,10 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Dominio.Administracao;
 using Plataforma.Dominio.Agendamentos;
+using Plataforma.Dominio.Assinaturas;
+using Plataforma.Dominio.Cadastro;
 using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Contato;
@@ -71,6 +74,26 @@ public class PlataformaDbContext : DbContext
     public DbSet<ProgramaFidelidade> ProgramasFidelidade => Set<ProgramaFidelidade>();
 
     public DbSet<SeloCliente> SelosCliente => Set<SeloCliente>();
+
+    public DbSet<Plano> Planos => Set<Plano>();
+
+    public DbSet<Assinatura> Assinaturas => Set<Assinatura>();
+
+    public DbSet<HistoricoAssinatura> HistoricoAssinaturas => Set<HistoricoAssinatura>();
+
+    public DbSet<CobrancaAssinatura> CobrancasAssinatura => Set<CobrancaAssinatura>();
+
+    public DbSet<EventoWebhookPagamento> EventosWebhookPagamento => Set<EventoWebhookPagamento>();
+
+    public DbSet<LogAuditoriaPlataforma> LogsAuditoriaPlataforma => Set<LogAuditoriaPlataforma>();
+
+    public DbSet<CodigoCadastro> CodigosCadastro => Set<CodigoCadastro>();
+
+    public DbSet<RegistroTesteGratis> RegistrosTesteGratis => Set<RegistroTesteGratis>();
+
+    public DbSet<ChaveIdempotencia> ChavesIdempotencia => Set<ChaveIdempotencia>();
+
+    public DbSet<AdministradorPlataforma> AdministradoresPlataforma => Set<AdministradorPlataforma>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -27,4 +27,7 @@ public sealed class OpcoesJwt
     /// <summary>Validade do refresh token, em dias.</summary>
     [Range(1, 365)]
     public int RefreshTokenDias { get; set; } = 30;
+
+    /// <summary>Audiência do token da administração da plataforma — nunca aceita como token do painel, nem o contrário.</summary>
+    public string AudienciaPlataforma => $"{Audiencia}:plataforma";
 }

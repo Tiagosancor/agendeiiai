@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.Seguranca;
@@ -43,8 +44,11 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         var profissional = Profissional.Criar(
             _contextoNegocio.NegocioId!.Value, dados.Nome, dados.Telefone, dados.Email, cpf: cpfProtegido, funcao: dados.Funcao);
 
-        _dbContext.Profissionais.Add(profissional);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        await DentroDoLimiteDoPlanoAsync(async () =>
+        {
+            _dbContext.Profissionais.Add(profissional);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }, cancellationToken);
 
         return profissional.Id;
     }
@@ -79,13 +83,57 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         if (profissional is null)
             return false;
 
-        if (ativo)
-            profissional.Ativar();
-        else
+        if (!ativo)
+        {
             profissional.Desativar();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return true;
+        }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        if (profissional.Ativo)
+            return true;
+
+        await DentroDoLimiteDoPlanoAsync(async () =>
+        {
+            profissional.Ativar();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }, cancellationToken);
+
         return true;
+    }
+
+    /// <summary>
+    /// Limite de profissionais ativos do plano (seção 7). Trava a linha da assinatura
+    /// (FOR UPDATE) antes de contar: dois cadastros simultâneos no último lugar livre não
+    /// passam os dois. Sem assinatura (só em testes antigos), não há limite.
+    /// </summary>
+    private async Task DentroDoLimiteDoPlanoAsync(Func<Task> acao, CancellationToken cancellationToken)
+    {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+
+        await estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM assinaturas WHERE negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+
+            var plano = await (
+                from a in _dbContext.Assinaturas
+                join p in _dbContext.Planos on a.PlanoId equals p.Id
+                select new { p.Nome, p.MaximoProfissionais }).FirstOrDefaultAsync(cancellationToken);
+
+            if (plano is not null)
+            {
+                var ativos = await _dbContext.Profissionais.CountAsync(p => p.Ativo, cancellationToken);
+                if (ativos + 1 > plano.MaximoProfissionais)
+                    throw new LimitePlanoAtingidoException(plano.Nome, plano.MaximoProfissionais);
+            }
+
+            await acao();
+            await transacao.CommitAsync(cancellationToken);
+        });
     }
 
     private static ProfissionalDetalhe Mapear(Profissional profissional) => new(

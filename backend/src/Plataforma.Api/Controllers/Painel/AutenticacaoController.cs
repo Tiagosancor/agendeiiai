@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Plataforma.Api.Assinaturas;
 using Plataforma.Aplicacao.Autenticacao;
 
 namespace Plataforma.Api.Controllers.Painel;
@@ -12,6 +13,7 @@ namespace Plataforma.Api.Controllers.Painel;
 [ApiController]
 [Route("painel/auth")]
 [AllowAnonymous]
+[PermitirComAssinaturaSuspensa]
 public sealed class AutenticacaoController : ControllerBase
 {
     private const string NomeCookieRefresh = "refresh_token";

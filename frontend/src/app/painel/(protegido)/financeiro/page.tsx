@@ -4,15 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import { classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { ProfissionalResumo, ResumoFinanceiro, ServicoResumo } from "@/lib/tipos";
+import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 
 function primeiroDiaDoMes(): string {
   const hoje = new Date();
-  return new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().slice(0, 10);
+  return dataLocalIso(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
 }
 
 function ultimoDiaDoMes(): string {
   const hoje = new Date();
-  return new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().slice(0, 10);
+  return dataLocalIso(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0));
 }
 
 export default function PaginaFinanceiro() {
@@ -102,7 +103,7 @@ export default function PaginaFinanceiro() {
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
             <div className={`${classeCartao} p-4`}>
               <p className="text-xs text-gray-500 dark:text-neutral-400">Faturamento no período</p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50">R$ {resumo.total.toFixed(2)}</p>
+              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50">{formatarReais(resumo.total)}</p>
             </div>
             <div className={`${classeCartao} p-4`}>
               <p className="text-xs text-gray-500 dark:text-neutral-400">Atendimentos pagos</p>
@@ -129,7 +130,7 @@ export default function PaginaFinanceiro() {
                       <tr key={linha.profissionalId}>
                         <td className={classeTd}>{linha.nomeProfissional}</td>
                         <td className={classeTd}>{linha.quantidade}</td>
-                        <td className={classeTd}>R$ {linha.total.toFixed(2)}</td>
+                        <td className={classeTd}>{formatarReais(linha.total)}</td>
                       </tr>
                     ))}
                     {resumo.porProfissional.length === 0 && (
@@ -160,7 +161,7 @@ export default function PaginaFinanceiro() {
                       <tr key={linha.servicoId}>
                         <td className={classeTd}>{linha.nomeServico}</td>
                         <td className={classeTd}>{linha.quantidade}</td>
-                        <td className={classeTd}>R$ {linha.total.toFixed(2)}</td>
+                        <td className={classeTd}>{formatarReais(linha.total)}</td>
                       </tr>
                     ))}
                     {resumo.porServico.length === 0 && (

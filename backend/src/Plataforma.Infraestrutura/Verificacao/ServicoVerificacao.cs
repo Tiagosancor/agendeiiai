@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
@@ -96,12 +94,7 @@ public sealed class ServicoVerificacao : IServicoVerificacao
         return new ResultadoValidarCodigo(true, token);
     }
 
-    private static string GerarCodigoAleatorio() => RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+    private static string GerarCodigoAleatorio() => CodigoConfirmacao.Gerar();
 
-    /// <summary>HMAC-SHA256 com pimenta de configuração (seção 8.1.2: guardado só como hash) — nunca o código em texto puro no banco.</summary>
-    private string CalcularHash(string codigo)
-    {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_opcoes.ChaveHmac));
-        return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(codigo)));
-    }
+    private string CalcularHash(string codigo) => CodigoConfirmacao.Hash(_opcoes.ChaveHmac, codigo);
 }

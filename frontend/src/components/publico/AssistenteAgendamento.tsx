@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { requisicaoApiPublica, ErroApi } from "@/lib/api";
+import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import type {
   CategoriaComServicosPublicos,
   ConfirmarAgendamentoPublico,
@@ -106,12 +107,17 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   useEffect(() => {
     if (etapa !== 2 || duracaoTotal === 0) return;
 
-    const dataIso = dataEscolhida.toISOString().slice(0, 10);
+    const dataIso = dataLocalIso(dataEscolhida);
     const parametros = new URLSearchParams({ data: dataIso, duracaoMinutos: String(duracaoTotal) });
     if (profissionalId) parametros.set("profissionalId", profissionalId);
     for (const id of servicoIds) parametros.append("servicoIds", id);
 
-    requisicaoApiPublica<HorarioLivrePublico[]>(`/horarios-livres?${parametros.toString()}`).then(setHorariosLivres);
+    // Com "Qualquer profissional", a API devolve o mesmo horário uma vez por profissional
+    // livre — o cliente vê cada horário uma vez só, e a reserva fica com o primeiro livre.
+    requisicaoApiPublica<HorarioLivrePublico[]>(`/horarios-livres?${parametros.toString()}`).then((lista) => {
+      const vistos = new Set<string>();
+      setHorariosLivres(lista.filter((h) => !vistos.has(h.inicio) && vistos.add(h.inicio)));
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etapa, dataEscolhida, profissionalId, duracaoTotal]);
 
@@ -288,6 +294,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                     return (
                       <button
                         key={s.id}
+                        aria-pressed={selecionado}
                         onClick={() => alternarServico(s.id)}
                         className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm ${
                           selecionado ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-neutral-800"
@@ -296,7 +303,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                         <span>
                           <span className="text-gray-900 dark:text-neutral-50">{s.nome}</span>
                           <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">
-                            {s.duracaoMinutos} min · R$ {s.preco.toFixed(2)}
+                            {s.duracaoMinutos} min · {formatarReais(s.preco)}
                           </span>
                         </span>
                         <span
@@ -369,7 +376,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               <div className="grid grid-cols-3 gap-2">
                 {horariosLivres.map((h) => (
                   <button
-                    key={`${h.inicio}-${h.profissionalId}`}
+                    key={h.inicio}
                     onClick={() => setHorarioEscolhido(h)}
                     className={`rounded-lg border px-2 py-2 text-sm ${
                       horarioEscolhido?.inicio === h.inicio && horarioEscolhido.profissionalId === h.profissionalId
@@ -499,7 +506,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 {servicosSelecionados.map((s) => (
                   <li key={s.id} className="flex justify-between">
                     <span>{s.nome}</span>
-                    <span>R$ {s.preco.toFixed(2)}</span>
+                    <span>{formatarReais(s.preco)}</span>
                   </li>
                 ))}
               </ul>
@@ -569,7 +576,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               {servicosSelecionados.length > 0 ? `${servicosSelecionados.length} serviço(s) · ${duracaoTotal} min` : "Nenhum serviço"}
             </span>
             <span className="font-semibold text-gray-900 dark:text-neutral-50">
-              R$ {(etapa === 4 ? totalComDesconto : totalServicos).toFixed(2)}
+              {formatarReais((etapa === 4 ? totalComDesconto : totalServicos))}
             </span>
           </div>
           <button

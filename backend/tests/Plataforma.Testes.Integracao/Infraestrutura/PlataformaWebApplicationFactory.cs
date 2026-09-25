@@ -43,6 +43,10 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
                 ["Cpf:ChaveId"] = "teste-v1",
                 ["Cpf:ChaveBase64"] = Convert.ToBase64String(new byte[32]), // chave zerada — só para teste
                 ["Verificacao:ChaveHmac"] = "chave-hmac-de-teste-0123456789-0123456789",
+                // Todos os testes saem do mesmo "IP" — o limite real por IP é testado à parte.
+                ["Cadastro:LimitePorIpPorMinuto"] = "10000",
+                ["Cadastro:LimiteSlugPorIpPorMinuto"] = "10000",
+                ["Plataforma:LimiteLoginPorIpPorMinuto"] = "10000",
             });
         });
 
@@ -71,7 +75,8 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
         {
             DbAdapter = DbAdapter.Postgres,
             SchemasToInclude = ["public"],
-            TablesToIgnore = ["__EFMigrationsHistory"],
+            // "planos" vem do seed da migration (dados, não estado de teste).
+            TablesToIgnore = ["__EFMigrationsHistory", "planos"],
         });
 
         await _respawner.ResetAsync(conexao);

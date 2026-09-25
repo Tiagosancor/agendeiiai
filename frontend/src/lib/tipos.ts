@@ -237,6 +237,7 @@ export interface NegocioPublico {
   facebook: string | null;
   whatsApp: string | null;
   horarioFuncionamento: HorarioFuncionamentoDia[];
+  aceitaAgendamentoOnline: boolean;
 }
 
 export interface ServicoPublico {
@@ -359,3 +360,87 @@ export interface ProgressoFidelidade {
   descricaoRecompensa: string | null;
 }
 
+
+// --- Ajuste 4: planos, cadastro e primeiros passos (seções 6.4, 6.5 e 7) ---
+
+export type Periodicidade = "Mensal" | "Anual";
+
+export interface PlanoPublico {
+  id: string;
+  nome: string;
+  minimoProfissionais: number;
+  maximoProfissionais: number;
+  precoMensal: number;
+  precoAnualPorMes: number;
+  destaque: boolean;
+}
+
+export interface DisponibilidadeSlug {
+  disponivel: boolean;
+  motivo: string | null;
+}
+
+export interface PrimeirosPassos {
+  servicosCadastrados: boolean;
+  profissionaisCadastrados: boolean;
+  horariosConfigurados: boolean;
+  linkCopiado: boolean;
+  dispensado: boolean;
+  linkAgendamento: string;
+  exibir: boolean;
+}
+
+export const TIPOS_NEGOCIO: { valor: string; rotulo: string }[] = [
+  { valor: "Barbearia", rotulo: "Barbearia" },
+  { valor: "Salao", rotulo: "Salão de beleza" },
+  { valor: "ClinicaEstetica", rotulo: "Clínica de estética" },
+  { valor: "Autonomo", rotulo: "Profissional autônomo" },
+];
+
+export type EstadoAssinatura = "EmTeste" | "Ativa" | "Atrasada" | "Suspensa" | "Cancelada";
+
+export interface AvisoAssinatura {
+  estado: EstadoAssinatura;
+  prazo: string | null;
+  diasRestantes: number | null;
+  destacado: boolean;
+}
+
+export interface CobrancaAssinatura {
+  pagoEm: string;
+  valor: number;
+  forma: string;
+  periodoInicio: string;
+  periodoFim: string;
+  origem: string;
+}
+
+export interface DetalheAssinatura {
+  planoId: string;
+  plano: string;
+  periodicidade: Periodicidade;
+  estado: EstadoAssinatura;
+  precoMensalTravado: number;
+  valorDoPeriodo: number;
+  fimTeste: string | null;
+  proximoVencimento: string | null;
+  carenciaAte: string | null;
+  profissionaisAtivos: number;
+  maximoProfissionais: number;
+  cobrancas: CobrancaAssinatura[];
+}
+
+export interface InstrucoesPagamento {
+  link: string | null;
+  chavePix: string | null;
+  whatsAppContato: string | null;
+  texto: string;
+}
+
+export const ROTULOS_ESTADO_ASSINATURA: Record<EstadoAssinatura, string> = {
+  EmTeste: "Em teste",
+  Ativa: "Ativa",
+  Atrasada: "Pagamento pendente",
+  Suspensa: "Suspensa",
+  Cancelada: "Cancelada",
+};

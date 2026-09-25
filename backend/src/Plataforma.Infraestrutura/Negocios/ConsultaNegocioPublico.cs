@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Negocios;
 using Plataforma.Dominio.Negocios;
 using Plataforma.Infraestrutura.Persistencia;
@@ -8,10 +9,12 @@ namespace Plataforma.Infraestrutura.Negocios;
 public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
 {
     private readonly PlataformaDbContext _dbContext;
+    private readonly IConsultaSituacaoAssinatura _situacaoAssinatura;
 
-    public ConsultaNegocioPublico(PlataformaDbContext dbContext)
+    public ConsultaNegocioPublico(PlataformaDbContext dbContext, IConsultaSituacaoAssinatura situacaoAssinatura)
     {
         _dbContext = dbContext;
+        _situacaoAssinatura = situacaoAssinatura;
     }
 
     public async Task<NegocioResumo?> ObterPorSlugAsync(Slug slug, CancellationToken cancellationToken = default)
@@ -24,10 +27,14 @@ public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
             .Where(n => n.Ativo && n.Slug == slug)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return negocio is null ? null : Mapear(negocio);
+        if (negocio is null)
+            return null;
+
+        var situacao = await _situacaoAssinatura.ObterAsync(negocio.Id, cancellationToken);
+        return Mapear(negocio, aceitaAgendamentoOnline: situacao?.PermiteOperar ?? true);
     }
 
-    private static NegocioResumo Mapear(Negocio negocio) => new(
+    private static NegocioResumo Mapear(Negocio negocio, bool aceitaAgendamentoOnline) => new(
         negocio.Id, negocio.Slug.Valor, negocio.NomeExibido, negocio.Tipo.ToString(), negocio.Fuso,
         negocio.LogoUrl, negocio.CorPrimaria, negocio.CorSecundaria,
         negocio.TituloPagina, negocio.SubtituloPagina, negocio.TextoSobre,
@@ -35,5 +42,6 @@ public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
         negocio.Telefone, negocio.RedesSociais.Instagram, negocio.RedesSociais.Facebook, negocio.RedesSociais.WhatsApp,
         negocio.HorarioFuncionamento
             .Select(h => new HorarioFuncionamentoDiaDto((int)h.DiaSemana, h.Abertura, h.Fechamento, h.Fechado))
-            .ToList());
+            .ToList(),
+        aceitaAgendamentoOnline);
 }

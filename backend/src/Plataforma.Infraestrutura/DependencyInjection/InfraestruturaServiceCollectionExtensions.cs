@@ -5,8 +5,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Administracao;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Autenticacao;
+using Plataforma.Aplicacao.Cadastro;
 using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Contato;
 using Plataforma.Aplicacao.Cupons;
@@ -20,8 +23,11 @@ using Plataforma.Aplicacao.Publico;
 using Plataforma.Aplicacao.Servicos;
 using Plataforma.Aplicacao.Usuarios;
 using Plataforma.Aplicacao.Verificacao;
+using Plataforma.Infraestrutura.Administracao;
 using Plataforma.Infraestrutura.Agendamentos;
+using Plataforma.Infraestrutura.Assinaturas;
 using Plataforma.Infraestrutura.Autenticacao;
+using Plataforma.Infraestrutura.Cadastro;
 using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.Contato;
 using Plataforma.Infraestrutura.Cupons;
@@ -174,6 +180,24 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IServicoFinanceiro, ServicoFinanceiro>();
         servicos.AddScoped<IGerenciadorFidelidade, GerenciadorFidelidade>();
 
+        // Planos e assinatura do negócio (seção 7). Um gateway real entra como mais um
+        // IGatewayPagamento registrado aqui — o webhook descobre o provedor pela rota.
+        servicos.AddOptions<OpcoesCobranca>().Bind(configuracao.GetSection(OpcoesCobranca.Secao));
+        servicos.AddScoped<IGatewayPagamento, GatewayPagamentoManual>();
+        servicos.AddScoped<IProcessadorWebhookPagamento, ProcessadorWebhookPagamento>();
+        servicos.AddScoped<JobAtualizarAssinaturas>();
+        servicos.AddScoped<IConsultaSituacaoAssinatura, ConsultaSituacaoAssinatura>();
+
+        // Cadastro de negócio novo e checklist do primeiro acesso (seção 6.5).
+        servicos.AddScoped<IServicoCadastro, ServicoCadastro>();
+        servicos.AddScoped<IServicoPrimeirosPassos, ServicoPrimeirosPassos>();
+
+        // Tela de assinatura do negócio e administração da plataforma (seção 7).
+        servicos.AddScoped<IServicoAssinaturaNegocio, ServicoAssinaturaNegocio>();
+        servicos.AddScoped<IAdministracaoPlataforma, AdministracaoPlataforma>();
+        servicos.AddOptions<OpcoesCaptcha>().Bind(configuracao.GetSection(OpcoesCaptcha.Secao));
+        servicos.AddHttpClient<IVerificadorCaptcha, VerificadorCaptchaTurnstile>();
+
         // E-mail e WhatsApp: Fake em dev/testes, provedor real escolhido em runtime pela
         // configuração (seção 4) — nunca hardcoded, senão os testes de integração (que não
         // configuram Resend/Meta) tentariam bater numa API externa de verdade.
@@ -203,6 +227,8 @@ public static class InfraestruturaServiceCollectionExtensions
             .UsePostgreSqlStorage(opcoes => opcoes.UseNpgsqlConnection(ObterConnectionString(sp))));
 
         servicos.AddHangfireServer();
+        servicos.AddHostedService(sp => new Plataforma.Infraestrutura.Jobs.RegistroJobsRecorrentes(
+            sp, sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Plataforma.Infraestrutura.Jobs.RegistroJobsRecorrentes>>()));
 
         return servicos;
     }

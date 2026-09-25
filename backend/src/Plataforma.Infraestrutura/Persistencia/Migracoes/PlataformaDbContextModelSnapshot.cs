@@ -23,6 +23,98 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Plataforma.Dominio.Administracao.AdministradorPlataforma", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("nome");
+
+                    b.Property<string>("SenhaHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("senha_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_administradores_plataforma");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("ix_administradores_plataforma_email");
+
+                    b.ToTable("administradores_plataforma", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Administracao.LogAuditoriaPlataforma", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Acao")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("acao");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("Autor")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("autor");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Detalhes")
+                        .HasColumnType("text")
+                        .HasColumnName("detalhes");
+
+                    b.Property<Guid?>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_logs_auditoria_plataforma");
+
+                    b.HasIndex("CriadoEm")
+                        .HasDatabaseName("ix_logs_auditoria_plataforma_criado_em");
+
+                    b.HasIndex("NegocioId")
+                        .HasDatabaseName("ix_logs_auditoria_plataforma_negocio_id");
+
+                    b.ToTable("logs_auditoria_plataforma", (string)null);
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.Agendamentos.Agendamento", b =>
                 {
                     b.Property<Guid>("Id")
@@ -163,6 +255,499 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasDatabaseName("ix_agendamento_servicos_agendamento_id");
 
                     b.ToTable("agendamento_servicos", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.Assinatura", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset?>("CarenciaAte")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("carencia_ate");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Estado")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado");
+
+                    b.Property<DateTimeOffset?>("FimTeste")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fim_teste");
+
+                    b.Property<string>("IdExternoGateway")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("id_externo_gateway");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Periodicidade")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("periodicidade");
+
+                    b.Property<Guid>("PlanoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plano_id");
+
+                    b.Property<decimal>("PrecoMensalTravado")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("preco_mensal_travado");
+
+                    b.Property<string>("ProvedorGateway")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("provedor_gateway");
+
+                    b.Property<DateTimeOffset?>("ProximoVencimento")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("proximo_vencimento");
+
+                    b.Property<int?>("UltimoAvisoDias")
+                        .HasColumnType("integer")
+                        .HasColumnName("ultimo_aviso_dias");
+
+                    b.Property<uint>("Versao")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_assinaturas");
+
+                    b.HasIndex("Estado")
+                        .HasDatabaseName("ix_assinaturas_estado");
+
+                    b.HasIndex("NegocioId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_assinaturas_negocio_id");
+
+                    b.HasIndex("PlanoId")
+                        .HasDatabaseName("ix_assinaturas_plano_id");
+
+                    b.ToTable("assinaturas", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.CobrancaAssinatura", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssinaturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assinatura_id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("Autor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("autor");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Forma")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("forma");
+
+                    b.Property<string>("IdExterno")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("id_externo");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Origem")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("origem");
+
+                    b.Property<DateTimeOffset>("PagoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pago_em");
+
+                    b.Property<DateTimeOffset>("PeriodoFim")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("periodo_fim");
+
+                    b.Property<DateTimeOffset>("PeriodoInicio")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("periodo_inicio");
+
+                    b.Property<decimal>("Valor")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("valor");
+
+                    b.HasKey("Id")
+                        .HasName("pk_cobrancas_assinatura");
+
+                    b.HasIndex("AssinaturaId", "PagoEm")
+                        .HasDatabaseName("ix_cobrancas_assinatura_assinatura_id_pago_em");
+
+                    b.HasIndex("Origem", "IdExterno")
+                        .IsUnique()
+                        .HasDatabaseName("ix_cobrancas_assinatura_origem_id_externo")
+                        .HasFilter("id_externo IS NOT NULL");
+
+                    b.ToTable("cobrancas_assinatura", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.EventoWebhookPagamento", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("IdEvento")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("id_evento");
+
+                    b.Property<string>("Provedor")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("provedor");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("tipo");
+
+                    b.HasKey("Id")
+                        .HasName("pk_eventos_webhook_pagamento");
+
+                    b.HasIndex("Provedor", "IdEvento")
+                        .IsUnique()
+                        .HasDatabaseName("ix_eventos_webhook_pagamento_provedor_id_evento");
+
+                    b.ToTable("eventos_webhook_pagamento", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.HistoricoAssinatura", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AssinaturaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assinatura_id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("Autor")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("autor");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("EstadoAnterior")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado_anterior");
+
+                    b.Property<string>("EstadoNovo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("estado_novo");
+
+                    b.Property<string>("Motivo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("motivo");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_historico_assinaturas");
+
+                    b.HasIndex("AssinaturaId")
+                        .HasDatabaseName("ix_historico_assinaturas_assinatura_id");
+
+                    b.ToTable("historico_assinaturas", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.Plano", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<bool>("Destaque")
+                        .HasColumnType("boolean")
+                        .HasColumnName("destaque");
+
+                    b.Property<int>("MaximoProfissionais")
+                        .HasColumnType("integer")
+                        .HasColumnName("maximo_profissionais");
+
+                    b.Property<int>("MinimoProfissionais")
+                        .HasColumnType("integer")
+                        .HasColumnName("minimo_profissionais");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("nome");
+
+                    b.Property<int>("Ordem")
+                        .HasColumnType("integer")
+                        .HasColumnName("ordem");
+
+                    b.Property<decimal>("PrecoAnualPorMes")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("preco_anual_por_mes");
+
+                    b.Property<decimal>("PrecoMensal")
+                        .HasColumnType("numeric(10,2)")
+                        .HasColumnName("preco_mensal");
+
+                    b.HasKey("Id")
+                        .HasName("pk_planos");
+
+                    b.ToTable("planos", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("6f1c2a3b-4d5e-4f60-8a71-000000000001"),
+                            Ativo = true,
+                            CriadoEm = new DateTimeOffset(new DateTime(2026, 9, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Destaque = false,
+                            MaximoProfissionais = 3,
+                            MinimoProfissionais = 1,
+                            Nome = "Começo",
+                            Ordem = 1,
+                            PrecoAnualPorMes = 38.90m,
+                            PrecoMensal = 49.90m
+                        },
+                        new
+                        {
+                            Id = new Guid("6f1c2a3b-4d5e-4f60-8a71-000000000002"),
+                            Ativo = true,
+                            CriadoEm = new DateTimeOffset(new DateTime(2026, 9, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Destaque = true,
+                            MaximoProfissionais = 7,
+                            MinimoProfissionais = 4,
+                            Nome = "Ritmo",
+                            Ordem = 2,
+                            PrecoAnualPorMes = 68.90m,
+                            PrecoMensal = 79.90m
+                        },
+                        new
+                        {
+                            Id = new Guid("6f1c2a3b-4d5e-4f60-8a71-000000000003"),
+                            Ativo = true,
+                            CriadoEm = new DateTimeOffset(new DateTime(2026, 9, 24, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
+                            Destaque = false,
+                            MaximoProfissionais = 12,
+                            MinimoProfissionais = 8,
+                            Nome = "Casa Cheia",
+                            Ordem = 3,
+                            PrecoAnualPorMes = 88.90m,
+                            PrecoMensal = 99.90m
+                        });
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Cadastro.ChaveIdempotencia", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("Chave")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("chave");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("Escopo")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("escopo");
+
+                    b.Property<Guid?>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_chaves_idempotencia");
+
+                    b.HasIndex("Escopo", "Chave")
+                        .IsUnique()
+                        .HasDatabaseName("ix_chaves_idempotencia_escopo_chave");
+
+                    b.ToTable("chaves_idempotencia", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Cadastro.CodigoCadastro", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset>("ExpiraEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_em");
+
+                    b.Property<string>("HashCodigo")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("hash_codigo");
+
+                    b.Property<bool>("Invalidado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("invalidado");
+
+                    b.Property<int>("TentativasRestantes")
+                        .HasColumnType("integer")
+                        .HasColumnName("tentativas_restantes");
+
+                    b.Property<bool>("Usado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("usado");
+
+                    b.HasKey("Id")
+                        .HasName("pk_codigos_cadastro");
+
+                    b.HasIndex("Email", "CriadoEm")
+                        .HasDatabaseName("ix_codigos_cadastro_email_criado_em");
+
+                    b.ToTable("codigos_cadastro", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Cadastro.RegistroTesteGratis", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Telefone")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone");
+
+                    b.HasKey("Id")
+                        .HasName("pk_registros_teste_gratis");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("ix_registros_teste_gratis_email");
+
+                    b.HasIndex("Telefone")
+                        .IsUnique()
+                        .HasDatabaseName("ix_registros_teste_gratis_telefone");
+
+                    b.ToTable("registros_teste_gratis", (string)null);
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Clientes.Cliente", b =>
@@ -482,6 +1067,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("atualizado_em");
 
+                    b.Property<bool>("ChecklistDispensado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("checklist_dispensado");
+
                     b.Property<string>("CorPrimaria")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -506,6 +1095,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasMaxLength(60)
                         .HasColumnType("character varying(60)")
                         .HasColumnName("fuso");
+
+                    b.Property<bool>("LinkAgendamentoCopiado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("link_agendamento_copiado");
 
                     b.Property<string>("LogoUrl")
                         .HasMaxLength(500)
@@ -1057,6 +1650,36 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasConstraintName("fk_agendamento_servicos_agendamentos_agendamento_id");
                 });
 
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.Assinatura", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Assinaturas.Plano", null)
+                        .WithMany()
+                        .HasForeignKey("PlanoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_assinaturas_planos_plano_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.CobrancaAssinatura", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Assinaturas.Assinatura", null)
+                        .WithMany()
+                        .HasForeignKey("AssinaturaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_cobrancas_assinatura_assinaturas_assinatura_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.HistoricoAssinatura", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Assinaturas.Assinatura", null)
+                        .WithMany("Historico")
+                        .HasForeignKey("AssinaturaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_historico_assinaturas_assinaturas_assinatura_id");
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.Negocios.Negocio", b =>
                 {
                     b.OwnsMany("Plataforma.Dominio.Negocios.HorarioFuncionamentoDia", "HorarioFuncionamento", b1 =>
@@ -1364,6 +1987,11 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
             modelBuilder.Entity("Plataforma.Dominio.Agendamentos.Agendamento", b =>
                 {
                     b.Navigation("Servicos");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Assinaturas.Assinatura", b =>
+                {
+                    b.Navigation("Historico");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Usuarios.Usuario", b =>

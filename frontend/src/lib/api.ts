@@ -11,6 +11,8 @@ export class ErroApi extends Error {
   constructor(
     public status: number,
     message: string,
+    /** `codigo` do ProblemDetails da API (ex.: "limite_profissionais", "assinatura_suspensa"). */
+    public codigo?: string,
   ) {
     super(message);
   }
@@ -20,6 +22,7 @@ interface OpcoesRequisicao {
   metodo?: "GET" | "POST" | "PUT" | "DELETE";
   corpo?: unknown;
   tokenAcesso?: string | null;
+  cabecalhos?: Record<string, string>;
 }
 
 /**
@@ -34,19 +37,22 @@ export async function requisicaoApi<T>(caminho: string, opcoes: OpcoesRequisicao
     headers: {
       ...(opcoes.corpo !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(opcoes.tokenAcesso ? { Authorization: `Bearer ${opcoes.tokenAcesso}` } : {}),
+      ...opcoes.cabecalhos,
     },
     body: opcoes.corpo !== undefined ? JSON.stringify(opcoes.corpo) : undefined,
   });
 
   if (!resposta.ok) {
     let mensagem = `Erro ${resposta.status}`;
+    let codigo: string | undefined;
     try {
       const corpoErro = await resposta.json();
       mensagem = corpoErro.detail ?? corpoErro.title ?? mensagem;
+      codigo = corpoErro.codigo;
     } catch {
       // corpo não é JSON (ex.: 401 sem corpo) — mantém a mensagem genérica.
     }
-    throw new ErroApi(resposta.status, mensagem);
+    throw new ErroApi(resposta.status, mensagem, codigo);
   }
 
   return lerCorpoJson<T>(resposta);
@@ -78,13 +84,15 @@ export async function requisicaoAutenticacaoPainel<T>(caminho: "login" | "renova
 
   if (!resposta.ok) {
     let mensagem = `Erro ${resposta.status}`;
+    let codigo: string | undefined;
     try {
       const corpoErro = await resposta.json();
       mensagem = corpoErro.detail ?? corpoErro.title ?? mensagem;
+      codigo = corpoErro.codigo;
     } catch {
       // corpo não é JSON (ex.: 401 sem corpo) — mantém a mensagem genérica.
     }
-    throw new ErroApi(resposta.status, mensagem);
+    throw new ErroApi(resposta.status, mensagem, codigo);
   }
 
   return lerCorpoJson<T>(resposta);

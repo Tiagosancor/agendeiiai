@@ -13,4 +13,6 @@ public sealed record NegocioResumo(
     string? TituloPagina, string? SubtituloPagina, string? TextoSobre,
     string? Bairro, string? Cidade, string? Rua, string? Numero, string? Cep,
     string? Telefone, string? Instagram, string? Facebook, string? WhatsApp,
-    IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento);
+    IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento,
+    // Falso com a assinatura suspensa (seção 7) — a página mostra só o telefone, sem dizer por quê.
+    bool AceitaAgendamentoOnline);

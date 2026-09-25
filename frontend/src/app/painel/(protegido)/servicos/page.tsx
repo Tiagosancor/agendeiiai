@@ -5,6 +5,7 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { CategoriaResumo, ServicoResumo } from "@/lib/tipos";
+import { formatarReais } from "@/lib/formatacao";
 
 export default function PaginaServicos() {
   const { chamarApi } = useAutenticacao();
@@ -107,7 +108,7 @@ export default function PaginaServicos() {
                   <tr key={servico.id}>
                     <td className={classeTd}>{servico.nome}</td>
                     <td className={classeTd}>{nomeCategoria(servico.categoriaId)}</td>
-                    <td className={classeTd}>R$ {servico.preco.toFixed(2)}</td>
+                    <td className={classeTd}>{formatarReais(servico.preco)}</td>
                     <td className={classeTd}>{servico.duracaoMinutos} min</td>
                     <td className={classeTd}>{servico.popular ? "Sim" : "Não"}</td>
                     <td className={classeTd}>{servico.ativo ? "Ativo" : "Inativo"}</td>

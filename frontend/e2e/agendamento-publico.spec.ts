@@ -26,6 +26,21 @@ async function loginAdmin(request: APIRequestContext): Promise<string> {
   return corpo.accessToken as string;
 }
 
+// O plano do negócio de dev limita os profissionais ativos (seção 7): cada execução
+// desativa o profissional que criou, senão as execuções acumulam até estourar o limite.
+let profissionaisCriados: string[] = [];
+
+test.afterEach(async ({ request }) => {
+  if (profissionaisCriados.length === 0) return;
+  const token = await loginAdmin(request);
+  for (const id of profissionaisCriados) {
+    await request.post(`${API_BASE}/painel/profissionais/${id}/desativar`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+  profissionaisCriados = [];
+});
+
 function extrairCodigoDoLog(telefone: string): string {
   // Só funciona rodando local/CI com acesso ao daemon Docker do docker-compose deste
   // repositório — é exatamente o público-alvo deste teste (validação manual/CI local).
@@ -55,7 +70,9 @@ test("cliente agenda um serviço do início ao fim pelo assistente público", as
     headers: cabecalhos,
     data: { nome: `Profissional Playwright ${sufixo}`, funcao: "Barbeiro" },
   });
+  expect(respProfissional.ok()).toBeTruthy();
   const profissionalId = await respProfissional.json();
+  profissionaisCriados.push(profissionalId);
 
   await request.put(`${API_BASE}/painel/profissionais/${profissionalId}/horarios`, {
     headers: cabecalhos,
@@ -119,4 +136,73 @@ test("cliente agenda um serviço do início ao fim pelo assistente público", as
   // Sucesso (seção 6.3)
   await expect(assistente.getByText("Agendamento confirmado!")).toBeVisible({ timeout: 10_000 });
   await expect(assistente.getByText(nomeServico)).toBeVisible();
+});
+
+test("com 'Qualquer profissional', cada horário aparece uma vez só", async ({ page, request }) => {
+  const sufixo = Date.now().toString().slice(-8);
+  const nomeServico = `Barba Playwright ${sufixo}`;
+  const token = await loginAdmin(request);
+  const cabecalhos = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  const categoriaId = await (
+    await request.post(`${API_BASE}/painel/categorias`, { headers: cabecalhos, data: { nome: `Categoria Dupla ${sufixo}` } })
+  ).json();
+  const servicoId = await (
+    await request.post(`${API_BASE}/painel/servicos`, {
+      headers: cabecalhos,
+      data: { categoriaId, nome: nomeServico, preco: 30, duracaoMinutos: 30, popular: false },
+    })
+  ).json();
+
+  // Dois profissionais com o mesmo expediente e o mesmo serviço: a API devolve cada
+  // horário duas vezes (uma por profissional) — a tela precisa mostrar uma só.
+  for (const n of [1, 2]) {
+    const resposta = await request.post(`${API_BASE}/painel/profissionais`, {
+      headers: cabecalhos,
+      data: { nome: `Profissional Duplo ${n} ${sufixo}`, funcao: "Barbeiro" },
+    });
+    expect(resposta.ok()).toBeTruthy();
+    const id = await resposta.json();
+    profissionaisCriados.push(id);
+    await request.put(`${API_BASE}/painel/profissionais/${id}/horarios`, {
+      headers: cabecalhos,
+      data: [1, 2, 3, 4, 5, 6, 0].map((dia) => ({ diaSemana: dia, inicio: "08:00:00", fim: "12:00:00" })),
+    });
+    await request.post(`${API_BASE}/painel/profissionais/${id}/servicos`, { headers: cabecalhos, data: { servicoId } });
+  }
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Agendar", exact: true }).click();
+  const assistente = page.getByTestId("assistente-agendamento");
+  await assistente.getByRole("button", { name: new RegExp(nomeServico) }).click();
+  await assistente.getByRole("button", { name: "Continuar" }).click();
+
+  await assistente.locator(".overflow-x-auto button").nth(1).click();
+  const horarios = assistente.locator(".grid.grid-cols-3 button");
+  await expect(horarios.first()).toBeVisible({ timeout: 10_000 });
+
+  const textos = await horarios.allTextContents();
+  expect(textos.length).toBeGreaterThan(0);
+  expect(new Set(textos).size).toBe(textos.length);
+});
+
+test("à noite (depois das 21h no Brasil), o dia pedido à API é o mesmo dia mostrado na tela", async ({ browser }) => {
+  // 22h30 em Brasília = 01h30 UTC do dia seguinte: com toISOString() a tela mostrava um dia
+  // e pedia os horários do outro. Amanhã, para o dia continuar no futuro para a API.
+  const amanha = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const dia = amanha.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }); // AAAA-MM-DD
+  const contexto = await browser.newContext({ timezoneId: "America/Sao_Paulo", baseURL: "http://acme.agendeiiai.localhost:3000" });
+  const page = await contexto.newPage();
+  await page.clock.install({ time: new Date(`${dia}T22:30:00-03:00`) });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Agendar", exact: true }).click();
+  const assistente = page.getByTestId("assistente-agendamento");
+  await assistente.locator("button[aria-pressed]").first().click();
+  const pedido = page.waitForRequest((r) => r.url().includes("/horarios-livres"));
+  await assistente.getByRole("button", { name: "Continuar" }).click();
+
+  expect(new URL((await pedido).url()).searchParams.get("data")).toBe(dia);
+  await expect(assistente.locator(".overflow-x-auto button").first()).toContainText(String(Number(dia.slice(8))));
+  await contexto.close();
 });

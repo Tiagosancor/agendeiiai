@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Usuarios;
 
 namespace Plataforma.Api.Controllers.Painel;
@@ -31,8 +32,15 @@ public sealed class ProfissionaisController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Guid>> Criar(CriarProfissional dados, CancellationToken cancellationToken)
     {
-        var id = await _gerenciador.CriarAsync(dados, cancellationToken);
-        return CreatedAtAction(nameof(Obter), new { id }, id);
+        try
+        {
+            var id = await _gerenciador.CriarAsync(dados, cancellationToken);
+            return CreatedAtAction(nameof(Obter), new { id }, id);
+        }
+        catch (LimitePlanoAtingidoException excecao)
+        {
+            return LimiteAtingido(excecao);
+        }
     }
 
     [HttpPut("{id:guid}")]
@@ -44,8 +52,25 @@ public sealed class ProfissionaisController : ControllerBase
         await _gerenciador.DesativarAsync(id, cancellationToken) ? NoContent() : NotFound();
 
     [HttpPost("{id:guid}/ativar")]
-    public async Task<IActionResult> Ativar(Guid id, CancellationToken cancellationToken) =>
-        await _gerenciador.AtivarAsync(id, cancellationToken) ? NoContent() : NotFound();
+    public async Task<IActionResult> Ativar(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gerenciador.AtivarAsync(id, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (LimitePlanoAtingidoException excecao)
+        {
+            return LimiteAtingido(excecao);
+        }
+    }
+
+    /// <summary>O front usa o <c>codigo</c> para mostrar o botão de mudar de plano (seção 7).</summary>
+    private ObjectResult LimiteAtingido(LimitePlanoAtingidoException excecao) => Conflict(new ProblemDetails
+    {
+        Title = "Limite de profissionais do plano atingido.",
+        Detail = excecao.Message,
+        Extensions = { ["codigo"] = "limite_profissionais", ["maximo"] = excecao.Maximo },
+    });
 
     [HttpGet("{id:guid}/cpf")]
     public async Task<ActionResult<string>> RevelarCpf(Guid id, CancellationToken cancellationToken)

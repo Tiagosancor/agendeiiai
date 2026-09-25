@@ -3,6 +3,7 @@
 import { use, useEffect, useState } from "react";
 import { requisicaoApiPublica, ErroApi } from "@/lib/api";
 import type { DetalhePublicoAgendamento } from "@/lib/tipos";
+import { formatarReais } from "@/lib/formatacao";
 
 function formatarDataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" });
@@ -86,7 +87,7 @@ export default function PaginaMeuAgendamento({ params }: { params: Promise<{ tok
         <p className="mt-1 text-sm text-gray-800 dark:text-neutral-200">{formatarDataHora(detalhe.inicio)}</p>
         <p className="text-sm text-gray-600 dark:text-neutral-400">{detalhe.servicos.join(", ")}</p>
         <p className="text-sm text-gray-600 dark:text-neutral-400">{detalhe.local}</p>
-        <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-neutral-50">Total: R$ {detalhe.total.toFixed(2)}</p>
+        <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-neutral-50">Total: {formatarReais(detalhe.total)}</p>
       </div>
 
       {mensagem && <p className="text-sm text-gray-700 dark:text-neutral-300">{mensagem}</p>}

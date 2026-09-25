@@ -54,6 +54,11 @@ services:
       WhatsApp__Meta__Token: ${WHATSAPP_TOKEN_ACESSO:-}
       WhatsApp__Meta__NumeroTelefoneId: ${WHATSAPP_ID_NUMERO_TELEFONE:-}
       WhatsApp__PermitirNaoOficial: ${WHATSAPP__PERMITIRNAOOFICIAL:-false}
+      # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
+      Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
+      Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}
+      # Cloudflare Turnstile no cadastro (seção 8.6.1). Vazio = captcha desligado.
+      Captcha__ChaveSecreta: ${TURNSTILE_CHAVE_SECRETA:-}
     ports:
       - "${API_PORTA_HOST:-5080}:8080"
 
@@ -74,6 +79,9 @@ services:
       MARCA_DOMINIO: ${MARCA_DOMINIO:-agendeiiai.localhost}
       MARCA_NOME_PRODUTO: ${MARCA_NOME_PRODUTO:-Agendeiiai}
       API_URL_INTERNA: http://api:8080
+      TURNSTILE_CHAVE_SITE: ${TURNSTILE_CHAVE_SITE:-}
+      # "Fale com a gente" e contato do site do produto (seção 6.4) — o mesmo número da cobrança.
+      CONTATO_WHATSAPP: ${COBRANCA_WHATSAPP_CONTATO:-}
     ports:
       - "${FRONTEND_PORTA_HOST:-3000}:3000"
 
