@@ -5,6 +5,7 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { CupomResumo } from "@/lib/tipos";
+import { formatarReais } from "@/lib/formatacao";
 
 export default function PaginaCupons() {
   const { chamarApi } = useAutenticacao();
@@ -59,7 +60,7 @@ export default function PaginaCupons() {
               {cupons?.map((cupom) => (
                 <tr key={cupom.id}>
                   <td className={classeTd}>{cupom.codigo}</td>
-                  <td className={classeTd}>{cupom.tipo === "Percentual" ? `${cupom.valor}%` : `R$ ${cupom.valor.toFixed(2)}`}</td>
+                  <td className={classeTd}>{cupom.tipo === "Percentual" ? `${cupom.valor}%` : formatarReais(cupom.valor)}</td>
                   <td className={classeTd}>{cupom.validoAte ? new Date(cupom.validoAte).toLocaleDateString("pt-BR") : "Sem validade"}</td>
                   <td className={classeTd}>
                     {cupom.usosAtuais}

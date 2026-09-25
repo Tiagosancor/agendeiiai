@@ -14,9 +14,10 @@ import type {
   ServicoResumo,
 } from "@/lib/tipos";
 import { FORMAS_PAGAMENTO } from "@/lib/tipos";
+import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 
 function hojeISO(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dataLocalIso();
 }
 
 function formatarHora(iso: string): string {
@@ -111,7 +112,7 @@ export default function PaginaAgenda() {
               </div>
               <p className="text-sm text-gray-700 dark:text-neutral-300">{item.clienteNome}</p>
               <p className="text-xs text-gray-500 dark:text-neutral-400">
-                {item.servicos.join(", ")} · R$ {item.total.toFixed(2)}
+                {item.servicos.join(", ")} · {formatarReais(item.total)}
               </p>
               {item.observacoes && <p className="text-xs text-gray-500 dark:text-neutral-400">Obs.: {item.observacoes}</p>}
             </div>
@@ -339,7 +340,7 @@ function ModalNovoAgendamento({
             {servicos.map((s) => (
               <label key={s.id} className="flex items-center gap-2 text-sm text-gray-700 dark:text-neutral-200">
                 <input type="checkbox" checked={servicoIdsSelecionados.includes(s.id)} onChange={() => alternarServico(s.id)} />
-                {s.nome} — R$ {s.preco.toFixed(2)} ({s.duracaoMinutos} min)
+                {s.nome} — {formatarReais(s.preco)} ({s.duracaoMinutos} min)
               </label>
             ))}
             {servicos.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Nenhum serviço ativo.</p>}

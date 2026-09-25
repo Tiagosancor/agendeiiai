@@ -6,6 +6,7 @@ import type { CategoriaComServicosPublicos, NegocioPublico, ProfissionalPublico 
 import { NOMES_DIAS_SEMANA } from "@/lib/tipos";
 import { AssistenteAgendamento } from "@/components/publico/AssistenteAgendamento";
 import { BotaoTema } from "@/components/BotaoTema";
+import { formatarReais } from "@/lib/formatacao";
 
 function iniciaisNome(nome: string): string {
   return nome
@@ -157,7 +158,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
                       <span className="font-medium text-gray-900 dark:text-neutral-50">{s.nome}</span>
                       <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">{s.duracaoMinutos} min</span>
                     </span>
-                    <span className="font-semibold text-(--cor-primaria)">R$ {s.preco.toFixed(2)}</span>
+                    <span className="font-semibold text-(--cor-primaria)">{formatarReais(s.preco)}</span>
                   </button>
                 ))}
               </div>
@@ -191,7 +192,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
                             <span className="text-gray-900 dark:text-neutral-50">{s.nome}</span>
                             <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">{s.duracaoMinutos} min</span>
                           </span>
-                          <span className="font-semibold text-(--cor-primaria)">R$ {s.preco.toFixed(2)}</span>
+                          <span className="font-semibold text-(--cor-primaria)">{formatarReais(s.preco)}</span>
                         </button>
                       ))}
                     </div>

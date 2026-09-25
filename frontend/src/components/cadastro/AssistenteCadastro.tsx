@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ErroApi, requisicaoApi, requisicaoAutenticacaoPainel } from "@/lib/api";
 import type { DisponibilidadeSlug, Periodicidade, PlanoPublico } from "@/lib/tipos";
 import { TIPOS_NEGOCIO } from "@/lib/tipos";
-import { forcaSenha, formatarReais, paraE164, sugerirSlug } from "@/lib/formatacao";
+import { faixaProfissionais, forcaSenha, formatarReais, paraE164, sugerirSlug } from "@/lib/formatacao";
 import { classeInput, classeLabel } from "@/components/estilos";
 import { CaptchaTurnstile } from "@/components/CaptchaTurnstile";
 
@@ -14,12 +14,6 @@ type Etapa = 1 | 2 | 3 | 4 | 5;
 type SituacaoSlug = { estado: "vazio" | "verificando" | "livre" | "indisponivel"; motivo?: string | null };
 
 const ROTULOS_FORCA = ["Fraca", "Razoável", "Boa", "Forte"];
-
-export function faixaProfissionais(plano: PlanoPublico): string {
-  return plano.minimoProfissionais <= 1
-    ? `Até ${plano.maximoProfissionais} profissionais`
-    : `${plano.minimoProfissionais} a ${plano.maximoProfissionais} profissionais`;
-}
 
 /**
  * Cadastro de negócio novo em etapas (seção 6.5), no mesmo formato do assistente de

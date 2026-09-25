@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useAutenticacao } from "@/lib/auth-context";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
+import { formatarReais } from "@/lib/formatacao";
 import {
   NOMES_DIAS_SEMANA,
   type BloqueioResumo,
@@ -43,10 +44,14 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
   const [mensagem, setMensagem] = useState<string | null>(null);
   const [diaReplicando, setDiaReplicando] = useState<number | null>(null);
   const [diasAlvo, setDiasAlvo] = useState<number[]>([]);
+  // Até o GET chegar, os cartões não aparecem: antes, "Adicionar intervalo" já ficava
+  // clicável com a lista vazia e a resposta do carregamento apagava o que foi adicionado.
+  const [carregado, setCarregado] = useState(false);
 
   const carregar = useCallback(async () => {
     const resposta = await chamarApi<IntervaloTrabalho[]>(`/painel/profissionais/${profissionalId}/horarios`);
     setIntervalos(resposta.map((intervalo) => ({ ...intervalo, chave: crypto.randomUUID() })));
+    setCarregado(true);
   }, [chamarApi, profissionalId]);
 
   useEffect(() => {
@@ -116,88 +121,93 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
         horário de um dia pra outros dias da semana.
       </p>
 
-      <div className="space-y-3">
-        {NOMES_DIAS_SEMANA.map((nome, dia) => {
-          const doDia = intervalos.filter((i) => i.diaSemana === dia);
+      {!carregado ? (
+        <p className="text-sm text-gray-500 dark:text-neutral-400">Carregando horários...</p>
+      ) : (
+        <div className="space-y-3">
+          {NOMES_DIAS_SEMANA.map((nome, dia) => {
+            const doDia = intervalos.filter((i) => i.diaSemana === dia);
 
-          return (
-            <div key={dia} className={`${classeCartao} p-4`} data-testid={`dia-horario-${dia}`}>
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h3 className="font-medium text-gray-900 dark:text-neutral-50">{nome}</h3>
-                <div className="flex gap-2">
-                  <button type="button" className={classeBotaoSecundario} onClick={() => adicionarIntervalo(dia)}>
-                    Adicionar intervalo
-                  </button>
-                  <button
-                    type="button"
-                    disabled={doDia.length === 0}
-                    className={classeBotaoSecundario}
-                    onClick={() => abrirReplicar(dia)}
-                  >
-                    Replicar para...
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {doDia.map((intervalo) => (
-                  <div key={intervalo.chave} className="flex flex-wrap items-center gap-2">
-                    <input
-                      type="time"
-                      className={`${classeInput} w-28`}
-                      value={intervalo.inicio.slice(0, 5)}
-                      onChange={(e) => atualizarIntervalo(intervalo.chave, { inicio: `${e.target.value}:00` })}
-                    />
-                    <span>até</span>
-                    <input
-                      type="time"
-                      className={`${classeInput} w-28`}
-                      value={intervalo.fim.slice(0, 5)}
-                      onChange={(e) => atualizarIntervalo(intervalo.chave, { fim: `${e.target.value}:00` })}
-                    />
+            return (
+              <div key={dia} className={`${classeCartao} p-4`} data-testid={`dia-horario-${dia}`}>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-medium text-gray-900 dark:text-neutral-50">{nome}</h3>
+                  <div className="flex gap-2">
+                    <button type="button" className={classeBotaoSecundario} onClick={() => adicionarIntervalo(dia)}>
+                      Adicionar intervalo
+                    </button>
                     <button
                       type="button"
-                      className="text-sm text-red-600 hover:underline dark:text-red-400"
-                      onClick={() => removerIntervalo(intervalo.chave)}
+                      disabled={doDia.length === 0}
+                      className={classeBotaoSecundario}
+                      onClick={() => abrirReplicar(dia)}
                     >
-                      Remover
-                    </button>
-                  </div>
-                ))}
-                {doDia.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Sem expediente nesse dia.</p>}
-              </div>
-
-              {diaReplicando === dia && (
-                <div className="mt-3 space-y-2 rounded-lg border border-marca-acento/40 bg-amber-50 p-3 dark:border-marca-acento/30 dark:bg-amber-950/40">
-                  <p className="text-sm font-medium text-gray-700 dark:text-neutral-200">Replicar {nome} para:</p>
-                  <div className="flex flex-wrap gap-3">
-                    {NOMES_DIAS_SEMANA.map(
-                      (nomeAlvo, diaAlvo) =>
-                        diaAlvo !== dia && (
-                          <label key={diaAlvo} className="flex items-center gap-1 text-sm text-gray-700 dark:text-neutral-200">
-                            <input type="checkbox" checked={diasAlvo.includes(diaAlvo)} onChange={() => alternarDiaAlvo(diaAlvo)} />
-                            {nomeAlvo}
-                          </label>
-                        ),
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    <button type="button" disabled={diasAlvo.length === 0} className={classeBotaoPrimario} onClick={aplicarReplicar}>
-                      Aplicar
-                    </button>
-                    <button type="button" className={classeBotaoSecundario} onClick={() => setDiaReplicando(null)}>
-                      Cancelar
+                      Replicar para...
                     </button>
                   </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+
+                <div className="space-y-2">
+                  {doDia.map((intervalo) => (
+                    <div key={intervalo.chave} className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="time"
+                        className={`${classeInput} w-28`}
+                        value={intervalo.inicio.slice(0, 5)}
+                        onChange={(e) => atualizarIntervalo(intervalo.chave, { inicio: `${e.target.value}:00` })}
+                      />
+                      <span>até</span>
+                      <input
+                        type="time"
+                        className={`${classeInput} w-28`}
+                        value={intervalo.fim.slice(0, 5)}
+                        onChange={(e) => atualizarIntervalo(intervalo.chave, { fim: `${e.target.value}:00` })}
+                      />
+                      <button
+                        type="button"
+                        className="text-sm text-red-600 hover:underline dark:text-red-400"
+                        onClick={() => removerIntervalo(intervalo.chave)}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                  {doDia.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Sem expediente nesse dia.</p>}
+                </div>
+
+                {diaReplicando === dia && (
+                  <div className="mt-3 space-y-2 rounded-lg border border-marca-acento/40 bg-amber-50 p-3 dark:border-marca-acento/30 dark:bg-amber-950/40">
+                    <p className="text-sm font-medium text-gray-700 dark:text-neutral-200">Replicar {nome} para:</p>
+                    <div className="flex flex-wrap gap-3">
+                      {NOMES_DIAS_SEMANA.map(
+                        (nomeAlvo, diaAlvo) =>
+                          diaAlvo !== dia && (
+                            <label key={diaAlvo} className="flex items-center gap-1 text-sm text-gray-700 dark:text-neutral-200">
+                              <input type="checkbox" checked={diasAlvo.includes(diaAlvo)} onChange={() => alternarDiaAlvo(diaAlvo)} />
+                              {nomeAlvo}
+                            </label>
+                          ),
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={diasAlvo.length === 0} className={classeBotaoPrimario} onClick={aplicarReplicar}>
+                        Aplicar
+                      </button>
+                      <button type="button" className={classeBotaoSecundario} onClick={() => setDiaReplicando(null)}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="mt-3 flex items-center justify-between">
-        <button type="button" disabled={salvando} className={classeBotaoPrimario} onClick={salvar}>
+        {/* Salvar antes de carregar gravaria a lista vazia por cima do horário real (PUT substitui tudo). */}
+        <button type="button" disabled={salvando || !carregado} className={classeBotaoPrimario} onClick={salvar}>
           {salvando ? "Salvando..." : "Salvar horário"}
         </button>
         {mensagem && <p className="text-sm text-gray-600 dark:text-neutral-300">{mensagem}</p>}
@@ -333,7 +343,7 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
         {vinculados.map((v) => (
           <div key={v.servicoId} className="flex items-center justify-between px-4 py-2 text-sm">
             <span>
-              {v.nome} — R$ {v.preco.toFixed(2)} ({v.duracaoMinutos} min)
+              {v.nome} — {formatarReais(v.preco)} ({v.duracaoMinutos} min)
             </span>
             <button className="text-red-600 hover:underline dark:text-red-400" onClick={() => desvincular(v.servicoId)}>
               Remover

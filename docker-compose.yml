@@ -80,6 +80,8 @@ services:
       MARCA_NOME_PRODUTO: ${MARCA_NOME_PRODUTO:-Agendeiiai}
       API_URL_INTERNA: http://api:8080
       TURNSTILE_CHAVE_SITE: ${TURNSTILE_CHAVE_SITE:-}
+      # "Fale com a gente" e contato do site do produto (seção 6.4) — o mesmo número da cobrança.
+      CONTATO_WHATSAPP: ${COBRANCA_WHATSAPP_CONTATO:-}
     ports:
       - "${FRONTEND_PORTA_HOST:-3000}:3000"
 

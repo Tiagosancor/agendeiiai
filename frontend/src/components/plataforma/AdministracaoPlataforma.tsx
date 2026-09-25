@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ErroApi, requisicaoApi } from "@/lib/api";
 import type { EstadoAssinatura, Periodicidade, PlanoPublico } from "@/lib/tipos";
 import { ROTULOS_ESTADO_ASSINATURA } from "@/lib/tipos";
-import { formatarReais } from "@/lib/formatacao";
+import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import { classeBotaoPerigo, classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 
 interface NegocioNaPlataforma {
@@ -39,13 +39,13 @@ function data(iso: string | null): string {
 }
 
 function hojeIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dataLocalIso();
 }
 
 function somarMeses(diaIso: string, meses: number): string {
   const d = new Date(`${diaIso}T12:00:00`);
   d.setMonth(d.getMonth() + meses);
-  return d.toISOString().slice(0, 10);
+  return dataLocalIso(d);
 }
 
 /**

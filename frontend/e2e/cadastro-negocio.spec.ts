@@ -27,12 +27,19 @@ test("visitante escolhe plano, cadastra o negócio e entra no painel em menos de
   const sufixo = Date.now().toString().slice(-8);
   const email = `dono-${sufixo}@teste.dev`;
 
-  await page.goto(`${RAIZ}/cadastro`);
-  const assistente = page.getByTestId("assistente-cadastro");
+  // 0. Site do produto (seção 6.4): escolhe o plano no card, já no anual.
+  await page.goto(RAIZ);
+  const planos = page.locator("#planos");
+  await planos.getByRole("radio", { name: "Anual" }).click();
+  const ritmo = planos.getByTestId("card-plano").filter({ hasText: "Ritmo" });
+  await expect(ritmo).toContainText("Mais escolhido");
+  await expect(ritmo).toContainText("68,90");
+  await ritmo.getByRole("link", { name: "Começar teste grátis" }).click();
 
-  // 1. Plano
-  await assistente.getByRole("radio", { name: "Anual" }).click();
-  await assistente.getByRole("radio", { name: /Ritmo/ }).click();
+  // 1. Plano — chega pré-selecionado do card clicado.
+  const assistente = page.getByTestId("assistente-cadastro");
+  await expect(assistente.getByRole("radio", { name: "Anual" })).toHaveAttribute("aria-checked", "true");
+  await expect(assistente.getByRole("radio", { name: /Ritmo/ })).toBeChecked();
   await expect(assistente.getByText("Depois,")).toContainText("68,90");
   await assistente.getByRole("button", { name: "Continuar" }).click();
 

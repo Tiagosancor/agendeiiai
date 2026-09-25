@@ -5,8 +5,7 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { ErroApi, requisicaoApi } from "@/lib/api";
 import type { DetalheAssinatura, InstrucoesPagamento, Periodicidade, PlanoPublico } from "@/lib/tipos";
 import { ROTULOS_ESTADO_ASSINATURA } from "@/lib/tipos";
-import { formatarReais } from "@/lib/formatacao";
-import { faixaProfissionais } from "@/components/cadastro/AssistenteCadastro";
+import { faixaProfissionais, formatarReais } from "@/lib/formatacao";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeTd, classeTh } from "@/components/estilos";
 
 function formatarData(iso: string | null): string {

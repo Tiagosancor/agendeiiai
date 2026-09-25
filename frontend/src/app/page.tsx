@@ -1,16 +1,15 @@
-import Link from "next/link";
 import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { extrairSlugDoHost } from "@/lib/dominio";
-import { buscarNegocioPorSlug } from "@/lib/api-servidor";
+import { buscarNegocioPorSlug, buscarPlanos } from "@/lib/api-servidor";
 import { PaginaNegocio } from "@/components/publico/PaginaNegocio";
-import { BotaoTema } from "@/components/BotaoTema";
+import { SiteProduto } from "@/components/site/SiteProduto";
 
 /**
  * Serve dois papéis, dependendo do host resolvido pelo `proxy.ts` (seção 8.3.3):
  * - `{slug}.{dominio}`: a página pública do negócio (seção 6.1) — o `proxy.ts` já
  *   confirmou que o negócio existe antes de deixar a requisição chegar aqui.
- * - domínio base ou `app.{dominio}`: sem negócio, só um link para o painel.
+ * - domínio base ou `app.{dominio}`: sem negócio, o site do produto (seção 6.4).
  *
  * `force-dynamic` é obrigatório aqui: `MARCA_DOMINIO` só existe como variável de
  * ambiente em runtime (nunca em build-time, dentro do Dockerfile), então na primeira
@@ -23,7 +22,34 @@ import { BotaoTema } from "@/components/BotaoTema";
 export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const negocio = await obterNegocioDoHostAtual();
-  return negocio ? { title: negocio.nomeExibido } : {};
+  if (negocio) return { title: negocio.nomeExibido };
+
+  // Site do produto (seção 6.4): SEO e imagem de compartilhamento só aqui — a página de
+  // cada negócio nunca leva a marca do produto (white-label, seção 5).
+  const nomeProduto = process.env.MARCA_NOME_PRODUTO ?? "Plataforma";
+  const titulo = `${nomeProduto}: agendamento online para barbearias, salões e clínicas`;
+  const descricao =
+    "Seus clientes marcam sozinhos pelo link do seu negócio e confirmam com um código. Agenda por profissional, lembretes, financeiro e fidelidade. Teste grátis por 30 dias, sem cartão.";
+  const listaCabecalhos = await headers();
+  const host = listaCabecalhos.get("x-forwarded-host") ?? listaCabecalhos.get("host") ?? "localhost";
+  const esquema = listaCabecalhos.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
+
+  return {
+    metadataBase: new URL(`${esquema}://${host}`),
+    title: { absolute: titulo },
+    description: descricao,
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      locale: "pt_BR",
+      siteName: nomeProduto,
+      title: titulo,
+      description: descricao,
+      url: "/",
+      images: [{ url: "/site/og.png", width: 1200, height: 630, alt: nomeProduto }],
+    },
+    twitter: { card: "summary_large_image", title: titulo, description: descricao, images: ["/site/og.png"] },
+  };
 }
 
 export default async function Home() {
@@ -33,43 +59,13 @@ export default async function Home() {
     return <PaginaNegocio negocio={negocio} />;
   }
 
-  const nomeProduto = process.env.MARCA_NOME_PRODUTO ?? "Plataforma";
-
+  const planos = await buscarPlanos();
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
-      <BotaoTema className="fixed right-4 top-4" />
-      {/* Logotipo completo (ícone + palavra + tagline, seção 5.1) — único contexto "grande"
-          que a marca do produto em si tem hoje (sem tenant resolvido); não existe
-          landing/site de vendas neste MVP. A variante sai da variante `dark:`, que lê o
-          mesmo data-theme do fundo (lib/tema.tsx) — nunca uma lógica separada.
-          Versão "-enquadrado": mesmo desenho, só o viewBox sem a margem lateral vazia do
-          original — senão a tagline fica minúscula em qualquer largura razoável. */}
-      <img
-        src="/brand/agendeiiai-logotipo-completo-texto-escuro-enquadrado.svg"
-        alt={nomeProduto}
-        width={440}
-        height={440}
-        data-testid="logo-claro"
-        className="h-auto w-full max-w-[308px] dark:hidden sm:max-w-[336px]"
-      />
-      <img
-        src="/brand/agendeiiai-logotipo-completo-enquadrado.svg"
-        alt={nomeProduto}
-        width={440}
-        height={440}
-        data-testid="logo-escuro"
-        className="hidden h-auto w-full max-w-[308px] dark:block sm:max-w-[336px]"
-      />
-      <p className="max-w-sm text-sm text-gray-500 dark:text-neutral-400">
-        Acesse pelo endereço do seu negócio para ver a página de agendamento, ou entre no painel.
-      </p>
-      <Link
-        href="/painel/login"
-        className="rounded-lg bg-marca-primaria px-4 py-2 text-sm font-medium text-white transition hover:bg-marca-primaria-hover"
-      >
-        Entrar no painel
-      </Link>
-    </main>
+    <SiteProduto
+      nomeProduto={process.env.MARCA_NOME_PRODUTO ?? "Plataforma"}
+      planos={planos}
+      whatsApp={(process.env.CONTATO_WHATSAPP ?? "").replace(/D/g, "") || null}
+    />
   );
 }
 
