@@ -227,6 +227,8 @@ public static class InfraestruturaServiceCollectionExtensions
             .UsePostgreSqlStorage(opcoes => opcoes.UseNpgsqlConnection(ObterConnectionString(sp))));
 
         servicos.AddHangfireServer();
+        servicos.AddHostedService(sp => new Plataforma.Infraestrutura.Jobs.RegistroJobsRecorrentes(
+            sp, sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Plataforma.Infraestrutura.Jobs.RegistroJobsRecorrentes>>()));
 
         return servicos;
     }

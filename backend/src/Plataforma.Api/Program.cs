@@ -176,30 +176,9 @@ var app = builder.Build();
 if (await Plataforma.Api.Comandos.ComandosDeLinha.ExecutarSeHouverAsync(app.Services, args))
     return;
 
-// Expira reservas vencidas em todo o sistema, a cada minuto (seção 8.2.2) — cobre o caso
-// de alguém reservar um horário e simplesmente abandonar o fluxo, sem que ninguém mais
-// tente agendar justamente aquele profissional depois (o que também expira sob demanda).
-// API baseada em serviço (não a estática RecurringJob.*): a estática depende do singleton
-// global JobStorage.Current, que não isola bem entre containers de DI diferentes (quebra
-// o WebApplicationFactory dos testes de integração, que cria um container por teste).
-using (var escopoJobs = app.Services.CreateScope())
-{
-    var gerenciadorRecorrentes = escopoJobs.ServiceProvider.GetRequiredService<IRecurringJobManager>();
-
-    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobExpirarReservas>(
-        "expirar-reservas", job => job.ExecutarAsync(CancellationToken.None), "*/1 * * * *");
-
-    // Lembretes 24h/2h antes (seção 9, Sprint 4) — varre em vez de agendar um job por
-    // agendamento, justamente para sobreviver à hibernação da API (seção 8.5.6).
-    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Agendamentos.JobEnviarLembretes>(
-        "enviar-lembretes", job => job.ExecutarAsync(CancellationToken.None), "*/5 * * * *");
-
-    // Teste → carência → suspensa e avisos de 7/3/1 dias (seção 7). De hora em hora em vez
-    // de diário: mesma varredura idempotente, mas sem um negócio passar quase um dia inteiro
-    // no estado errado se a API hibernar no horário do job.
-    gerenciadorRecorrentes.AddOrUpdate<Plataforma.Infraestrutura.Assinaturas.JobAtualizarAssinaturas>(
-        "atualizar-assinaturas", job => job.ExecutarAsync(CancellationToken.None), "0 * * * *");
-}
+// Jobs recorrentes (expirar-reservas, enviar-lembretes, atualizar-assinaturas): registrados
+// em segundo plano por RegistroJobsRecorrentes (AdicionarInfraestrutura), nunca aqui — um
+// lock do Hangfire preso por um container anterior derrubava a subida da API inteira.
 
 if (app.Environment.IsDevelopment())
 {
