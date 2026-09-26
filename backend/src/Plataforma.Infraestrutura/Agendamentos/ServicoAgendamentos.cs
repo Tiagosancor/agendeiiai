@@ -78,6 +78,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         if (servicos.Count != dados.ServicoIds.Distinct().Count())
             return ResultadoAgendamento.ComErro("Um ou mais serviços não foram encontrados.");
 
+        // O painel confirma na hora, e um agendamento confirmado sempre tem cliente (antes isso
+        // estourava na entidade e virava 500 — seção 8.2.4: nunca 500).
+        if (confirmarDeImediato && dados.ClienteId is null)
+            return ResultadoAgendamento.ComErro("Escolha o cliente do agendamento.");
+
         var overrides = await _dbContext.ProfissionalServicos.AsNoTracking()
             .Where(ps => ps.ProfissionalId == dados.ProfissionalId && dados.ServicoIds.Contains(ps.ServicoId))
             .ToListAsync(cancellationToken);
