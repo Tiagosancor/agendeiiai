@@ -13,10 +13,12 @@ namespace Plataforma.Api.Autenticacao;
 public sealed class ContextoNegocioClaimsTransformation : IClaimsTransformation
 {
     private readonly IContextoNegocio _contextoNegocio;
+    private readonly IUsuarioAtual _usuarioAtual;
 
-    public ContextoNegocioClaimsTransformation(IContextoNegocio contextoNegocio)
+    public ContextoNegocioClaimsTransformation(IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual)
     {
         _contextoNegocio = contextoNegocio;
+        _usuarioAtual = usuarioAtual;
     }
 
     public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
@@ -26,6 +28,14 @@ public sealed class ContextoNegocioClaimsTransformation : IClaimsTransformation
         if (!_contextoNegocio.TemNegocio && Guid.TryParse(negocioIdBruto, out var negocioId))
             _contextoNegocio.Definir(negocioId);
 
+        // Autor das ações (log de auditoria, "ninguém exclui o próprio usuário" — seção 7).
+        if (_usuarioAtual.UsuarioId is null && Guid.TryParse(ObterUsuarioId(principal), out var usuarioId))
+            _usuarioAtual.Definir(usuarioId, principal.FindFirst(ClaimTypes.Email)?.Value ?? principal.FindFirst("email")?.Value);
+
         return Task.FromResult(principal);
     }
+
+    /// <summary>"sub" do token — o manipulador de JWT pode tê-lo mapeado para NameIdentifier.</summary>
+    public static string? ObterUsuarioId(ClaimsPrincipal principal) =>
+        principal.FindFirst("sub")?.Value ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 }

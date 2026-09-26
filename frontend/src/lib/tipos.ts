@@ -19,7 +19,9 @@ export type Permissao =
   | "GerenciarAgenda"
   | "VerFinanceiro"
   | "GerenciarCupons"
-  | "GerenciarFidelidade";
+  | "GerenciarFidelidade"
+  | "EditarCadastros"
+  | "ExcluirCadastros";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -32,7 +34,48 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "VerFinanceiro", rotulo: "Ver financeiro" },
   { valor: "GerenciarCupons", rotulo: "Gerenciar cupons" },
   { valor: "GerenciarFidelidade", rotulo: "Gerenciar fidelidade" },
+  { valor: "EditarCadastros", rotulo: "Editar cadastros (usuários, profissionais, serviços)" },
+  { valor: "ExcluirCadastros", rotulo: "Excluir cadastros (usuários, profissionais, serviços)" },
 ];
+
+/** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
+export interface Endereco {
+  bairro: string | null;
+  cidade: string | null;
+  rua: string | null;
+  numero: string | null;
+  cep: string | null;
+}
+
+export const ENDERECO_VAZIO: Endereco = { bairro: null, cidade: null, rua: null, numero: null, cep: null };
+
+/** Profissional ativo que executa todos os serviços do agendamento (seção 7). */
+export interface OpcaoTransferencia {
+  id: string;
+  nome: string;
+}
+
+export interface AgendamentoFuturoParaExclusao {
+  id: string;
+  inicio: string;
+  fim: string;
+  cliente: string;
+  servicos: string[];
+  profissionaisPossiveis: OpcaoTransferencia[];
+}
+
+/** O que a janela de confirmação de exclusão explica (seção 7). */
+export interface PreviaExclusao {
+  nome: string;
+  temHistorico: boolean;
+  agendamentosFuturos: number;
+  bloqueio: string | null;
+  futuros: AgendamentoFuturoParaExclusao[];
+}
+
+export interface RespostaExclusao {
+  mantidoNoHistorico: boolean;
+}
 
 export interface UsuarioResumo {
   id: string;
@@ -53,6 +96,7 @@ export interface UsuarioDetalhe {
   fotoUrl: string | null;
   cpfMascarado: string | null;
   permissoes: Permissao[];
+  endereco: Endereco | null;
 }
 
 export interface ProfissionalResumo {
@@ -72,6 +116,7 @@ export interface ProfissionalDetalhe {
   fotoUrl: string | null;
   cpfMascarado: string | null;
   funcao: string | null;
+  endereco: Endereco | null;
 }
 
 export interface CategoriaResumo {

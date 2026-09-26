@@ -29,6 +29,14 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
     public bool Ativo { get; private set; } = true;
 
+    /// <summary>
+    /// Exclusão lógica (seção 7) de quem já atendeu: some das listas, da página pública e do
+    /// limite do plano (fica inativo), mas o nome continua no histórico de atendimentos.
+    /// </summary>
+    public bool Excluido { get; private set; }
+
+    public DateTimeOffset? ExcluidoEm { get; private set; }
+
     protected Profissional()
     {
     }
@@ -74,5 +82,24 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
     public void Desativar() => Ativo = false;
 
-    public void Ativar() => Ativo = true;
+    public void Ativar()
+    {
+        if (Excluido)
+            throw new InvalidOperationException("Um profissional excluído não pode ser reativado.");
+
+        Ativo = true;
+    }
+
+    /// <summary>Fica só o nome (e a função) para o histórico; os dados pessoais são apagados (seção 7).</summary>
+    public void Excluir(DateTimeOffset agora)
+    {
+        Ativo = false;
+        Excluido = true;
+        ExcluidoEm = agora;
+        Telefone = null;
+        Email = null;
+        Endereco = Endereco.Vazio;
+        Cpf = null;
+        FotoUrl = null;
+    }
 }

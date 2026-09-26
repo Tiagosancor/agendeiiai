@@ -92,7 +92,7 @@ public sealed class ServicoCadastro : IServicoCadastro
         _dbContext.CodigosCadastro.Add(CodigoCadastro.Criar(normalizado, CodigoConfirmacao.Hash(_opcoesVerificacao.ChaveHmac, codigo), agora));
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        var jaTemConta = await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == normalizado, cancellationToken);
+        var jaTemConta = await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == normalizado && !u.Excluido, cancellationToken);
         if (jaTemConta)
             await _notificador.EnviarAvisoContaExistenteAsync(normalizado, ConstrutorUrlPublica.ConstruirPainel(_opcoesMarca, "/painel/login"), cancellationToken);
         else
@@ -255,7 +255,7 @@ public sealed class ServicoCadastro : IServicoCadastro
         if (await _dbContext.Negocios.AnyAsync(n => n.Slug == slug, cancellationToken))
             return ResultadoCadastro.Falha(ErroCadastro.SlugEmUso, "Este endereço já está em uso. Escolha outro.");
 
-        if (await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email, cancellationToken))
+        if (await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email && !u.Excluido, cancellationToken))
             return ResultadoCadastro.Falha(ErroCadastro.EmailJaCadastrado, "Este e-mail já tem uma conta. Entre pelo painel.");
 
         if (await _dbContext.RegistrosTesteGratis.AnyAsync(r => r.Email == email || r.Telefone == telefone.Valor, cancellationToken))

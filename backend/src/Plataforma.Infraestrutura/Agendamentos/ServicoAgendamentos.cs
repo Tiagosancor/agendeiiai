@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Auditoria;
 using Plataforma.Aplicacao.Fidelidade;
 using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Agendamentos;
@@ -32,11 +33,14 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly OpcoesMarca _opcoesMarca;
     private readonly IGerenciadorFidelidade _gerenciadorFidelidade;
 
+    private readonly IRegistroAuditoria _auditoria;
+
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
-        IGerenciadorFidelidade gerenciadorFidelidade)
+        IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria)
     {
+        _auditoria = auditoria;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _consultaDisponibilidade = consultaDisponibilidade;
@@ -77,6 +81,18 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         if (servicos.Count != dados.ServicoIds.Distinct().Count())
             return ResultadoAgendamento.ComErro("Um ou mais serviços não foram encontrados.");
+
+        // O painel confirma na hora, e um agendamento confirmado sempre tem cliente (antes isso
+        // estourava na entidade e virava 500 — seção 8.2.4: nunca 500).
+        if (confirmarDeImediato && dados.ClienteId is null)
+            return ResultadoAgendamento.ComErro("Escolha o cliente do agendamento.");
+
+        // Excluído sai da oferta na hora (seção 7) — nem por ID guardado dá para agendar.
+        if (servicos.Any(s => s.Excluido))
+            return ResultadoAgendamento.ComErro("Um ou mais serviços não estão mais disponíveis.");
+
+        if (await _dbContext.Profissionais.AnyAsync(p => p.Id == dados.ProfissionalId && p.Excluido, cancellationToken))
+            return ResultadoAgendamento.ComErro("Este profissional não atende mais.");
 
         var overrides = await _dbContext.ProfissionalServicos.AsNoTracking()
             .Where(ps => ps.ProfissionalId == dados.ProfissionalId && dados.ServicoIds.Contains(ps.ServicoId))
@@ -379,6 +395,130 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Cancelado, cancellationToken);
         return true;
+    }
+
+    public async Task<bool> CancelarAvisandoClienteAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    {
+        // Entra no mesmo SaveChanges do cancelamento (seção 7: toda ação da exclusão fica no log).
+        if (await _dbContext.Agendamentos.AnyAsync(a => a.Id == agendamentoId, cancellationToken))
+            _auditoria.Registrar(AcoesAuditoria.CancelarAgendamento, "Agendamento", agendamentoId, "Cancelado avisando o cliente");
+
+        if (!await CancelarAsync(agendamentoId, cancellationToken))
+            return false;
+
+        var agendamento = await _dbContext.Agendamentos.AsNoTracking()
+            .Include(a => a.Servicos)
+            .FirstAsync(a => a.Id == agendamentoId, cancellationToken);
+
+        // Reserva que ainda não chegou a ter cliente (assistente público no meio): não há a quem avisar.
+        if (agendamento.ClienteId is null)
+            return true;
+
+        var cliente = await _dbContext.Clientes.AsNoTracking().FirstOrDefaultAsync(c => c.Id == agendamento.ClienteId, cancellationToken);
+        if (cliente is null)
+            return true;
+
+        var negocio = await _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == agendamento.NegocioId, cancellationToken);
+        var linkPagina = ConstrutorUrlPublica.Construir(_opcoesMarca, negocio.Slug.Valor, "/");
+
+        await _notificador.EnviarCancelamentoClienteAsync(new DadosNotificacaoAgendamento(
+            cliente.Nome, cliente.Email, cliente.Telefone, agendamento.Inicio, agendamento.Fim,
+            agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, linkPagina, linkPagina), cancellationToken);
+
+        return true;
+    }
+
+    public async Task<ResultadoAgendamento> TransferirAsync(
+        Guid agendamentoId, Guid novoProfissionalId, CancellationToken cancellationToken = default)
+    {
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+
+        var resultado = await estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            var agendamento = await _dbContext.Agendamentos
+                .Include(a => a.Servicos)
+                .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
+            if (agendamento is null)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Agendamento não encontrado.");
+            }
+
+            if (agendamento.ProfissionalId == novoProfissionalId)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Escolha outro profissional.");
+            }
+
+            var novoAtivo = await _dbContext.Profissionais.AnyAsync(
+                p => p.Id == novoProfissionalId && p.Ativo && !p.Excluido, cancellationToken);
+            if (!novoAtivo)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Profissional de destino não encontrado ou inativo.");
+            }
+
+            var servicoIds = agendamento.Servicos.Select(s => s.ServicoId).ToList();
+            var executados = await _dbContext.ProfissionalServicos.CountAsync(
+                ps => ps.ProfissionalId == novoProfissionalId && servicoIds.Contains(ps.ServicoId), cancellationToken);
+            if (executados < servicoIds.Distinct().Count())
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Esse profissional não executa todos os serviços deste agendamento.");
+            }
+
+            // Mesmo horário, outro profissional: expediente e bloqueios dele (a exclusion
+            // constraint cobre a sobreposição com a agenda dele no SaveChanges).
+            var negocio = await _dbContext.Negocios.AsNoTracking()
+                .FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
+            var fuso = TimeZoneInfo.FindSystemTimeZoneById(negocio.Fuso);
+            var (diaLocal, horaInicioLocal) = ConversorFusoHorario.ParaLocal(agendamento.Inicio, fuso);
+            var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(agendamento.Fim, fuso);
+            var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
+
+            var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
+                .Where(h => h.ProfissionalId == novoProfissionalId && h.DiaSemana == diaSemana)
+                .ToListAsync(cancellationToken);
+            if (!horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim))
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Esse horário está fora do expediente do outro profissional.");
+            }
+
+            var temBloqueio = await _dbContext.BloqueiosAgenda.AsNoTracking()
+                .AnyAsync(b => b.ProfissionalId == novoProfissionalId
+                    && b.InicioUtc < agendamento.Fim && b.FimUtc > agendamento.Inicio, cancellationToken);
+            if (temBloqueio)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("O outro profissional está de folga ou bloqueado nesse horário.");
+            }
+
+            var profissionalAnterior = agendamento.ProfissionalId;
+            agendamento.TransferirPara(novoProfissionalId);
+            _auditoria.Registrar(AcoesAuditoria.TransferirAgendamento, "Agendamento", agendamento.Id,
+                $"De {profissionalAnterior} para {novoProfissionalId}");
+
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transacao.CommitAsync(cancellationToken);
+                return ResultadoAgendamento.ComSucesso(agendamento.Id);
+            }
+            catch (DbUpdateException excecao) when (excecao.EhViolacaoDeExclusao())
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComConflito("O outro profissional já tem um atendimento nesse horário.", []);
+            }
+        });
+
+        // O novo profissional fica sabendo do atendimento que ganhou.
+        if (resultado.Sucesso)
+            await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Novo, cancellationToken);
+
+        return resultado;
     }
 
     public async Task<ResultadoAgendamento> MoverAsync(

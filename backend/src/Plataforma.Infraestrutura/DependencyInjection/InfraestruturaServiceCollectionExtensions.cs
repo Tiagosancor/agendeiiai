@@ -140,6 +140,8 @@ public static class InfraestruturaServiceCollectionExtensions
             .UseSnakeCaseNamingConvention());
 
         servicos.AddScoped<IContextoNegocio, ContextoNegocio>();
+        servicos.AddScoped<IUsuarioAtual, UsuarioAtual>();
+        servicos.AddScoped<Plataforma.Aplicacao.Auditoria.IRegistroAuditoria, Plataforma.Infraestrutura.Auditoria.RegistroAuditoria>();
         servicos.AddScoped<IConsultaNegocioPublico, ConsultaNegocioPublico>();
 
         // Segurança (seção 8.4): hash de senha, criptografia de CPF, emissão de JWT.

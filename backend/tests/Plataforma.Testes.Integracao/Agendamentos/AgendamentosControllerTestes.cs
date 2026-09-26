@@ -64,6 +64,19 @@ public sealed class AgendamentosControllerTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Criar_agendamento_pelo_painel_sem_cliente_da_400_e_nunca_500()
+    {
+        var (cliente, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var cenario = await _fabrica.CriarCenarioPadraoAsync(negocioId);
+
+        var resposta = await cliente.PostAsJsonAsync("/painel/agendamentos", new CriarAgendamento(
+            cenario.ProfissionalId, null, [cenario.ServicoId], AsDataHora(ProximaSegundaFeira(), new TimeOnly(10, 0))));
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await resposta.Content.ReadAsStringAsync()).Should().Contain("cliente");
+    }
+
+    [Fact]
     public async Task Criar_agendamento_no_horario_de_almoco_da_400()
     {
         var (cliente, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);

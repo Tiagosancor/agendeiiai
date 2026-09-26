@@ -83,6 +83,30 @@ builder.Services
             ValidateIssuerSigningKey = true,
             ClockSkew = TimeSpan.FromSeconds(30),
         };
+
+        // Usuário excluído (ou desativado) perde o acesso na hora (seção 7), não só quando o
+        // token de 15 min expirar: a assinatura do token não basta, o usuário tem de existir.
+        // Uma leitura por chave primária por requisição do painel.
+        jwtBearerOpcoes.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async contexto =>
+            {
+                var usuarioIdBruto = contexto.Principal is null ? null : ContextoNegocioClaimsTransformation.ObterUsuarioId(contexto.Principal);
+                if (!Guid.TryParse(usuarioIdBruto, out var usuarioId))
+                {
+                    contexto.Fail("Token sem usuário.");
+                    return;
+                }
+
+                var dbContext = contexto.HttpContext.RequestServices
+                    .GetRequiredService<Plataforma.Infraestrutura.Persistencia.PlataformaDbContext>();
+                var ativo = await dbContext.Usuarios.IgnoreQueryFilters().AsNoTracking()
+                    .AnyAsync(u => u.Id == usuarioId && u.Ativo && !u.Excluido, contexto.HttpContext.RequestAborted);
+
+                if (!ativo)
+                    contexto.Fail("Usuário excluído ou desativado.");
+            },
+        };
     });
 
 // Autorização por permissão, nunca só por perfil (seção 4) — uma policy por valor do

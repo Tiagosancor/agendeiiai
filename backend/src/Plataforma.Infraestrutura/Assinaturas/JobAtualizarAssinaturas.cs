@@ -55,7 +55,7 @@ public sealed class JobAtualizarAssinaturas
             .Where(p => planoIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Nome, cancellationToken);
         var administradores = await _dbContext.Usuarios.IgnoreQueryFilters().AsNoTracking()
-            .Where(u => negocioIds.Contains(u.NegocioId) && u.Perfil == Perfil.Administrador && u.Ativo)
+            .Where(u => negocioIds.Contains(u.NegocioId) && u.Perfil == Perfil.Administrador && u.Ativo && !u.Excluido)
             .Select(u => new { u.NegocioId, u.Email })
             .ToListAsync(cancellationToken);
 

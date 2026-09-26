@@ -18,4 +18,10 @@ public enum Permissao
     VerFinanceiro = 8,
     GerenciarCupons = 9,
     GerenciarFidelidade = 10,
+
+    /// <summary>Corrigir usuários, profissionais e serviços já cadastrados (seção 7). Só o Administrador, por padrão.</summary>
+    EditarCadastros = 11,
+
+    /// <summary>Excluir usuários, profissionais e serviços (seção 7). Só o Administrador, por padrão.</summary>
+    ExcluirCadastros = 12,
 }

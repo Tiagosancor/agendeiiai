@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Plataforma.Aplicacao.Cadastros;
 using Plataforma.Aplicacao.Usuarios;
 using Plataforma.Dominio.Usuarios;
 
@@ -47,9 +48,20 @@ public sealed class UsuariosController : ControllerBase
         }
     }
 
+    /// <summary>Corrigir a ficha exige também <see cref="Permissao.EditarCadastros"/> (seção 7).</summary>
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> AtualizarDados(Guid id, AtualizarUsuario dados, CancellationToken cancellationToken) =>
-        await _gerenciador.AtualizarDadosAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+    [Authorize(Policy = nameof(Permissao.EditarCadastros))]
+    public async Task<IActionResult> AtualizarDados(Guid id, AtualizarUsuario dados, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gerenciador.AtualizarDadosAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (EmailJaCadastradoException excecao)
+        {
+            return Conflict(new ProblemDetails { Title = "E-mail já cadastrado.", Detail = excecao.Message });
+        }
+    }
 
     [HttpPut("{id:guid}/senha")]
     public async Task<IActionResult> AlterarSenha(Guid id, AlterarSenhaRequisicao dados, CancellationToken cancellationToken) =>
@@ -60,16 +72,48 @@ public sealed class UsuariosController : ControllerBase
         await _gerenciador.ConcederPermissaoAsync(id, permissao, cancellationToken) ? NoContent() : NotFound();
 
     [HttpDelete("{id:guid}/permissoes/{permissao}")]
-    public async Task<IActionResult> RevogarPermissao(Guid id, Permissao permissao, CancellationToken cancellationToken) =>
-        await _gerenciador.RevogarPermissaoAsync(id, permissao, cancellationToken) ? NoContent() : NotFound();
+    public async Task<IActionResult> RevogarPermissao(Guid id, Permissao permissao, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gerenciador.RevogarPermissaoAsync(id, permissao, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (OperacaoCadastroBloqueadaException excecao)
+        {
+            return RespostasCadastro.Bloqueado(this, excecao.Message);
+        }
+    }
 
     [HttpPost("{id:guid}/desativar")]
-    public async Task<IActionResult> Desativar(Guid id, CancellationToken cancellationToken) =>
-        await _gerenciador.DesativarAsync(id, cancellationToken) ? NoContent() : NotFound();
+    public async Task<IActionResult> Desativar(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gerenciador.DesativarAsync(id, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (OperacaoCadastroBloqueadaException excecao)
+        {
+            return RespostasCadastro.Bloqueado(this, excecao.Message);
+        }
+    }
 
     [HttpPost("{id:guid}/ativar")]
     public async Task<IActionResult> Ativar(Guid id, CancellationToken cancellationToken) =>
         await _gerenciador.AtivarAsync(id, cancellationToken) ? NoContent() : NotFound();
+
+    /// <summary>O que vai acontecer se excluir — para a janela de confirmação (seção 7).</summary>
+    [HttpGet("{id:guid}/exclusao")]
+    [Authorize(Policy = nameof(Permissao.ExcluirCadastros))]
+    public async Task<ActionResult<PreviaExclusao>> PreviaExclusao(Guid id, CancellationToken cancellationToken)
+    {
+        var previa = await _gerenciador.ObterPreviaExclusaoAsync(id, cancellationToken);
+        return previa is null ? NotFound() : Ok(previa);
+    }
+
+    [HttpDelete("{id:guid}")]
+    [Authorize(Policy = nameof(Permissao.ExcluirCadastros))]
+    public async Task<IActionResult> Excluir(Guid id, CancellationToken cancellationToken) =>
+        RespostasCadastro.Exclusao(this, await _gerenciador.ExcluirAsync(id, cancellationToken));
 
     /// <summary>CPF completo — só quem tem GerenciarUsuarios (seção 8.4: "completo apenas para quem tem permissão").</summary>
     [HttpGet("{id:guid}/cpf")]

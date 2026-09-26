@@ -26,6 +26,9 @@ public interface INotificador
     /// <summary>Lembrete 24h/2h antes (seção 9, Sprint 4) — antecedência configurável, ver <c>OpcoesLembretes</c>.</summary>
     Task EnviarLembreteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default);
 
+    /// <summary>Agendamento cancelado pelo negócio (ex.: exclusão do profissional, seção 7) — mesmos canais da confirmação.</summary>
+    Task EnviarCancelamentoClienteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default);
+
     /// <summary>Fim do teste ou vencimento chegando (seção 7) — aos administradores do negócio, do produto para o negócio.</summary>
     Task EnviarAvisoAssinaturaAsync(DadosAvisoAssinatura dados, CancellationToken cancellationToken = default);
 

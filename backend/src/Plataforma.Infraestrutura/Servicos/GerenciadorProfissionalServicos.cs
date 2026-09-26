@@ -42,10 +42,15 @@ public sealed class GerenciadorProfissionalServicos : IGerenciadorProfissionalSe
             .ToList();
     }
 
-    public async Task VincularAsync(
+    public async Task<bool> VincularAsync(
         Guid profissionalId, Guid servicoId, decimal? precoPersonalizado, int? duracaoPersonalizadaMinutos,
         CancellationToken cancellationToken = default)
     {
+        var existem = await _dbContext.Profissionais.AnyAsync(p => p.Id == profissionalId && !p.Excluido, cancellationToken)
+            && await _dbContext.Servicos.AnyAsync(s => s.Id == servicoId && !s.Excluido, cancellationToken);
+        if (!existem)
+            return false;
+
         var existente = await _dbContext.ProfissionalServicos
             .FirstOrDefaultAsync(ps => ps.ProfissionalId == profissionalId && ps.ServicoId == servicoId, cancellationToken);
 
@@ -59,6 +64,7 @@ public sealed class GerenciadorProfissionalServicos : IGerenciadorProfissionalSe
             _contextoNegocio.NegocioId!.Value, profissionalId, servicoId, precoPersonalizado, duracaoPersonalizadaMinutos);
         _dbContext.ProfissionalServicos.Add(vinculo);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
     }
 
     public async Task<bool> DesvincularAsync(Guid profissionalId, Guid servicoId, CancellationToken cancellationToken = default)

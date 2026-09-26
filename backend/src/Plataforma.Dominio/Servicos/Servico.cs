@@ -23,6 +23,14 @@ public class Servico : EntidadeBase, IEntidadeDoNegocio
 
     public bool Ativo { get; private set; } = true;
 
+    /// <summary>
+    /// Exclusão lógica (seção 7) de serviço que já foi agendado: sai da oferta, mas os
+    /// agendamentos guardam nome, preço e duração do momento (<c>AgendamentoServico</c>).
+    /// </summary>
+    public bool Excluido { get; private set; }
+
+    public DateTimeOffset? ExcluidoEm { get; private set; }
+
     protected Servico()
     {
     }
@@ -71,5 +79,18 @@ public class Servico : EntidadeBase, IEntidadeDoNegocio
 
     public void Desativar() => Ativo = false;
 
-    public void Ativar() => Ativo = true;
+    public void Ativar()
+    {
+        if (Excluido)
+            throw new InvalidOperationException("Um serviço excluído não pode ser reativado.");
+
+        Ativo = true;
+    }
+
+    public void Excluir(DateTimeOffset agora)
+    {
+        Ativo = false;
+        Excluido = true;
+        ExcluidoEm = agora;
+    }
 }

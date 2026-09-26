@@ -3,12 +3,17 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
+import { ModalExclusao } from "@/components/painel/ModalExclusao";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { CategoriaResumo, ServicoResumo } from "@/lib/tipos";
 import { formatarReais } from "@/lib/formatacao";
 
 export default function PaginaServicos() {
-  const { chamarApi } = useAutenticacao();
+  const { chamarApi, temPermissao } = useAutenticacao();
+  const podeEditar = temPermissao("EditarCadastros");
+  const podeExcluir = temPermissao("ExcluirCadastros");
+  const [servicoEditando, setServicoEditando] = useState<ServicoResumo | null>(null);
+  const [idExcluindo, setIdExcluindo] = useState<string | null>(null);
   const [categorias, setCategorias] = useState<CategoriaResumo[] | null>(null);
   const [servicos, setServicos] = useState<ServicoResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -112,10 +117,20 @@ export default function PaginaServicos() {
                     <td className={classeTd}>{servico.duracaoMinutos} min</td>
                     <td className={classeTd}>{servico.popular ? "Sim" : "Não"}</td>
                     <td className={classeTd}>{servico.ativo ? "Ativo" : "Inativo"}</td>
-                    <td className={classeTd}>
+                    <td className={`${classeTd} space-x-3 whitespace-nowrap`}>
+                      {podeEditar && (
+                        <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => setServicoEditando(servico)}>
+                          Editar
+                        </button>
+                      )}
                       <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => alternarServico(servico)}>
                         {servico.ativo ? "Desativar" : "Ativar"}
                       </button>
+                      {podeExcluir && (
+                        <button className="text-red-600 hover:underline dark:text-red-400" onClick={() => setIdExcluindo(servico.id)}>
+                          Excluir
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -147,6 +162,28 @@ export default function PaginaServicos() {
         aoFechar={() => setModalServicoAberto(false)}
         aoCriar={async () => {
           setModalServicoAberto(false);
+          await carregar();
+        }}
+      />
+
+      {servicoEditando && (
+        <ModalEditarServico
+          servico={servicoEditando}
+          categorias={categorias ?? []}
+          aoFechar={() => setServicoEditando(null)}
+          aoSalvar={async () => {
+            setServicoEditando(null);
+            await carregar();
+          }}
+        />
+      )}
+
+      <ModalExclusao
+        tipo="servico"
+        id={idExcluindo}
+        aoFechar={() => setIdExcluindo(null)}
+        aoExcluir={async () => {
+          setIdExcluindo(null);
           await carregar();
         }}
       />
@@ -284,6 +321,94 @@ function ModalNovoServico({
           </button>
           <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
             {enviando ? "Criando..." : "Criar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** Correção do serviço (seção 7): preço e duração novos valem só para agendamentos novos. */
+function ModalEditarServico({
+  servico,
+  categorias,
+  aoFechar,
+  aoSalvar,
+}: {
+  servico: ServicoResumo;
+  categorias: CategoriaResumo[];
+  aoFechar: () => void;
+  aoSalvar: () => Promise<void>;
+}) {
+  const { chamarApi } = useAutenticacao();
+  const [categoriaId, setCategoriaId] = useState(servico.categoriaId);
+  const [nome, setNome] = useState(servico.nome);
+  const [preco, setPreco] = useState(servico.preco.toFixed(2).replace(".", ","));
+  const [duracao, setDuracao] = useState(String(servico.duracaoMinutos));
+  const [popular, setPopular] = useState(servico.popular);
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  async function aoEnviar(evento: FormEvent) {
+    evento.preventDefault();
+    setErro(null);
+    setEnviando(true);
+    try {
+      await chamarApi(`/painel/servicos/${servico.id}`, {
+        metodo: "PUT",
+        corpo: { categoriaId, nome, preco: Number(preco.replace(",", ".")), duracaoMinutos: Number(duracao), popular },
+      });
+      await aoSalvar();
+    } catch {
+      setErro("Não foi possível salvar. Confira os dados.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Modal titulo={`Editar ${servico.nome}`} aberto aoFechar={aoFechar}>
+      <form onSubmit={aoEnviar} className="space-y-3">
+        <label>
+          <span className={classeLabel}>Categoria</span>
+          <select required className={classeInput} value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className={classeLabel}>Nome</span>
+          <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label>
+            <span className={classeLabel}>Preço (R$)</span>
+            <input required inputMode="decimal" className={classeInput} value={preco} onChange={(e) => setPreco(e.target.value)} />
+          </label>
+          <label>
+            <span className={classeLabel}>Duração (min)</span>
+            <input required type="number" min={5} className={classeInput} value={duracao} onChange={(e) => setDuracao(e.target.value)} />
+          </label>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-neutral-200">
+          <input type="checkbox" checked={popular} onChange={(e) => setPopular(e.target.checked)} />
+          Popular (aparece primeiro)
+        </label>
+        <p className="rounded-lg bg-gray-50 p-2 text-xs text-gray-600 dark:bg-neutral-800 dark:text-neutral-300">
+          Preço e duração novos valem só para agendamentos novos. Os já marcados e o financeiro continuam com os valores da época.
+        </p>
+
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
+            Cancelar
+          </button>
+          <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
+            {enviando ? "Salvando..." : "Salvar"}
           </button>
         </div>
       </form>
