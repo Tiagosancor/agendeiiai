@@ -21,6 +21,29 @@ interface ContextoAutenticacao {
   sair: () => Promise<void>;
   /** Chama a API do painel com o token de acesso atual; se der 401, tenta renovar uma vez antes de desistir. */
   chamarApi: <T>(caminho: string, opcoes?: OpcoesChamada) => Promise<T>;
+  /**
+   * Permissões do usuário logado, lidas do próprio token (claim "permissao"). Só para
+   * esconder o que ele não pode fazer — quem garante a regra é sempre a API (403).
+   */
+  temPermissao: (permissao: string) => boolean;
+}
+
+/** Lê as claims do JWT sem validar (a validação é da API) — só para a interface. */
+function permissoesDoToken(token: string | null): string[] {
+  if (!token) return [];
+  try {
+    const base64 = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + c.charCodeAt(0).toString(16).padStart(2, "0"))
+        .join(""),
+    );
+    const permissao = JSON.parse(json).permissao;
+    return Array.isArray(permissao) ? permissao : permissao ? [permissao] : [];
+  } catch {
+    return [];
+  }
 }
 
 const Contexto = createContext<ContextoAutenticacao | null>(null);
@@ -85,10 +108,17 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
     [tokenAcesso, renovar, roteador],
   );
 
-  const valor = useMemo<ContextoAutenticacao>(
-    () => ({ carregando, autenticado: tokenAcesso !== null, entrar, sair, chamarApi }),
-    [carregando, tokenAcesso, entrar, sair, chamarApi],
-  );
+  const valor = useMemo<ContextoAutenticacao>(() => {
+    const permissoes = permissoesDoToken(tokenAcesso);
+    return {
+      carregando,
+      autenticado: tokenAcesso !== null,
+      entrar,
+      sair,
+      chamarApi,
+      temPermissao: (permissao: string) => permissoes.includes(permissao),
+    };
+  }, [carregando, tokenAcesso, entrar, sair, chamarApi]);
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }

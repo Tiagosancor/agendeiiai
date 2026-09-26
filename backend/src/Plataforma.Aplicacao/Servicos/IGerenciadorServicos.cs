@@ -1,3 +1,5 @@
+using Plataforma.Aplicacao.Cadastros;
+
 namespace Plataforma.Aplicacao.Servicos;
 
 public interface IGerenciadorServicos
@@ -11,6 +13,14 @@ public interface IGerenciadorServicos
     Task<bool> DesativarAsync(Guid servicoId, CancellationToken cancellationToken = default);
 
     Task<bool> AtivarAsync(Guid servicoId, CancellationToken cancellationToken = default);
+
+    Task<PreviaExclusao?> ObterPreviaExclusaoAsync(Guid servicoId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sai da oferta na hora; agendamentos já marcados continuam válidos com o nome, preço e
+    /// duração gravados no momento (seção 7) — por isso não bloqueia com agendamento futuro.
+    /// </summary>
+    Task<ResultadoExclusao> ExcluirAsync(Guid servicoId, CancellationToken cancellationToken = default);
 }
 
 public sealed record ServicoResumo(

@@ -37,6 +37,14 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
 
     public bool Ativo { get; private set; } = true;
 
+    /// <summary>
+    /// Exclusão lógica (seção 7): some de todas as listas e não pode ser reativado. Só usada
+    /// quando o usuário já tem histórico — sem histórico, a linha é apagada de fato.
+    /// </summary>
+    public bool Excluido { get; private set; }
+
+    public DateTimeOffset? ExcluidoEm { get; private set; }
+
     /// <summary>Vínculo opcional com o registro de <c>Profissional</c> agendável — ver docs/decisoes.md.</summary>
     public Guid? ProfissionalId { get; private set; }
 
@@ -135,7 +143,41 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
         SenhaHash = novoHash;
     }
 
+    /// <summary>O índice único de e-mail considera só os não excluídos — quem chama checa a unicidade.</summary>
+    public void AlterarEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            throw new ArgumentException("O e-mail é obrigatório.", nameof(email));
+
+        Email = email.Trim().ToLowerInvariant();
+    }
+
     public void Desativar() => Ativo = false;
 
-    public void Ativar() => Ativo = true;
+    public void Ativar()
+    {
+        if (Excluido)
+            throw new InvalidOperationException("Um usuário excluído não pode ser reativado.");
+
+        Ativo = true;
+    }
+
+    /// <summary>
+    /// Exclusão lógica de quem já tem histórico (seção 7): fica só o nome, para os registros
+    /// continuarem legíveis; e-mail, telefone, endereço, CPF e foto são apagados. Sem
+    /// permissões e sem vínculo com profissional — a conta não entra mais em lugar nenhum.
+    /// </summary>
+    public void Excluir(DateTimeOffset agora)
+    {
+        Ativo = false;
+        Excluido = true;
+        ExcluidoEm = agora;
+        Email = string.Empty;
+        Telefone = null;
+        Endereco = Endereco.Vazio;
+        Cpf = null;
+        FotoUrl = null;
+        ProfissionalId = null;
+        _permissoes.Clear();
+    }
 }

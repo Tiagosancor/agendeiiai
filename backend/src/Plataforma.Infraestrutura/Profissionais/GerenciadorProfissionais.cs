@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Auditoria;
+using Plataforma.Aplicacao.Cadastros;
 using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Profissionais;
@@ -14,24 +17,28 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     private readonly PlataformaDbContext _dbContext;
     private readonly ICriptografiaCpf _criptografiaCpf;
     private readonly IContextoNegocio _contextoNegocio;
+    private readonly IRegistroAuditoria _auditoria;
 
     public GerenciadorProfissionais(
-        PlataformaDbContext dbContext, ICriptografiaCpf criptografiaCpf, IContextoNegocio contextoNegocio)
+        PlataformaDbContext dbContext, ICriptografiaCpf criptografiaCpf, IContextoNegocio contextoNegocio,
+        IRegistroAuditoria auditoria)
     {
         _dbContext = dbContext;
         _criptografiaCpf = criptografiaCpf;
         _contextoNegocio = contextoNegocio;
+        _auditoria = auditoria;
     }
 
     public async Task<IReadOnlyList<ProfissionalResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Profissionais
+            .Where(p => !p.Excluido)
             .OrderBy(p => p.Nome)
             .Select(p => new ProfissionalResumo(p.Id, p.Nome, p.Ativo, p.FotoUrl, p.Funcao))
             .ToListAsync(cancellationToken);
 
     public async Task<ProfissionalDetalhe?> ObterAsync(Guid profissionalId, CancellationToken cancellationToken = default)
     {
-        var profissional = await _dbContext.Profissionais.FindAsync([profissionalId], cancellationToken);
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
         return profissional is null ? null : Mapear(profissional);
     }
 
@@ -56,11 +63,35 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     public async Task<bool> AtualizarDadosAsync(
         Guid profissionalId, AtualizarProfissional dados, CancellationToken cancellationToken = default)
     {
-        var profissional = await _dbContext.Profissionais.FindAsync([profissionalId], cancellationToken);
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
         if (profissional is null)
             return false;
 
-        profissional.AtualizarDados(dados.Nome, dados.Telefone, dados.Email, profissional.Endereco, dados.Funcao);
+        var endereco = dados.Endereco ?? profissional.Endereco;
+        var alterados = new List<string>();
+        if (!string.Equals(profissional.Nome, dados.Nome.Trim(), StringComparison.Ordinal)) alterados.Add("nome");
+        if (profissional.Telefone != dados.Telefone) alterados.Add("telefone");
+        if (profissional.Email != dados.Email) alterados.Add("e-mail");
+        if (profissional.Funcao != dados.Funcao) alterados.Add("função");
+        if (profissional.Endereco != endereco) alterados.Add("endereço");
+
+        profissional.AtualizarDados(dados.Nome, dados.Telefone, dados.Email, endereco, dados.Funcao);
+
+        if (!string.IsNullOrWhiteSpace(dados.Cpf))
+        {
+            profissional.DefinirCpf(_criptografiaCpf.Proteger(Cpf.Criar(dados.Cpf)));
+            alterados.Add("CPF");
+        }
+
+        if (dados.FotoUrl is not null && dados.FotoUrl != (profissional.FotoUrl ?? string.Empty))
+        {
+            profissional.DefinirFoto(string.IsNullOrWhiteSpace(dados.FotoUrl) ? null : dados.FotoUrl.Trim());
+            alterados.Add("foto");
+        }
+
+        if (alterados.Count > 0)
+            _auditoria.Registrar(AcoesAuditoria.Editar, nameof(Profissional), profissional.Id, $"Campos: {string.Join(", ", alterados)}");
+
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
@@ -73,13 +104,13 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
 
     public async Task<string?> RevelarCpfAsync(Guid profissionalId, CancellationToken cancellationToken = default)
     {
-        var profissional = await _dbContext.Profissionais.FindAsync([profissionalId], cancellationToken);
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
         return profissional?.Cpf is null ? null : _criptografiaCpf.Revelar(profissional.Cpf);
     }
 
     private async Task<bool> AlterarAtivoAsync(Guid profissionalId, bool ativo, CancellationToken cancellationToken)
     {
-        var profissional = await _dbContext.Profissionais.FindAsync([profissionalId], cancellationToken);
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
         if (profissional is null)
             return false;
 
@@ -136,7 +167,118 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         });
     }
 
+    public async Task<PreviaExclusao?> ObterPreviaExclusaoAsync(Guid profissionalId, CancellationToken cancellationToken = default)
+    {
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
+        if (profissional is null)
+            return null;
+
+        var futuros = await BuscarAgendamentosFuturosAsync(profissionalId, cancellationToken);
+        var clienteIds = futuros.Where(a => a.ClienteId is not null).Select(a => a.ClienteId!.Value).Distinct().ToList();
+        var clientes = await _dbContext.Clientes.AsNoTracking()
+            .Where(c => clienteIds.Contains(c.Id))
+            .ToDictionaryAsync(c => c.Id, c => c.Nome, cancellationToken);
+
+        // Quem pode receber cada agendamento: ativo, não excluído e executa TODOS os serviços
+        // dele. Se o horário está livre para essa pessoa só a transferência confere (409).
+        var outros = await _dbContext.Profissionais.AsNoTracking()
+            .Where(p => p.Id != profissionalId && p.Ativo && !p.Excluido)
+            .OrderBy(p => p.Nome)
+            .Select(p => new { p.Id, p.Nome })
+            .ToListAsync(cancellationToken);
+        var outrosIds = outros.Select(o => o.Id).ToList();
+        var vinculos = await _dbContext.ProfissionalServicos.AsNoTracking()
+            .Where(ps => outrosIds.Contains(ps.ProfissionalId))
+            .Select(ps => new { ps.ProfissionalId, ps.ServicoId })
+            .ToListAsync(cancellationToken);
+
+        var itens = futuros.Select(a =>
+        {
+            var servicoIds = a.Servicos.Select(s => s.ServicoId).ToHashSet();
+            var possiveis = outros
+                .Where(o => servicoIds.All(sid => vinculos.Any(v => v.ProfissionalId == o.Id && v.ServicoId == sid)))
+                .Select(o => new OpcaoTransferencia(o.Id, o.Nome))
+                .ToList();
+
+            var cliente = a.ClienteId is not null && clientes.TryGetValue(a.ClienteId.Value, out var nome)
+                ? nome
+                : a.NomeInformado ?? "Cliente";
+
+            return new AgendamentoFuturoParaExclusao(a.Id, a.Inicio, a.Fim, cliente, a.Servicos.Select(s => s.Nome).ToList(), possiveis);
+        }).ToList();
+
+        return new PreviaExclusao(
+            profissional.Nome, await TemHistoricoAsync(profissionalId, cancellationToken), itens.Count,
+            itens.Count > 0 ? MensagemFuturos(itens.Count) : null, itens);
+    }
+
+    public async Task<ResultadoExclusao> ExcluirAsync(Guid profissionalId, CancellationToken cancellationToken = default)
+    {
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
+        if (profissional is null)
+            return ResultadoExclusao.NaoEncontrado;
+
+        var futuros = await BuscarAgendamentosFuturosAsync(profissionalId, cancellationToken);
+        if (futuros.Count > 0)
+            return ResultadoExclusao.Bloqueado(MensagemFuturos(futuros.Count));
+
+        var temHistorico = await TemHistoricoAsync(profissionalId, cancellationToken);
+
+        // Usuário do painel ligado a este profissional deixa de estar ligado a ele.
+        var usuariosVinculados = await _dbContext.Usuarios.Where(u => u.ProfissionalId == profissionalId).ToListAsync(cancellationToken);
+        foreach (var usuario in usuariosVinculados)
+            usuario.DesvincularProfissional();
+
+        // Configuração que só existe por causa dele: sai junto nos dois casos — tira o
+        // profissional da oferta pública e das opções de transferência na hora.
+        _dbContext.ProfissionalServicos.RemoveRange(
+            await _dbContext.ProfissionalServicos.Where(ps => ps.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
+
+        if (temHistorico)
+        {
+            profissional.Excluir(DateTimeOffset.UtcNow);
+            _auditoria.Registrar(AcoesAuditoria.ExcluirLogicamente, nameof(Profissional), profissional.Id, $"Nome: {profissional.Nome}");
+        }
+        else
+        {
+            _dbContext.HorariosTrabalho.RemoveRange(
+                await _dbContext.HorariosTrabalho.Where(h => h.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
+            _dbContext.BloqueiosAgenda.RemoveRange(
+                await _dbContext.BloqueiosAgenda.Where(b => b.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
+            _dbContext.Profissionais.Remove(profissional);
+            _auditoria.Registrar(AcoesAuditoria.ApagarDefinitivo, nameof(Profissional), profissional.Id, $"Nome: {profissional.Nome}");
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return ResultadoExclusao.Concluido(temHistorico);
+    }
+
+    private static string MensagemFuturos(int quantidade) => quantidade == 1
+        ? "Este profissional tem 1 agendamento futuro. Transfira para outro profissional ou cancele antes de excluir."
+        : $"Este profissional tem {quantidade} agendamentos futuros. Transfira cada um para outro profissional ou cancele antes de excluir.";
+
+    /// <summary>Agendados e reservas ainda válidas que ainda não começaram.</summary>
+    private Task<List<Agendamento>> BuscarAgendamentosFuturosAsync(Guid profissionalId, CancellationToken cancellationToken)
+    {
+        var agora = DateTimeOffset.UtcNow;
+        return _dbContext.Agendamentos.AsNoTracking()
+            .Include(a => a.Servicos)
+            .Where(a => a.ProfissionalId == profissionalId && a.Inicio > agora
+                && (a.Status == StatusAgendamento.Agendado
+                    || (a.Status == StatusAgendamento.Reservado && a.ReservadoAte > agora)))
+            .OrderBy(a => a.Inicio)
+            .ToListAsync(cancellationToken);
+    }
+
+    /// <summary>Qualquer agendamento (de qualquer status) já feito com ele conta como histórico (seção 7).</summary>
+    private Task<bool> TemHistoricoAsync(Guid profissionalId, CancellationToken cancellationToken) =>
+        _dbContext.Agendamentos.AnyAsync(a => a.ProfissionalId == profissionalId, cancellationToken);
+
+    /// <summary>Excluído não aparece mais em lugar nenhum do painel (seção 7) — 404 para qualquer ação.</summary>
+    private Task<Profissional?> BuscarAsync(Guid profissionalId, CancellationToken cancellationToken) =>
+        _dbContext.Profissionais.FirstOrDefaultAsync(p => p.Id == profissionalId && !p.Excluido, cancellationToken);
+
     private static ProfissionalDetalhe Mapear(Profissional profissional) => new(
         profissional.Id, profissional.Nome, profissional.Telefone, profissional.Email, profissional.Ativo,
-        profissional.FotoUrl, profissional.Cpf?.Mascarado, profissional.Funcao);
+        profissional.FotoUrl, profissional.Cpf?.Mascarado, profissional.Funcao, profissional.Endereco);
 }

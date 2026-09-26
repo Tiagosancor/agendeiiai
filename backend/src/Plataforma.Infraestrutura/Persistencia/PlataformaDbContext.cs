@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Dominio.Administracao;
+using Plataforma.Dominio.Auditoria;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Cadastro;
@@ -86,6 +87,8 @@ public class PlataformaDbContext : DbContext
     public DbSet<EventoWebhookPagamento> EventosWebhookPagamento => Set<EventoWebhookPagamento>();
 
     public DbSet<LogAuditoriaPlataforma> LogsAuditoriaPlataforma => Set<LogAuditoriaPlataforma>();
+
+    public DbSet<LogAuditoriaNegocio> LogsAuditoriaNegocio => Set<LogAuditoriaNegocio>();
 
     public DbSet<CodigoCadastro> CodigosCadastro => Set<CodigoCadastro>();
 

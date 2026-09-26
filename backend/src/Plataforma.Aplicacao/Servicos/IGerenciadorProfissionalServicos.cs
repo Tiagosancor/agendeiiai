@@ -5,7 +5,8 @@ public interface IGerenciadorProfissionalServicos
 {
     Task<IReadOnlyList<ProfissionalServicoResumo>> ListarAsync(Guid profissionalId, CancellationToken cancellationToken = default);
 
-    Task VincularAsync(
+    /// <summary>False se o profissional ou o serviço não existir (ou tiver sido excluído).</summary>
+    Task<bool> VincularAsync(
         Guid profissionalId, Guid servicoId, decimal? precoPersonalizado, int? duracaoPersonalizadaMinutos,
         CancellationToken cancellationToken = default);
 

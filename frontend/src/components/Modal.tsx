@@ -14,7 +14,7 @@ export function Modal({ titulo, aberto, aoFechar, children }: PropsModal) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-lg dark:bg-neutral-900">
+      <div role="dialog" aria-modal="true" aria-label={titulo} className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 shadow-lg dark:bg-neutral-900">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">{titulo}</h2>
           <button

@@ -36,6 +36,15 @@ public interface IServicoAgendamentos
 
     Task<bool> CancelarAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
 
+    /// <summary>Cancela avisando também o cliente final (e-mail/WhatsApp) — usado na exclusão de profissional (seção 7).</summary>
+    Task<bool> CancelarAvisandoClienteAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Passa o agendamento para outro profissional no mesmo horário (exclusão de profissional,
+    /// seção 7): o novo precisa executar todos os serviços, estar no expediente e livre.
+    /// </summary>
+    Task<ResultadoAgendamento> TransferirAsync(Guid agendamentoId, Guid novoProfissionalId, CancellationToken cancellationToken = default);
+
     Task<ResultadoAgendamento> MoverAsync(Guid agendamentoId, DateTimeOffset novoInicio, CancellationToken cancellationToken = default);
 
     Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default);

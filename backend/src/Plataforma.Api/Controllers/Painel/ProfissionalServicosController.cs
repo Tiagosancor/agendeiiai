@@ -25,9 +25,9 @@ public sealed class ProfissionalServicosController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Vincular(Guid profissionalId, VincularServicoRequisicao dados, CancellationToken cancellationToken)
     {
-        await _gerenciador.VincularAsync(
+        var vinculado = await _gerenciador.VincularAsync(
             profissionalId, dados.ServicoId, dados.PrecoPersonalizado, dados.DuracaoPersonalizadaMinutos, cancellationToken);
-        return NoContent();
+        return vinculado ? NoContent() : NotFound();
     }
 
     [HttpDelete("{servicoId:guid}")]

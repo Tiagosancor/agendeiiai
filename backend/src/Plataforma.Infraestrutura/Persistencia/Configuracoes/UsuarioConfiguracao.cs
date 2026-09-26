@@ -22,7 +22,9 @@ public sealed class UsuarioConfiguracao : IEntityTypeConfiguration<Usuario>
         // Único GLOBAL (não por negócio): o login acontece num único domínio compartilhado
         // (app.{dominio} — seção 5), então o e-mail sozinho precisa apontar pro usuário
         // certo antes de qualquer tenant estar resolvido. Ver docs/decisoes.md.
-        builder.HasIndex(u => u.Email).IsUnique();
+        // Só entre os não excluídos (seção 7): o e-mail de quem foi excluído pode voltar a ser
+        // usado, e os excluídos com histórico ficam todos com e-mail vazio.
+        builder.HasIndex(u => u.Email).IsUnique().HasFilter("excluido = false");
 
         builder.OwnsOne(u => u.Endereco, endereco =>
         {

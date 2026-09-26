@@ -188,6 +188,18 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
         Fim = novoFim;
     }
 
+    /// <summary>
+    /// Passa para outro profissional no mesmo horário (exclusão de profissional, seção 7) — quem
+    /// chama revalida serviços/expediente/bloqueios; a exclusion constraint cobre a sobreposição.
+    /// </summary>
+    public void TransferirPara(Guid novoProfissionalId)
+    {
+        if (Status is not (StatusAgendamento.Agendado or StatusAgendamento.Reservado))
+            throw new InvalidOperationException("Só um agendamento ativo pode ser transferido.");
+
+        ProfissionalId = novoProfissionalId;
+    }
+
     public void Cancelar()
     {
         if (Status is StatusAgendamento.Cancelado or StatusAgendamento.Concluido)

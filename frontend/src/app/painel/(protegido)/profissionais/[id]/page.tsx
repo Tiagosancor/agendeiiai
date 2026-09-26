@@ -302,6 +302,8 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
   const [vinculados, setVinculados] = useState<ProfissionalServicoResumo[]>([]);
   const [todos, setTodos] = useState<ServicoResumo[]>([]);
   const [servicoParaVincular, setServicoParaVincular] = useState("");
+  // Preço/duração próprios deste profissional (seção 7) — edição de um serviço por vez.
+  const [editando, setEditando] = useState<{ servicoId: string; preco: string; duracao: string } | null>(null);
 
   const carregar = useCallback(async () => {
     const [vinculosAtuais, listaServicos] = await Promise.all([
@@ -328,6 +330,15 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
     await carregar();
   }
 
+  async function salvarPrecoProprio(servicoId: string, preco: number | null, duracao: number | null) {
+    await chamarApi(`/painel/profissionais/${profissionalId}/servicos`, {
+      metodo: "POST",
+      corpo: { servicoId, precoPersonalizado: preco, duracaoPersonalizadaMinutos: duracao },
+    });
+    setEditando(null);
+    await carregar();
+  }
+
   async function desvincular(servicoId: string) {
     await chamarApi(`/painel/profissionais/${profissionalId}/servicos/${servicoId}`, { metodo: "DELETE" });
     await carregar();
@@ -340,16 +351,77 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
       <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Serviços executados</h2>
 
       <div className={`${classeCartao} mb-3 divide-y divide-gray-100 dark:divide-neutral-800`}>
-        {vinculados.map((v) => (
-          <div key={v.servicoId} className="flex items-center justify-between px-4 py-2 text-sm">
-            <span>
-              {v.nome} — {formatarReais(v.preco)} ({v.duracaoMinutos} min)
-            </span>
-            <button className="text-red-600 hover:underline dark:text-red-400" onClick={() => desvincular(v.servicoId)}>
-              Remover
-            </button>
-          </div>
-        ))}
+        {vinculados.map((v) => {
+          const padrao = todos.find((s) => s.id === v.servicoId);
+          const proprio = padrao !== undefined && (padrao.preco !== v.preco || padrao.duracaoMinutos !== v.duracaoMinutos);
+
+          if (editando?.servicoId === v.servicoId) {
+            return (
+              <form
+                key={v.servicoId}
+                className="flex flex-wrap items-end gap-2 px-4 py-2 text-sm"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  salvarPrecoProprio(v.servicoId, Number(editando.preco.replace(",", ".")), Number(editando.duracao));
+                }}
+              >
+                <span className="w-full font-medium">{v.nome}</span>
+                <label>
+                  <span className={classeLabel}>Preço (R$)</span>
+                  <input
+                    required
+                    inputMode="decimal"
+                    className={`${classeInput} w-28`}
+                    value={editando.preco}
+                    onChange={(e) => setEditando({ ...editando, preco: e.target.value })}
+                  />
+                </label>
+                <label>
+                  <span className={classeLabel}>Duração (min)</span>
+                  <input
+                    required
+                    type="number"
+                    min={5}
+                    className={`${classeInput} w-24`}
+                    value={editando.duracao}
+                    onChange={(e) => setEditando({ ...editando, duracao: e.target.value })}
+                  />
+                </label>
+                <button type="submit" className={classeBotaoPrimario}>
+                  Salvar
+                </button>
+                {proprio && (
+                  <button type="button" className={classeBotaoSecundario} onClick={() => salvarPrecoProprio(v.servicoId, null, null)}>
+                    Usar o padrão do serviço
+                  </button>
+                )}
+                <button type="button" className={classeBotaoSecundario} onClick={() => setEditando(null)}>
+                  Cancelar
+                </button>
+              </form>
+            );
+          }
+
+          return (
+            <div key={v.servicoId} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
+              <span>
+                {v.nome} — {formatarReais(v.preco)} ({v.duracaoMinutos} min)
+                {proprio && <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">preço próprio</span>}
+              </span>
+              <span className="space-x-3">
+                <button
+                  className="text-marca-primaria hover:underline dark:text-marca-acento"
+                  onClick={() => setEditando({ servicoId: v.servicoId, preco: v.preco.toFixed(2).replace(".", ","), duracao: String(v.duracaoMinutos) })}
+                >
+                  Preço e duração
+                </button>
+                <button className="text-red-600 hover:underline dark:text-red-400" onClick={() => desvincular(v.servicoId)}>
+                  Remover
+                </button>
+              </span>
+            </div>
+          );
+        })}
         {vinculados.length === 0 && <p className="px-4 py-3 text-sm text-gray-500 dark:text-neutral-400">Nenhum serviço vinculado ainda.</p>}
       </div>
 

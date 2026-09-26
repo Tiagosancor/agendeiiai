@@ -39,12 +39,13 @@ test("site mostra as seções, os planos do banco e o alternador mensal/anual", 
   await expect(page.getByText(/abre o link do seu negócio no navegador/)).toBeVisible();
 });
 
-test("SEO e Open Graph do produto só no domínio raiz, nunca na página do negócio", async ({ page, request }) => {
+test("SEO e Open Graph do produto só no domínio raiz, nunca na página do negócio", async ({ page }) => {
   await page.goto(RAIZ);
   await expect(page).toHaveTitle(/agendamento online para barbearias/);
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", /\/site\/og\.png$/);
   await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /Teste grátis por 30 dias/);
-  expect((await request.get(`${RAIZ}/site/og.png`)).ok()).toBeTruthy();
+  // Pelo navegador: o Chromium resolve *.localhost sozinho; o fetch do Node depende do DNS da máquina.
+  expect((await page.goto(`${RAIZ}/site/og.png`))?.ok()).toBeTruthy();
 
   await page.goto("http://acme.agendeiiai.localhost:3000/");
   await expect(page.locator('meta[property="og:image"]')).toHaveCount(0);

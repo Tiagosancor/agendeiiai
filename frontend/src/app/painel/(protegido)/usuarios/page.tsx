@@ -2,14 +2,21 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { ErroApi } from "@/lib/api";
 import { Modal } from "@/components/Modal";
+import { ModalExclusao } from "@/components/painel/ModalExclusao";
+import { CamposEndereco } from "@/components/painel/CamposEndereco";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
-import { PERFIS, PERMISSOES, type Perfil, type Permissao, type UsuarioDetalhe, type UsuarioResumo } from "@/lib/tipos";
+import { ENDERECO_VAZIO, PERFIS, PERMISSOES, type Endereco, type Perfil, type Permissao, type UsuarioDetalhe, type UsuarioResumo } from "@/lib/tipos";
 
 export default function PaginaUsuarios() {
-  const { chamarApi } = useAutenticacao();
+  const { chamarApi, temPermissao } = useAutenticacao();
+  const podeEditar = temPermissao("EditarCadastros");
+  const podeExcluir = temPermissao("ExcluirCadastros");
 
   const [usuarios, setUsuarios] = useState<UsuarioResumo[] | null>(null);
+  const [usuarioEditando, setUsuarioEditando] = useState<UsuarioDetalhe | null>(null);
+  const [idExcluindo, setIdExcluindo] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [modalCriarAberto, setModalCriarAberto] = useState(false);
   const [usuarioPermissoes, setUsuarioPermissoes] = useState<UsuarioDetalhe | null>(null);
@@ -30,7 +37,12 @@ export default function PaginaUsuarios() {
 
   async function alternarAtivo(usuario: UsuarioResumo) {
     const acao = usuario.ativo ? "desativar" : "ativar";
-    await chamarApi(`/painel/usuarios/${usuario.id}/${acao}`, { metodo: "POST" });
+    setErro(null);
+    try {
+      await chamarApi(`/painel/usuarios/${usuario.id}/${acao}`, { metodo: "POST" });
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível alterar o usuário.");
+    }
     await carregar();
   }
 
@@ -42,7 +54,12 @@ export default function PaginaUsuarios() {
   async function alternarPermissao(permissao: Permissao, concedida: boolean) {
     if (!usuarioPermissoes) return;
     const metodo = concedida ? "DELETE" : "POST";
-    await chamarApi(`/painel/usuarios/${usuarioPermissoes.id}/permissoes/${permissao}`, { metodo });
+    try {
+      await chamarApi(`/painel/usuarios/${usuarioPermissoes.id}/permissoes/${permissao}`, { metodo });
+    } catch (excecao) {
+      // Ex.: tirar a gestão de usuários do último Administrador (seção 7).
+      alert(excecao instanceof ErroApi ? excecao.message : "Não foi possível alterar a permissão.");
+    }
     setUsuarioPermissoes(await chamarApi<UsuarioDetalhe>(`/painel/usuarios/${usuarioPermissoes.id}`));
     await carregar();
   }
@@ -81,9 +98,22 @@ export default function PaginaUsuarios() {
                     <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => abrirPermissoes(usuario.id)}>
                       Permissões
                     </button>
+                    {podeEditar && (
+                      <button
+                        className="text-marca-primaria hover:underline dark:text-marca-acento"
+                        onClick={async () => setUsuarioEditando(await chamarApi<UsuarioDetalhe>(`/painel/usuarios/${usuario.id}`))}
+                      >
+                        Editar
+                      </button>
+                    )}
                     <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => alternarAtivo(usuario)}>
                       {usuario.ativo ? "Desativar" : "Ativar"}
                     </button>
+                    {podeExcluir && (
+                      <button className="text-red-600 hover:underline dark:text-red-400" onClick={() => setIdExcluindo(usuario.id)}>
+                        Excluir
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -104,6 +134,27 @@ export default function PaginaUsuarios() {
         aoFechar={() => setModalCriarAberto(false)}
         aoCriar={async () => {
           setModalCriarAberto(false);
+          await carregar();
+        }}
+      />
+
+      {usuarioEditando && (
+        <ModalEditarUsuario
+          usuario={usuarioEditando}
+          aoFechar={() => setUsuarioEditando(null)}
+          aoSalvar={async () => {
+            setUsuarioEditando(null);
+            await carregar();
+          }}
+        />
+      )}
+
+      <ModalExclusao
+        tipo="usuario"
+        id={idExcluindo}
+        aoFechar={() => setIdExcluindo(null)}
+        aoExcluir={async () => {
+          setIdExcluindo(null);
           await carregar();
         }}
       />
@@ -217,6 +268,83 @@ function ModalCriarUsuario({
           </button>
           <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
             {enviando ? "Criando..." : "Criar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/** Correção da ficha (seção 7). O CPF só é trocado se um novo for digitado — o atual nunca volta completo para a tela. */
+function ModalEditarUsuario({
+  usuario,
+  aoFechar,
+  aoSalvar,
+}: {
+  usuario: UsuarioDetalhe;
+  aoFechar: () => void;
+  aoSalvar: () => Promise<void>;
+}) {
+  const { chamarApi } = useAutenticacao();
+  const [nome, setNome] = useState(usuario.nome);
+  const [email, setEmail] = useState(usuario.email);
+  const [telefone, setTelefone] = useState(usuario.telefone ?? "");
+  const [cpf, setCpf] = useState("");
+  const [fotoUrl, setFotoUrl] = useState(usuario.fotoUrl ?? "");
+  const [endereco, setEndereco] = useState<Endereco>(usuario.endereco ?? ENDERECO_VAZIO);
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  async function aoEnviar(evento: FormEvent) {
+    evento.preventDefault();
+    setErro(null);
+    setEnviando(true);
+    try {
+      await chamarApi(`/painel/usuarios/${usuario.id}`, {
+        metodo: "PUT",
+        corpo: { nome, email, telefone: telefone || null, cpf: cpf || null, endereco, fotoUrl },
+      });
+      await aoSalvar();
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi && excecao.status === 409 ? "Este e-mail já é de outro usuário." : "Não foi possível salvar. Confira os dados.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Modal titulo={`Editar ${usuario.nome}`} aberto aoFechar={aoFechar}>
+      <form onSubmit={aoEnviar} className="space-y-3">
+        <label>
+          <span className={classeLabel}>Nome</span>
+          <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
+        </label>
+        <label>
+          <span className={classeLabel}>E-mail (usado no login)</span>
+          <input required type="email" className={classeInput} value={email} onChange={(e) => setEmail(e.target.value)} />
+        </label>
+        <label>
+          <span className={classeLabel}>Telefone</span>
+          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="+5571988887777" />
+        </label>
+        <label>
+          <span className={classeLabel}>CPF {usuario.cpfMascarado ? `(atual: ${usuario.cpfMascarado})` : ""}</span>
+          <input className={classeInput} value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Deixe em branco para manter" />
+        </label>
+        <label>
+          <span className={classeLabel}>Foto (endereço da imagem)</span>
+          <input type="url" className={classeInput} value={fotoUrl} onChange={(e) => setFotoUrl(e.target.value)} placeholder="https://..." />
+        </label>
+        <CamposEndereco valor={endereco} aoMudar={setEndereco} />
+
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
+            Cancelar
+          </button>
+          <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
+            {enviando ? "Salvando..." : "Salvar"}
           </button>
         </div>
       </form>

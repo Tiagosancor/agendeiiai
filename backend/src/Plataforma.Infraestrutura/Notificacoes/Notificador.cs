@@ -179,6 +179,37 @@ public sealed class Notificador : INotificador
         await Task.WhenAll(tarefas);
     }
 
+    public async Task EnviarCancelamentoClienteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default)
+    {
+        var negocio = await ObterNegocioAsync(cancellationToken);
+        var nomeCliente = System.Net.WebUtility.HtmlEncode(dados.NomeCliente);
+        var servicos = System.Net.WebUtility.HtmlEncode(string.Join(", ", dados.Servicos));
+
+        var corpo = Envelope(negocio.NomeExibido, $"""
+            <p>Olá, {nomeCliente}. Infelizmente, <strong>{negocio.NomeExibido}</strong> precisou cancelar o seu agendamento.</p>
+            <p><strong>Quando seria:</strong> {dados.Inicio:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Serviços:</strong> {servicos}</p>
+            <p>Se quiser, é só agendar um novo horário pela página do negócio.</p>
+            """);
+
+        var tarefas = new List<Task>();
+
+        if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
+        {
+            tarefas.Add(ExecutarSemFalharAsync(
+                _email.EnviarAsync(dados.EmailCliente, $"Agendamento cancelado — {negocio.NomeExibido}", corpo, cancellationToken),
+                "E-mail/cancelamento"));
+        }
+
+        if (negocio.WhatsAppAtivoParaConfirmacoes)
+        {
+            var mensagem = $"{negocio.NomeExibido} precisou cancelar o seu agendamento de {dados.Inicio:dd/MM/yyyy HH:mm}. Se quiser, agende um novo horário pela página do negócio.";
+            tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/cancelamento"));
+        }
+
+        await Task.WhenAll(tarefas);
+    }
+
     public async Task EnviarAvisoAssinaturaAsync(DadosAvisoAssinatura dados, CancellationToken cancellationToken = default)
     {
         var nomeNegocio = System.Net.WebUtility.HtmlEncode(dados.NomeNegocio);

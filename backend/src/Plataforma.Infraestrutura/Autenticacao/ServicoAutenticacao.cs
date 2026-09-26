@@ -41,7 +41,7 @@ public sealed class ServicoAutenticacao : IServicoAutenticacao
         var usuario = await _dbContext.Usuarios
             .IgnoreQueryFilters()
             .Include(u => u.Permissoes)
-            .FirstOrDefaultAsync(u => u.Email == emailNormalizado, cancellationToken);
+            .FirstOrDefaultAsync(u => u.Email == emailNormalizado && !u.Excluido, cancellationToken);
 
         // Resultado idêntico para e-mail inexistente e senha errada — não dá pista
         // de qual das duas coisas falhou (mesmo espírito anti-enumeração da seção 8.1.3,
@@ -68,7 +68,7 @@ public sealed class ServicoAutenticacao : IServicoAutenticacao
             .Include(u => u.Permissoes)
             .FirstOrDefaultAsync(u => u.Id == tokenAtual.UsuarioId, cancellationToken);
 
-        if (usuario is null || !usuario.Ativo)
+        if (usuario is null || !usuario.Ativo || usuario.Excluido)
             return ResultadoLogin.Falha;
 
         tokenAtual.Revogar();
