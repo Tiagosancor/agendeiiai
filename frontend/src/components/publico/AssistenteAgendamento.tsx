@@ -272,7 +272,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
   const podeContinuarEtapa1 = servicoIds.length > 0;
   const podeContinuarEtapa2 = horarioEscolhido !== null;
-  const podeEnviarCodigo = telefone.trim().length >= 8 && nome.trim().length > 0 && aceite;
+  // DDD + número (10 ou 11 dígitos) basta: a API completa o +55. Com "+", é número de outro país.
+  const podeEnviarCodigo = telefone.replace(/\D/g, "").length >= 10 && nome.trim().length > 0 && aceite;
   const podeConfirmar = tokenVerificacao !== null;
 
   return (
@@ -428,7 +429,11 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
             <input
-              placeholder="Telefone (+55...)"
+              placeholder="WhatsApp com DDD — ex.: (71) 98888-7777"
+              aria-label="WhatsApp com DDD"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel-national"
               value={telefone}
               onChange={(e) => setTelefone(e.target.value)}
               disabled={codigoEnviado}

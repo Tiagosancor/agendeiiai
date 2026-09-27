@@ -48,11 +48,18 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Valor (em R$) descontado pelo cupom — o total exibido é sempre a soma dos serviços menos este valor.</summary>
     public decimal DescontoAplicado { get; private set; }
 
-    /// <summary>Lembrete configurável (padrão 24h antes, seção 9) — controla envio único mesmo se o job rodar mais de uma vez.</summary>
-    public bool Lembrete24hEnviado { get; private set; }
+    /// <summary>
+    /// Lembrete ao cliente antes do horário (seção 9, um só, antecedência configurável — padrão
+    /// 60 min). Controla envio único mesmo se o job rodar mais de uma vez; remarcar zera.
+    /// </summary>
+    public bool LembreteEnviado { get; private set; }
 
-    /// <summary>Lembrete configurável (padrão 2h antes, seção 9).</summary>
-    public bool Lembrete2hEnviado { get; private set; }
+    /// <summary>
+    /// Quando o horário atual foi combinado com o cliente (confirmação ou remarcação). Nulo nos
+    /// agendamentos antigos e nos do painel: vale o <c>CriadoEm</c>. Serve para não mandar
+    /// "lembrete" minutos depois de a pessoa ter acabado de marcar em cima da hora.
+    /// </summary>
+    public DateTimeOffset? HorarioCombinadoEm { get; private set; }
 
     /// <summary>Consentimento do cliente no assistente público (seção 8.4) — data, IP e versão dos termos aceitos ao confirmar. Nulo em agendamentos criados pelo painel (não é o próprio cliente aceitando).</summary>
     public DateTimeOffset? ConsentimentoData { get; private set; }
@@ -163,6 +170,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
 
         Status = StatusAgendamento.Agendado;
         ReservadoAte = null;
+        HorarioCombinadoEm = DateTimeOffset.UtcNow;
     }
 
     /// <summary>Chamado pelo job (ou pela checagem antes de inserir) quando a reserva passou do prazo sem ser confirmada.</summary>
@@ -176,13 +184,20 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     }
 
     /// <summary>Move para um novo horário — quem chama precisa revalidar expediente/bloqueios; a exclusion constraint garante a ausência de sobreposição no SaveChanges (seção 8.2.7).</summary>
-    public void Mover(DateTimeOffset novoInicio, DateTimeOffset novoFim)
+    public void Mover(DateTimeOffset novoInicio, DateTimeOffset novoFim, DateTimeOffset? agora = null)
     {
         if (Status is not (StatusAgendamento.Agendado or StatusAgendamento.Reservado))
             throw new InvalidOperationException("Só um agendamento ativo pode ser movido.");
 
         if (novoFim <= novoInicio)
             throw new ArgumentException("O fim precisa ser depois do início.", nameof(novoFim));
+
+        // Horário novo, lembrete novo: o do horário antigo (se já saiu) não vale para este.
+        if (novoInicio != Inicio)
+        {
+            LembreteEnviado = false;
+            HorarioCombinadoEm = agora ?? DateTimeOffset.UtcNow;
+        }
 
         Inicio = novoInicio;
         Fim = novoFim;
@@ -229,16 +244,20 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
 
     public void DefinirNomeInformado(string? nomeInformado) => NomeInformado = nomeInformado;
 
-    /// <summary>Só envia lembrete de um agendamento que ainda vai acontecer (seção 8.5.6: descarta os vencidos ao voltar de hibernação).</summary>
-    public bool PrecisaLembrete24h(DateTimeOffset agora, int antecedenciaHoras) =>
-        Status == StatusAgendamento.Agendado && !Lembrete24hEnviado && Inicio > agora && Inicio <= agora.AddHours(antecedenciaHoras);
+    /// <summary>A janela do lembrete já abriu e ele ainda não saiu — só de agendamento que ainda vai acontecer (seção 8.5.6: descarta os vencidos).</summary>
+    public bool NaJanelaDoLembrete(DateTimeOffset agora, TimeSpan antecedencia) =>
+        Status == StatusAgendamento.Agendado && !LembreteEnviado && Inicio > agora && Inicio <= agora + antecedencia;
 
-    public bool PrecisaLembrete2h(DateTimeOffset agora, int antecedenciaHoras) =>
-        Status == StatusAgendamento.Agendado && !Lembrete2hEnviado && Inicio > agora && Inicio <= agora.AddHours(antecedenciaHoras);
+    /// <summary>
+    /// O lembrete só faz sentido se o horário foi combinado com folga: se ele fosse chegar menos de
+    /// <paramref name="intervaloMinimo"/> depois da marcação (ex.: marcou às 14h para as 14h50), a
+    /// própria confirmação já cumpre o papel — mandar "lembrete" logo depois só confunde.
+    /// </summary>
+    public bool LembreteFazSentido(TimeSpan antecedencia, TimeSpan intervaloMinimo) =>
+        Inicio - antecedencia >= (HorarioCombinadoEm ?? CriadoEm) + intervaloMinimo;
 
-    public void MarcarLembrete24hEnviado() => Lembrete24hEnviado = true;
-
-    public void MarcarLembrete2hEnviado() => Lembrete2hEnviado = true;
+    /// <summary>Enviado — ou dispensado (marcado em cima da hora, ou horário já passou): nunca mais é considerado.</summary>
+    public void MarcarLembreteEnviado() => LembreteEnviado = true;
 
     public void RegistrarConsentimento(DateTimeOffset agora, string ip, string versaoTermos)
     {

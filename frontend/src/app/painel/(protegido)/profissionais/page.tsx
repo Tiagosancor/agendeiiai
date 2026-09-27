@@ -199,7 +199,7 @@ function ModalCriarProfissional({
         </label>
         <label>
           <span className={classeLabel}>Telefone (opcional)</span>
-          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="+5571988887777" />
+          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} type="tel" placeholder="(71) 98888-7777" />
         </label>
         <label>
           <span className={classeLabel}>E-mail (opcional)</span>
@@ -299,7 +299,7 @@ function ModalEditarProfissional({
         </label>
         <label>
           <span className={classeLabel}>Telefone</span>
-          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="+5571988887777" />
+          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} type="tel" placeholder="(71) 98888-7777" />
         </label>
         <label>
           <span className={classeLabel}>E-mail (recebe os avisos de agendamento)</span>

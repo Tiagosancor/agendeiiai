@@ -13,8 +13,8 @@ using Xunit;
 namespace Plataforma.Testes.Integracao.Financeiro;
 
 /// <summary>
-/// Lembretes 24h/2h antes (seção 9, Sprint 4, M: "lembretes sobrevivem à hibernação da
-/// API"). O job é chamado diretamente (não espera o cron do Hangfire) — o que se testa é
+/// Lembrete 60 min antes (seção 9 — um só desde 2026-09-27; antes eram 24h e 2h) e "lembretes
+/// sobrevivem à hibernação da API" (Sprint 4). O job é chamado diretamente (não espera o cron do Hangfire) — o que se testa é
 /// a lógica de "quem precisa de lembrete agora", que é a mesma se o job atrasou 5 minutos
 /// ou 5 dias por causa da API estar hibernando.
 /// </summary>
@@ -35,7 +35,9 @@ public sealed class LembretesTestes : IAsyncLifetime
 
     public async Task DisposeAsync() => await _fabrica.DisposeAsync();
 
-    private async Task<(Guid NegocioId, Guid AgendamentoId)> SemearAgendamentoAsync(DateTimeOffset inicio, StatusAgendamento status)
+    /// <param name="marcadoHa">Há quanto tempo o horário foi combinado. Padrão: um dia (com folga, recebe lembrete).</param>
+    private async Task<(Guid NegocioId, Guid AgendamentoId)> SemearAgendamentoAsync(
+        DateTimeOffset inicio, StatusAgendamento status, TimeSpan? marcadoHa = null)
     {
         using var escopo = _fabrica.Services.CreateScope();
         var dbContext = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
@@ -52,6 +54,9 @@ public sealed class LembretesTestes : IAsyncLifetime
         if (status == StatusAgendamento.Cancelado)
             agendamento.Cancelar();
 
+        typeof(Agendamento).GetProperty(nameof(Agendamento.HorarioCombinadoEm))!
+            .SetValue(agendamento, DateTimeOffset.UtcNow - (marcadoHa ?? TimeSpan.FromDays(1)));
+
         dbContext.Agendamentos.Add(agendamento);
         await dbContext.SaveChangesAsync();
 
@@ -66,20 +71,41 @@ public sealed class LembretesTestes : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Agendamento_dentro_da_janela_de_24h_recebe_lembrete()
+    public async Task Agendamento_dentro_dos_60_minutos_recebe_lembrete()
     {
-        var (_, agendamentoId) = await SemearAgendamentoAsync(DateTimeOffset.UtcNow.AddHours(23), StatusAgendamento.Agendado);
+        var (_, agendamentoId) = await SemearAgendamentoAsync(DateTimeOffset.UtcNow.AddMinutes(50), StatusAgendamento.Agendado);
 
         await RodarJobAsync();
 
         var espiaEmail = _fabrica.Services.GetRequiredService<EspiaEmail>();
         espiaEmail.Enviados.Should().ContainSingle(e => e.Destinatario == "cliente@teste.com" && e.Assunto.Contains("Lembrete"));
 
-        using var escopo = _fabrica.Services.CreateScope();
-        var dbContext = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
-        var agendamento = await dbContext.Agendamentos.IgnoreQueryFilters().FirstAsync(a => a.Id == agendamentoId);
-        agendamento.Lembrete24hEnviado.Should().BeTrue();
-        agendamento.Lembrete2hEnviado.Should().BeFalse();
+        (await RecarregarAsync(agendamentoId)).LembreteEnviado.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Agendamento_para_daqui_a_mais_de_60_minutos_ainda_nao_recebe_lembrete()
+    {
+        // O caso que motivou a mudança: marcado para daqui a 23h, o antigo lembrete de 24h saía na hora.
+        await SemearAgendamentoAsync(DateTimeOffset.UtcNow.AddHours(23), StatusAgendamento.Agendado);
+        await SemearAgendamentoAsync(DateTimeOffset.UtcNow.AddMinutes(70), StatusAgendamento.Agendado);
+
+        await RodarJobAsync();
+
+        _fabrica.Services.GetRequiredService<EspiaEmail>().Enviados.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Agendamento_marcado_em_cima_da_hora_nao_recebe_lembrete_logo_depois_da_confirmacao()
+    {
+        // Marcado agora para daqui a 50 min: a janela já está aberta, mas o lembrete chegaria
+        // minutos depois da confirmação. É dispensado — e o job não volta a olhar para ele.
+        var (_, agendamentoId) = await SemearAgendamentoAsync(DateTimeOffset.UtcNow.AddMinutes(50), StatusAgendamento.Agendado, marcadoHa: TimeSpan.FromMinutes(3));
+
+        await RodarJobAsync();
+
+        _fabrica.Services.GetRequiredService<EspiaEmail>().Enviados.Should().BeEmpty();
+        (await RecarregarAsync(agendamentoId)).LembreteEnviado.Should().BeTrue();
     }
 
     [Fact]
@@ -96,7 +122,7 @@ public sealed class LembretesTestes : IAsyncLifetime
     [Fact]
     public async Task Rodar_o_job_duas_vezes_nao_envia_lembrete_duplicado()
     {
-        await SemearAgendamentoAsync(DateTimeOffset.UtcNow.AddHours(23), StatusAgendamento.Agendado);
+        await SemearAgendamentoAsync(DateTimeOffset.UtcNow.AddMinutes(45), StatusAgendamento.Agendado);
 
         await RodarJobAsync();
         await RodarJobAsync();
@@ -117,11 +143,14 @@ public sealed class LembretesTestes : IAsyncLifetime
         var espiaEmail = _fabrica.Services.GetRequiredService<EspiaEmail>();
         espiaEmail.Enviados.Should().BeEmpty();
 
+        (await RecarregarAsync(agendamentoId)).LembreteEnviado.Should().BeTrue(); // "resolvido", nunca mais tenta
+    }
+
+    private async Task<Agendamento> RecarregarAsync(Guid agendamentoId)
+    {
         using var escopo = _fabrica.Services.CreateScope();
         var dbContext = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
-        var agendamento = await dbContext.Agendamentos.IgnoreQueryFilters().FirstAsync(a => a.Id == agendamentoId);
-        agendamento.Lembrete24hEnviado.Should().BeTrue(); // marcado como "resolvido", nunca mais tenta
-        agendamento.Lembrete2hEnviado.Should().BeTrue();
+        return await dbContext.Agendamentos.IgnoreQueryFilters().AsNoTracking().FirstAsync(a => a.Id == agendamentoId);
     }
 
     [Fact]

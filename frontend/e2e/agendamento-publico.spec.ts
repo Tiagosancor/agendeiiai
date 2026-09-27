@@ -60,7 +60,7 @@ function extrairCodigoDoLog(telefone: string): string {
 test("cliente agenda um serviço do início ao fim pelo assistente público", async ({ page, request }) => {
   const sufixo = Date.now().toString().slice(-8);
   const nomeServico = `Corte Playwright ${sufixo}`;
-  const telefone = `+557199${sufixo}`;
+  const telefone = `+55719${sufixo}`; // celular real: DDD 71 + 9 + 8 dígitos
 
   // --- Arranjo: profissional com expediente, serviço e vínculo, via API do painel ---
   const token = await loginAdmin(request);
@@ -119,7 +119,8 @@ test("cliente agenda um serviço do início ao fim pelo assistente público", as
 
   // Etapa 3 — Seus dados + código de confirmação (seção 8.1)
   await assistente.getByPlaceholder("Nome completo").fill("Cliente Playwright");
-  await assistente.getByPlaceholder("Telefone (+55...)").fill(telefone);
+  // Como as pessoas digitam: só DDD + número, sem o +55 (a API completa).
+  await assistente.getByLabel("WhatsApp com DDD").fill(`(${telefone.slice(3, 5)}) ${telefone.slice(5)}`);
   await assistente.getByPlaceholder("E-mail").fill(`playwright-${sufixo}@teste.com`);
   await assistente.getByRole("checkbox").check();
   await assistente.getByRole("button", { name: "Enviar código" }).click();

@@ -220,31 +220,61 @@ public sealed class AgendamentoTestes
         agendamento.Total.Should().Be(80m);
     }
 
+    private static readonly TimeSpan UmaHora = TimeSpan.FromMinutes(60);
+    private static readonly TimeSpan MeiaHora = TimeSpan.FromMinutes(30);
+
     [Fact]
-    public void PrecisaLembrete24h_verdadeiro_dentro_da_janela_e_falso_fora_dela()
+    public void Janela_do_lembrete_abre_60_minutos_antes_e_nao_antes_disso()
     {
-        var agora = Inicio.AddHours(-25); // 25h antes — ainda fora da janela de 24h
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
 
-        agendamento.PrecisaLembrete24h(agora, antecedenciaHoras: 24).Should().BeFalse();
-        agendamento.PrecisaLembrete24h(Inicio.AddHours(-23), antecedenciaHoras: 24).Should().BeTrue();
+        agendamento.NaJanelaDoLembrete(Inicio.AddMinutes(-61), UmaHora).Should().BeFalse();
+        agendamento.NaJanelaDoLembrete(Inicio.AddMinutes(-60), UmaHora).Should().BeTrue();
+        agendamento.NaJanelaDoLembrete(Inicio.AddMinutes(-5), UmaHora).Should().BeTrue();
     }
 
     [Fact]
-    public void PrecisaLembrete24h_falso_depois_de_marcado_enviado()
+    public void Janela_fecha_depois_de_enviado()
     {
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
-        agendamento.MarcarLembrete24hEnviado();
+        agendamento.MarcarLembreteEnviado();
 
-        agendamento.PrecisaLembrete24h(Inicio.AddHours(-1), antecedenciaHoras: 24).Should().BeFalse();
+        agendamento.NaJanelaDoLembrete(Inicio.AddMinutes(-30), UmaHora).Should().BeFalse();
     }
 
     [Fact]
-    public void PrecisaLembrete_falso_para_agendamento_que_ja_passou()
+    public void Janela_fechada_para_agendamento_que_ja_passou()
     {
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
 
-        agendamento.PrecisaLembrete2h(Inicio.AddHours(1), antecedenciaHoras: 2).Should().BeFalse();
+        agendamento.NaJanelaDoLembrete(Inicio.AddMinutes(1), UmaHora).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Lembrete_nao_faz_sentido_quando_o_horario_foi_marcado_em_cima_da_hora()
+    {
+        // Marcado agora (CriadoEm = agora) para daqui a 50 min: o lembrete sairia logo depois da confirmação.
+        var emCimaDaHora = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow.AddMinutes(50), [ServicoDeTeste]);
+        emCimaDaHora.LembreteFazSentido(UmaHora, MeiaHora).Should().BeFalse();
+
+        // Marcado agora para daqui a 3 horas: o lembrete chega 2 horas depois — faz sentido.
+        var comFolga = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow.AddHours(3), [ServicoDeTeste]);
+        comFolga.LembreteFazSentido(UmaHora, MeiaHora).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Remarcar_zera_o_lembrete_e_conta_a_folga_a_partir_da_remarcacao()
+    {
+        var agora = DateTimeOffset.UtcNow;
+        var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), agora.AddHours(5), [ServicoDeTeste]);
+        agendamento.MarcarLembreteEnviado();
+
+        var novoInicio = agora.AddMinutes(40);
+        agendamento.Mover(novoInicio, novoInicio.AddMinutes(30), agora);
+
+        agendamento.LembreteEnviado.Should().BeFalse("o lembrete do horário antigo não vale para o novo");
+        agendamento.HorarioCombinadoEm.Should().Be(agora);
+        agendamento.LembreteFazSentido(UmaHora, MeiaHora).Should().BeFalse("remarcado para daqui a 40 min, em cima da hora");
     }
 
     [Fact]
@@ -266,6 +296,6 @@ public sealed class AgendamentoTestes
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
         agendamento.Cancelar();
 
-        agendamento.PrecisaLembrete24h(Inicio.AddHours(-1), antecedenciaHoras: 24).Should().BeFalse();
+        agendamento.NaJanelaDoLembrete(Inicio.AddMinutes(-30), UmaHora).Should().BeFalse();
     }
 }

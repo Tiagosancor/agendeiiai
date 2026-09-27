@@ -253,7 +253,7 @@ function ModalCriarUsuario({
         </label>
         <label>
           <span className={classeLabel}>Telefone (opcional)</span>
-          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="+5571988887777" />
+          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} type="tel" placeholder="(71) 98888-7777" />
         </label>
         <label>
           <span className={classeLabel}>CPF (opcional)</span>
@@ -325,7 +325,7 @@ function ModalEditarUsuario({
         </label>
         <label>
           <span className={classeLabel}>Telefone</span>
-          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} placeholder="+5571988887777" />
+          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} type="tel" placeholder="(71) 98888-7777" />
         </label>
         <label>
           <span className={classeLabel}>CPF {usuario.cpfMascarado ? `(atual: ${usuario.cpfMascarado})` : ""}</span>
