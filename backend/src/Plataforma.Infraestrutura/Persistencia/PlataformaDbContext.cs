@@ -49,6 +49,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<TokenAtualizacao> TokensAtualizacao => Set<TokenAtualizacao>();
 
+    public DbSet<RedefinicaoSenha> RedefinicoesSenha => Set<RedefinicaoSenha>();
+
     public DbSet<Profissional> Profissionais => Set<Profissional>();
 
     public DbSet<Categoria> Categorias => Set<Categoria>();

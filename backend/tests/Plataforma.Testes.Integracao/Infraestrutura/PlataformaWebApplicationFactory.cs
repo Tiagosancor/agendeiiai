@@ -55,6 +55,7 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
                 ["Cadastro:LimiteSlugPorIpPorMinuto"] = "10000",
                 ["Plataforma:LimiteLoginPorIpPorMinuto"] = "10000",
                 ["Verificacao:LimitePorIpPorMinuto"] = "10000",
+                ["Autenticacao:LimiteRedefinicaoSenhaPorIpPorMinuto"] = "10000",
             });
             configuracao.AddInMemoryCollection(_configuracaoExtra);
         });

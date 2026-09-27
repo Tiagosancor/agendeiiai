@@ -150,6 +150,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddSingleton<IGeradorTokenAcesso, GeradorTokenAcesso>();
 
         servicos.AddScoped<IServicoAutenticacao, ServicoAutenticacao>();
+        servicos.AddScoped<IServicoRedefinicaoSenha, ServicoRedefinicaoSenha>();
 
         // CRUDs da Sprint 1 (seção 7).
         servicos.AddScoped<IGerenciadorUsuarios, GerenciadorUsuarios>();

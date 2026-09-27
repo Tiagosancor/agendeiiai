@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { BotaoTema } from "@/components/BotaoTema";
+import { CampoSenha } from "@/components/CampoSenha";
 
 export default function PaginaLogin() {
   const { entrar } = useAutenticacao();
@@ -56,17 +58,17 @@ export default function PaginaLogin() {
           />
         </label>
 
-        <label className="mb-4 block text-sm">
-          <span className="mb-1 block font-medium text-gray-700 dark:text-neutral-300">Senha</span>
-          <input
-            type="password"
+        <div className="mb-4 text-sm">
+          <CampoSenha
+            rotulo="Senha"
+            classeRotulo="mb-1 block font-medium text-gray-700 dark:text-neutral-300"
             required
             autoComplete="current-password"
             value={senha}
             onChange={(evento) => setSenha(evento.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-marca-primaria focus:ring-1 focus:ring-marca-primaria dark:focus:border-marca-acento dark:focus:ring-marca-acento dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
           />
-        </label>
+        </div>
 
         {erro && (
           <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
@@ -81,6 +83,12 @@ export default function PaginaLogin() {
         >
           {enviando ? "Entrando..." : "Entrar"}
         </button>
+
+        <p className="mt-4 text-center text-sm">
+          <Link href="/painel/esqueci-senha" className="text-gray-600 underline dark:text-neutral-300">
+            Esqueci minha senha
+          </Link>
+        </p>
       </form>
     </main>
   );

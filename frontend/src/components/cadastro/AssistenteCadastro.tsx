@@ -7,6 +7,7 @@ import type { DisponibilidadeSlug, Periodicidade, PlanoPublico } from "@/lib/tip
 import { TIPOS_NEGOCIO } from "@/lib/tipos";
 import { faixaProfissionais, forcaSenha, formatarReais, paraE164, sugerirSlug } from "@/lib/formatacao";
 import { classeInput, classeLabel } from "@/components/estilos";
+import { CampoSenha } from "@/components/CampoSenha";
 import { CaptchaTurnstile } from "@/components/CaptchaTurnstile";
 
 type Etapa = 1 | 2 | 3 | 4 | 5;
@@ -363,11 +364,10 @@ export function AssistenteCadastro({
                   autoComplete="tel"
                 />
               </label>
-              <label className="block">
-                <span className={classeLabel}>Senha</span>
-                <input
+              <div>
+                <CampoSenha
+                  rotulo="Senha"
                   className={classeInput}
-                  type="password"
                   value={senha}
                   onChange={(e) => setSenha(e.target.value)}
                   autoComplete="new-password"
@@ -386,7 +386,7 @@ export function AssistenteCadastro({
                     {senha ? `${ROTULOS_FORCA[nivelSenha]}. ` : ""}Pelo menos 8 caracteres, com letras e números.
                   </p>
                 </div>
-              </label>
+              </div>
 
               <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-neutral-300">
                 <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-0.5" />

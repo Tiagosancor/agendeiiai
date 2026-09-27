@@ -51,6 +51,9 @@ public interface INotificador
     Task EnviarAvisoContaExistenteAsync(string email, string linkLogin, CancellationToken cancellationToken = default);
 
     Task EnviarBoasVindasAsync(DadosBoasVindas dados, CancellationToken cancellationToken = default);
+
+    /// <summary>Link de "esqueci minha senha" do painel.</summary>
+    Task EnviarRedefinicaoSenhaAsync(string email, string nomeUsuario, string link, int validadeMinutos, CancellationToken cancellationToken = default);
 }
 
 public sealed record DadosBoasVindas(

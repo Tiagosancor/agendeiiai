@@ -6,6 +6,7 @@ import type { EstadoAssinatura, EstadoConexaoWhatsApp, Periodicidade, PlanoPubli
 import { ROTULOS_ESTADO_ASSINATURA } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import { classeBotaoPerigo, classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
+import { CampoSenha } from "@/components/CampoSenha";
 
 interface NegocioNaPlataforma {
   id: string;
@@ -84,10 +85,9 @@ function LoginPlataforma({ aoEntrar }: { aoEntrar: (token: string) => void }) {
           <span className={classeLabel}>E-mail</span>
           <input type="email" required className={classeInput} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
         </label>
-        <label className="block">
-          <span className={classeLabel}>Senha</span>
-          <input type="password" required className={classeInput} value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" />
-        </label>
+        <div>
+          <CampoSenha rotulo="Senha" required className={classeInput} value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" />
+        </div>
         {erro && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{erro}</p>}
         <button type="submit" className={`${classeBotaoPrimario} w-full`}>
           Entrar
