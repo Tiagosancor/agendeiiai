@@ -119,6 +119,26 @@ public sealed class AgendamentoPublicoTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Email_de_confirmacao_mostra_a_hora_local_do_negocio_e_o_valor_com_virgula()
+    {
+        var (slug, _, profissionalId, servicoId) = await SemearNegocioComAgendaAsync();
+        using var cliente = ClientePara(slug);
+        var telefone = TelefoneAleatorio();
+        var email = $"hora-{Guid.NewGuid():N}@teste.com";
+
+        var agendamentoId = await CriarReservaAsync(cliente, profissionalId, servicoId, AsDataHora(ProximaSegundaFeira(), new TimeOnly(10, 0)));
+        var token = await SolicitarEValidarCodigoAsync(cliente, telefone);
+        var resposta = await cliente.PostAsJsonAsync("/publico/agendamentos", new AgendamentosPublicoController.ConfirmarAgendamentoRequisicao(
+            agendamentoId, token, "Fulano da Silva", telefone, email, null, null));
+        resposta.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // O banco guarda 13:00 UTC; o cliente precisa ler 10:00 (America/Sao_Paulo) e "R$ 50,00".
+        var corpo = _fabrica.Services.GetRequiredService<EspiaEmail>().Enviados.Single(e => e.Destinatario == email).CorpoHtml;
+        corpo.Should().Contain($"{ProximaSegundaFeira():dd/MM/yyyy} às 10:00").And.Contain("R$ 50,00");
+        corpo.Should().NotContain("13:00").And.NotContain("50.00");
+    }
+
+    [Fact]
     public async Task Identificacao_automatica_nao_sobrescreve_dados_do_cliente_existente()
     {
         var (slug, negocioId, profissionalId, servicoId) = await SemearNegocioComAgendaAsync();

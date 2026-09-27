@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Assinaturas;
+using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Opcoes;
 
 namespace Plataforma.Infraestrutura.Assinaturas;
@@ -26,7 +27,7 @@ public sealed class GatewayPagamentoManual : IGatewayPagamento
 
     public Task<InstrucoesPagamento> GerarLinkPagamentoAsync(DadosCobrancaGateway dados, CancellationToken cancellationToken = default)
     {
-        var texto = $"Plano {dados.NomePlano} ({dados.Periodicidade.ToLowerInvariant()}): R$ {dados.Valor:F2}. " +
+        var texto = $"Plano {dados.NomePlano} ({dados.Periodicidade.ToLowerInvariant()}): {FormatacaoBrasil.Reais(dados.Valor)}. " +
             "Faça o PIX e mande o comprovante pelo WhatsApp — a liberação é feita na hora.";
 
         return Task.FromResult(new InstrucoesPagamento(null, _opcoes.ChavePix, _opcoes.WhatsAppContato, texto));

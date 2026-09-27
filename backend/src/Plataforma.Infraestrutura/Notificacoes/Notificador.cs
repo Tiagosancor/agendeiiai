@@ -5,6 +5,7 @@ using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Negocios;
+using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 
@@ -75,9 +76,9 @@ public sealed class Notificador : INotificador
 
         var corpo = Envelope(negocio.NomeExibido, $"""
             <p>Olá, {dados.NomeCliente}! Seu agendamento em <strong>{negocio.NomeExibido}</strong> está confirmado.</p>
-            <p><strong>Quando:</strong> {dados.Inicio:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Quando:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
             <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
-            <p><strong>Total:</strong> R$ {dados.Total:F2}</p>
+            <p><strong>Total:</strong> {FormatacaoBrasil.Reais(dados.Total)}</p>
             <p><a href="{dados.LinkRemarcar}">Remarcar</a> · <a href="{dados.LinkCancelar}">Cancelar</a></p>
             """);
 
@@ -92,7 +93,7 @@ public sealed class Notificador : INotificador
 
         if (negocio.WhatsAppAtivoParaConfirmacoes)
         {
-            var mensagem = $"Agendamento confirmado em {negocio.NomeExibido} para {dados.Inicio:dd/MM/yyyy HH:mm}. Total R$ {dados.Total:F2}.";
+            var mensagem = $"Agendamento confirmado em {negocio.NomeExibido} para {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Total {FormatacaoBrasil.Reais(dados.Total)}.";
             tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/confirmação"));
         }
 
@@ -140,7 +141,7 @@ public sealed class Notificador : INotificador
         var corpo = Envelope(negocio.NomeExibido, $"""
             <p><strong>{titulo}</strong> em {negocio.NomeExibido}.</p>
             <p><strong>Cliente:</strong> {dados.NomeCliente}</p>
-            <p><strong>Quando:</strong> {dados.Inicio:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Quando:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
             <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
             {(string.IsNullOrWhiteSpace(dados.Observacoes) ? "" : $"<p><strong>Observações:</strong> {dados.Observacoes}</p>")}
             """);
@@ -156,7 +157,7 @@ public sealed class Notificador : INotificador
 
         var corpo = Envelope(negocio.NomeExibido, $"""
             <p>Olá, {dados.NomeCliente}! Lembrete do seu agendamento em <strong>{negocio.NomeExibido}</strong>.</p>
-            <p><strong>Quando:</strong> {dados.Inicio:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Quando:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
             <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
             <p><a href="{dados.LinkRemarcar}">Remarcar</a> · <a href="{dados.LinkCancelar}">Cancelar</a></p>
             """);
@@ -172,7 +173,7 @@ public sealed class Notificador : INotificador
 
         if (negocio.WhatsAppAtivoParaConfirmacoes)
         {
-            var mensagem = $"Lembrete: você tem um agendamento em {negocio.NomeExibido} em {dados.Inicio:dd/MM/yyyy HH:mm}.";
+            var mensagem = $"Lembrete: você tem um agendamento em {negocio.NomeExibido} em {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}.";
             tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/lembrete"));
         }
 
@@ -187,7 +188,7 @@ public sealed class Notificador : INotificador
 
         var corpo = Envelope(negocio.NomeExibido, $"""
             <p>Olá, {nomeCliente}. Infelizmente, <strong>{negocio.NomeExibido}</strong> precisou cancelar o seu agendamento.</p>
-            <p><strong>Quando seria:</strong> {dados.Inicio:dd/MM/yyyy HH:mm}</p>
+            <p><strong>Quando seria:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
             <p><strong>Serviços:</strong> {servicos}</p>
             <p>Se quiser, é só agendar um novo horário pela página do negócio.</p>
             """);
@@ -203,7 +204,7 @@ public sealed class Notificador : INotificador
 
         if (negocio.WhatsAppAtivoParaConfirmacoes)
         {
-            var mensagem = $"{negocio.NomeExibido} precisou cancelar o seu agendamento de {dados.Inicio:dd/MM/yyyy HH:mm}. Se quiser, agende um novo horário pela página do negócio.";
+            var mensagem = $"{negocio.NomeExibido} precisou cancelar o seu agendamento de {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Se quiser, agende um novo horário pela página do negócio.";
             tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/cancelamento"));
         }
 
@@ -215,12 +216,12 @@ public sealed class Notificador : INotificador
         var nomeNegocio = System.Net.WebUtility.HtmlEncode(dados.NomeNegocio);
         var quando = dados.DiasRestantes == 1 ? "amanhã" : $"em {dados.DiasRestantes} dias";
         var (assunto, abertura) = dados.EmTeste
-            ? ($"Seu teste grátis termina {quando}", $"O teste grátis de <strong>{nomeNegocio}</strong> termina {quando} ({dados.Prazo:dd/MM/yyyy}).")
-            : ($"Sua assinatura vence {quando}", $"A assinatura de <strong>{nomeNegocio}</strong> vence {quando} ({dados.Prazo:dd/MM/yyyy}).");
+            ? ($"Seu teste grátis termina {quando}", $"O teste grátis de <strong>{nomeNegocio}</strong> termina {quando} ({FormatacaoBrasil.Data(dados.Prazo, dados.Fuso)}).")
+            : ($"Sua assinatura vence {quando}", $"A assinatura de <strong>{nomeNegocio}</strong> vence {quando} ({FormatacaoBrasil.Data(dados.Prazo, dados.Fuso)}).");
 
         var corpo = Envelope(null, $"""
             <p>{abertura}</p>
-            <p>Plano {dados.NomePlano}: R$ {dados.ValorDoPeriodo:F2}. Para continuar recebendo agendamentos sem interrupção, é só assinar.</p>
+            <p>Plano {dados.NomePlano}: {FormatacaoBrasil.Reais(dados.ValorDoPeriodo)}. Para continuar recebendo agendamentos sem interrupção, é só assinar.</p>
             <p><a href="{dados.LinkAssinatura}">Assinar agora</a></p>
             """);
 
@@ -252,7 +253,7 @@ public sealed class Notificador : INotificador
         var nomeNegocio = System.Net.WebUtility.HtmlEncode(dados.NomeNegocio);
         var corpo = Envelope(null, $"""
             <p>Olá, {nomeUsuario}! A conta de <strong>{nomeNegocio}</strong> está pronta.</p>
-            <p>Seu teste grátis vai até <strong>{dados.FimTeste:dd/MM/yyyy}</strong>, com todos os recursos do plano.</p>
+            <p>Seu teste grátis vai até <strong>{FormatacaoBrasil.Data(dados.FimTeste, dados.Fuso)}</strong>, com todos os recursos do plano.</p>
             <p><strong>Painel:</strong> <a href="{dados.LinkPainel}">{dados.LinkPainel}</a></p>
             <p><strong>Seu link de agendamento:</strong> <a href="{dados.LinkPublico}">{dados.LinkPublico}</a></p>
             <p>Comece cadastrando serviços e equipe, e configure os horários de trabalho.</p>

@@ -50,7 +50,7 @@ public sealed class JobAtualizarAssinaturas
 
         var negocios = await _dbContext.Negocios.AsNoTracking()
             .Where(n => negocioIds.Contains(n.Id))
-            .ToDictionaryAsync(n => n.Id, n => n.NomeExibido, cancellationToken);
+            .ToDictionaryAsync(n => n.Id, n => new { n.NomeExibido, n.Fuso }, cancellationToken);
         var planos = await _dbContext.Planos.AsNoTracking()
             .Where(p => planoIds.Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Nome, cancellationToken);
@@ -72,7 +72,7 @@ public sealed class JobAtualizarAssinaturas
                 var diasRestantes = (int)Math.Ceiling((prazo - agora).TotalDays);
 
                 await _notificador.EnviarAvisoAssinaturaAsync(new DadosAvisoAssinatura(
-                    emails, negocios.GetValueOrDefault(assinatura.NegocioId, ""), assinatura.Estado == EstadoAssinatura.EmTeste,
+                    emails, negocios[assinatura.NegocioId].NomeExibido, negocios[assinatura.NegocioId].Fuso, assinatura.Estado == EstadoAssinatura.EmTeste,
                     diasRestantes, prazo, planos.GetValueOrDefault(assinatura.PlanoId, ""),
                     assinatura.ValorDoPeriodo, linkAssinatura), cancellationToken);
             }
