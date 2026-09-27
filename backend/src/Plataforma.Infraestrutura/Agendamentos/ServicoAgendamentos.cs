@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
@@ -9,7 +10,9 @@ using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Cupons;
+using Plataforma.Dominio.Notificacoes;
 using Plataforma.Infraestrutura.Negocios;
+using Plataforma.Infraestrutura.Notificacoes;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 
@@ -34,13 +37,15 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly IGerenciadorFidelidade _gerenciadorFidelidade;
 
     private readonly IRegistroAuditoria _auditoria;
+    private readonly ILogger<ServicoAgendamentos> _logger;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
-        IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria)
+        IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, ILogger<ServicoAgendamentos> logger)
     {
         _auditoria = auditoria;
+        _logger = logger;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _consultaDisponibilidade = consultaDisponibilidade;
@@ -353,9 +358,30 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         if (profissional is null)
             return;
 
-        await _notificador.EnviarNotificacaoProfissionalAsync(new DadosNotificacaoProfissional(
-            evento, profissional.Email, nomeCliente, agendamento.Inicio, agendamento.Fim,
+        var resultado = await _notificador.EnviarNotificacaoProfissionalAsync(new DadosNotificacaoProfissional(
+            evento, profissional.Email, profissional.Telefone, nomeCliente, agendamento.Inicio, agendamento.Fim,
             agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Observacoes), cancellationToken);
+
+        if (resultado.WhatsApp is null && resultado.Email is null)
+            return;
+
+        // Registro por canal (seção 10) — é onde o webhook de status do WhatsApp grava depois.
+        // Roda depois do commit do agendamento: falhar aqui nunca pode desfazer nem derrubar a operação.
+        try
+        {
+            var notificacao = new NotificacaoProfissional(
+                agendamento.NegocioId, agendamento.Id, profissional.Id, evento.ToString(),
+                resultado.Email, resultado.WhatsApp, resultado.IdMensagemWhatsApp);
+            foreach (var status in await EventosWhatsAppRecebidos.ListarAsync(_dbContext, resultado.IdMensagemWhatsApp, cancellationToken))
+                notificacao.AtualizarStatusWhatsApp(status);
+
+            _dbContext.NotificacoesProfissional.Add(notificacao);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception excecao) when (excecao is DbUpdateException or InvalidOperationException)
+        {
+            _logger.LogError(excecao, "Falha ao registrar o aviso ao profissional do agendamento {AgendamentoId}.", agendamento.Id);
+        }
     }
 
     public async Task<ResultadoPreVisualizacaoCupom> PreVisualizarCupomAsync(

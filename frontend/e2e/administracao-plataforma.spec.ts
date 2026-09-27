@@ -49,6 +49,11 @@ test("dono suspende e reativa um negócio pela administração, e o efeito apare
   await page.getByLabel("Senha").fill(SENHA_DONO);
   await page.getByRole("button", { name: "Entrar" }).click();
 
+  // Saúde do WhatsApp no topo (item 6f). Na pilha de dev o provedor é o Fake: não há sessão para acompanhar.
+  const saudeWhatsApp = page.getByTestId("saude-whatsapp");
+  await expect(saudeWhatsApp).toContainText("Não se aplica");
+  await expect(saudeWhatsApp).toContainText("Provedor: Fake");
+
   await page.getByRole("row", { name: /Acme Barbearia/ }).click();
   const detalhe = page.getByTestId("detalhe-negocio-plataforma");
   await detalhe.getByLabel("Motivo da suspensão").fill("Teste e2e");

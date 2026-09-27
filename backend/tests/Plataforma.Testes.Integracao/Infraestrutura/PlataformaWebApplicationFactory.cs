@@ -16,11 +16,18 @@ namespace Plataforma.Testes.Integracao.Infraestrutura;
 public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly IReadOnlyDictionary<string, string?> _configuracaoExtra;
+    private readonly Action<IServiceCollection>? _servicosExtra;
     private Respawner? _respawner;
 
-    public PlataformaWebApplicationFactory(string connectionString)
+    /// <param name="configuracaoExtra">Sobrepõe a configuração padrão dos testes (ex.: ligar o provedor EvolutionApi).</param>
+    /// <param name="servicosExtra">Registrado por último — vence até os espiões (ex.: o provedor real com um HttpClient falso).</param>
+    public PlataformaWebApplicationFactory(
+        string connectionString, IReadOnlyDictionary<string, string?>? configuracaoExtra = null, Action<IServiceCollection>? servicosExtra = null)
     {
         _connectionString = connectionString;
+        _configuracaoExtra = configuracaoExtra ?? new Dictionary<string, string?>();
+        _servicosExtra = servicosExtra;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -47,7 +54,9 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
                 ["Cadastro:LimitePorIpPorMinuto"] = "10000",
                 ["Cadastro:LimiteSlugPorIpPorMinuto"] = "10000",
                 ["Plataforma:LimiteLoginPorIpPorMinuto"] = "10000",
+                ["Verificacao:LimitePorIpPorMinuto"] = "10000",
             });
+            configuracao.AddInMemoryCollection(_configuracaoExtra);
         });
 
         // Espiões no lugar dos provedores Fake (seção 4) — os testes de verificação (seção
@@ -62,6 +71,8 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
 
             servicos.AddSingleton<EspiaWhatsApp>();
             servicos.AddSingleton<IMensageriaWhatsApp>(sp => sp.GetRequiredService<EspiaWhatsApp>());
+
+            _servicosExtra?.Invoke(servicos);
         });
     }
 

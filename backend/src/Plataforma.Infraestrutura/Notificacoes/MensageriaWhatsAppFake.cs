@@ -14,12 +14,12 @@ public sealed class MensageriaWhatsAppFake : IMensageriaWhatsApp
         _logger = logger;
     }
 
-    public Task EnviarAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default)
+    public Task<ResultadoEnvioWhatsApp> EnviarAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default)
     {
         // Único lugar do sistema onde um telefone e uma mensagem (que pode conter o código)
         // aparecem em texto puro no log — permitido só aqui, só em dev (seção 8.1.6).
         _logger.LogInformation("[MensageriaWhatsAppFake] Para: {Telefone} | Mensagem: {Mensagem}", telefone.Valor, mensagem);
 
-        return Task.CompletedTask;
+        return Task.FromResult(ResultadoEnvioWhatsApp.Enviado());
     }
 }

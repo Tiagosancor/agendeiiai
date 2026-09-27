@@ -15,6 +15,9 @@ public sealed class CodigoVerificacaoConfiguracao : IEntityTypeConfiguration<Cod
 
         builder.Property(c => c.HashCodigo).HasMaxLength(200).IsRequired();
         builder.Property(c => c.ExpiraEm).IsRequired();
+        builder.Property(c => c.CanalWhatsAppStatus).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.CanalEmailStatus).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.IdMensagemWhatsApp).HasMaxLength(200);
 
         builder.Property(c => c.Telefone)
             .HasConversion(telefone => telefone.Valor, valor => TelefoneE164.Criar(valor))
@@ -25,5 +28,8 @@ public sealed class CodigoVerificacaoConfiguracao : IEntityTypeConfiguration<Cod
         // Apoia as checagens de rate limit (por telefone/janela de tempo — seção 8.1.5) e a
         // busca do código mais recente na validação (seção 8.1.1.c).
         builder.HasIndex(c => new { c.NegocioId, c.Telefone, c.CriadoEm });
+
+        // Busca do webhook de status do WhatsApp (sem tenant — o evento só traz o ID da mensagem).
+        builder.HasIndex(c => c.IdMensagemWhatsApp);
     }
 }

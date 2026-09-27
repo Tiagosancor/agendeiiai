@@ -138,14 +138,8 @@ builder.Services.AddRateLimiter(opcoes =>
 {
     opcoes.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 
-    opcoes.AddPolicy("CodigoVerificacaoPorIp", contexto => RateLimitPartition.GetFixedWindowLimiter(
-        contexto.Connection.RemoteIpAddress?.ToString() ?? "sem-ip",
-        _ => new FixedWindowRateLimiterOptions
-        {
-            Window = TimeSpan.FromMinutes(1),
-            PermitLimit = 10,
-            QueueLimit = 0,
-        }));
+    opcoes.AddPolicy("CodigoVerificacaoPorIp", contexto =>
+        LimitePorIpPorMinuto(contexto, "Verificacao:LimitePorIpPorMinuto", padrao: 10));
 
     // Cadastro de negócio (seção 8.6.1): envio de código, validação e criação da conta; e a
     // checagem de slug, mais frouxa porque roda enquanto a pessoa digita. Limites lidos na

@@ -1,4 +1,5 @@
 using Plataforma.Dominio.Comum;
+using Plataforma.Dominio.Notificacoes;
 
 namespace Plataforma.Aplicacao.Notificacoes;
 
@@ -11,8 +12,13 @@ namespace Plataforma.Aplicacao.Notificacoes;
 /// </summary>
 public interface INotificador
 {
-    /// <summary>Código de confirmação (seção 8.1.1.b) — sempre pelos dois canais, WhatsApp e e-mail, nunca configurável por negócio.</summary>
-    Task EnviarCodigoVerificacaoAsync(TelefoneE164 telefone, string? email, string codigo, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Código de confirmação (seção 8.1.1.b) — sempre pelos dois canais em paralelo, WhatsApp e
+    /// e-mail, nunca configurável por negócio. Um canal falhar não atrasa nem cancela o outro;
+    /// o resultado de cada um volta para ser gravado no <c>CodigoVerificacao</c>.
+    /// </summary>
+    Task<ResultadoEnvioCanais> EnviarCodigoVerificacaoAsync(
+        TelefoneE164 telefone, string? email, string codigo, int validadeMinutos, CancellationToken cancellationToken = default);
 
     /// <summary>Confirmação do agendamento ao cliente (seção 6.3) — e-mail sempre; WhatsApp só se o negócio ativar.</summary>
     Task EnviarConfirmacaoAgendamentoAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default);
@@ -20,8 +26,11 @@ public interface INotificador
     /// <summary>Mensagem do formulário "Fale Conosco" (seção 6.1.6) ao e-mail de contato do negócio.</summary>
     Task EnviarMensagemContatoAsync(DadosNotificacaoContato dados, CancellationToken cancellationToken = default);
 
-    /// <summary>Novo/remarcado/cancelado ao profissional (seção 9, Sprint 4) — só e-mail no MVP; nunca falha se o profissional não tiver e-mail cadastrado.</summary>
-    Task EnviarNotificacaoProfissionalAsync(DadosNotificacaoProfissional dados, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Novo/remarcado/cancelado ao profissional (seção 9): e-mail sempre (se houver e-mail
+    /// cadastrado); WhatsApp só se o negócio ligou o aviso e o profissional tiver telefone.
+    /// </summary>
+    Task<ResultadoEnvioCanais> EnviarNotificacaoProfissionalAsync(DadosNotificacaoProfissional dados, CancellationToken cancellationToken = default);
 
     /// <summary>Lembrete 24h/2h antes (seção 9, Sprint 4) — antecedência configurável, ver <c>OpcoesLembretes</c>.</summary>
     Task EnviarLembreteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default);
@@ -58,8 +67,11 @@ public enum EventoAgendamentoProfissional
     Cancelado,
 }
 
+/// <summary>Resultado de cada canal de um envio (seção 10). Nulo = canal não usado.</summary>
+public sealed record ResultadoEnvioCanais(StatusCanal? WhatsApp, string? IdMensagemWhatsApp, StatusCanal? Email);
+
 public sealed record DadosNotificacaoProfissional(
-    EventoAgendamentoProfissional Evento, string? EmailProfissional, string NomeCliente,
+    EventoAgendamentoProfissional Evento, string? EmailProfissional, string? TelefoneProfissional, string NomeCliente,
     DateTimeOffset Inicio, DateTimeOffset Fim, IReadOnlyList<string> Servicos, string? Observacoes);
 
 public sealed record DadosNotificacaoAgendamento(

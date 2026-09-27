@@ -49,6 +49,7 @@ public sealed class NegocioConfiguracao : IEntityTypeConfiguration<Negocio>
         builder.Property(n => n.Telefone).HasMaxLength(20);
         builder.Property(n => n.EmailContato).HasMaxLength(320);
         builder.Property(n => n.WhatsAppAtivoParaConfirmacoes).IsRequired().HasDefaultValue(false);
+        builder.Property(n => n.WhatsAppAvisoProfissional).IsRequired().HasDefaultValue(false);
 
         builder.OwnsOne(n => n.Endereco, endereco =>
         {

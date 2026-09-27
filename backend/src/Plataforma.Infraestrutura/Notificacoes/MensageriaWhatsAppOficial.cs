@@ -1,4 +1,6 @@
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Comum;
@@ -17,11 +19,13 @@ public sealed class MensageriaWhatsAppOficial : IMensageriaWhatsApp
 {
     private readonly HttpClient _httpClient;
     private readonly OpcoesWhatsApp _opcoes;
+    private readonly ILogger<MensageriaWhatsAppOficial> _logger;
 
-    public MensageriaWhatsAppOficial(HttpClient httpClient, IOptions<OpcoesWhatsApp> opcoes)
+    public MensageriaWhatsAppOficial(HttpClient httpClient, IOptions<OpcoesWhatsApp> opcoes, ILogger<MensageriaWhatsAppOficial> logger)
     {
         _httpClient = httpClient;
         _opcoes = opcoes.Value;
+        _logger = logger;
     }
 
     /// <summary>
@@ -29,7 +33,7 @@ public sealed class MensageriaWhatsAppOficial : IMensageriaWhatsApp
     /// ele tiver um parâmetro de texto) — o código de verificação é o único caso real hoje,
     /// então tratamos a mensagem inteira como o único parâmetro do template configurado.
     /// </summary>
-    public async Task EnviarAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default)
+    public async Task<ResultadoEnvioWhatsApp> EnviarAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default)
     {
         var requisicao = new HttpRequestMessage(
             HttpMethod.Post, $"https://graph.facebook.com/v20.0/{_opcoes.Meta.NumeroTelefoneId}/messages")
@@ -52,7 +56,25 @@ public sealed class MensageriaWhatsAppOficial : IMensageriaWhatsApp
             }),
         };
 
-        using var resposta = await _httpClient.SendAsync(requisicao, cancellationToken);
-        resposta.EnsureSuccessStatusCode();
+        try
+        {
+            using var resposta = await _httpClient.SendAsync(requisicao, cancellationToken);
+            if (!resposta.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("API Cloud da Meta recusou a mensagem para {Telefone}: HTTP {Status}.", telefone.Mascarado(), (int)resposta.StatusCode);
+                return ResultadoEnvioWhatsApp.Indisponivel();
+            }
+
+            // { "messages": [ { "id": "wamid..." } ] } — sem webhook de status da Meta por ora, então já conta como enviado.
+            using var documento = JsonDocument.Parse(await resposta.Content.ReadAsStringAsync(cancellationToken));
+            var id = documento.RootElement.TryGetProperty("messages", out var mensagens) && mensagens.GetArrayLength() > 0
+                && mensagens[0].TryGetProperty("id", out var valor) ? valor.GetString() : null;
+            return ResultadoEnvioWhatsApp.Enviado(id);
+        }
+        catch (Exception excecao) when (excecao is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning("API Cloud da Meta indisponível: {Erro}.", excecao.GetType().Name);
+            return ResultadoEnvioWhatsApp.Indisponivel();
+        }
     }
 }

@@ -170,6 +170,25 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     }
   }
 
+  /** Troca o código e manda de novo pelos dois canais; o limite de reenvios vem da API, com a mensagem pronta. */
+  async function reenviarCodigo() {
+    setErro(null);
+    setEnviandoCodigo(true);
+    try {
+      await requisicaoApiPublica("/codigos/reenviar", { metodo: "POST", corpo: { telefone, email: email || null } });
+      setCodigo("");
+      setReenviarEm(60);
+    } catch (excecao) {
+      setErro(
+        excecao instanceof ErroApi && excecao.status === 429
+          ? excecao.message
+          : "Não foi possível reenviar o código. Tente de novo em instantes.",
+      );
+    } finally {
+      setEnviandoCodigo(false);
+    }
+  }
+
   async function validarCodigo() {
     setErro(null);
     setValidandoCodigo(true);
@@ -423,6 +442,11 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               disabled={codigoEnviado}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
+            {!codigoEnviado && !email.trim() && (
+              <p data-testid="aviso-sem-email" className="text-xs text-gray-500 dark:text-neutral-400">
+                Sem e-mail, o código chega só pelo WhatsApp. Com e-mail, você recebe pelos dois.
+              </p>
+            )}
 
             {!codigoEnviado && (
               <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-neutral-400">
@@ -448,7 +472,9 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             ) : (
               <div className="space-y-2">
                 <p className="text-sm text-gray-600 dark:text-neutral-400">
-                  Digite o código de 6 dígitos enviado por WhatsApp e e-mail.
+                  {email.trim()
+                    ? "Digite o código de 6 dígitos enviado por WhatsApp e e-mail."
+                    : "Digite o código de 6 dígitos enviado por WhatsApp."}
                 </p>
                 <input
                   placeholder="000000"
@@ -474,7 +500,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                   >
                     Mudar dados
                   </button>
-                  <button onClick={enviarCodigo} disabled={reenviarEm > 0} className="text-(--cor-primaria) disabled:opacity-50">
+                  <button onClick={reenviarCodigo} disabled={reenviarEm > 0 || enviandoCodigo} className="text-(--cor-primaria) disabled:opacity-50">
                     {reenviarEm > 0 ? `Reenviar em ${reenviarEm}s` : "Reenviar código"}
                   </button>
                 </div>

@@ -52,6 +52,13 @@ public class Negocio : EntidadeBase
     /// </summary>
     public bool WhatsAppAtivoParaConfirmacoes { get; private set; }
 
+    /// <summary>
+    /// Opt-in por negócio para avisar o profissional também por WhatsApp de agendamento novo,
+    /// remarcado ou cancelado (seção 9). Desligado por padrão, inclusive nos negócios que já
+    /// existiam — o e-mail ao profissional sai sempre, ligado ou não.
+    /// </summary>
+    public bool WhatsAppAvisoProfissional { get; private set; }
+
     public IReadOnlyCollection<HorarioFuncionamentoDia> HorarioFuncionamento => _horarioFuncionamento.AsReadOnly();
 
     /// <summary>Checklist de primeiros passos do painel dispensado pelo usuário (seção 6.5).</summary>
@@ -113,6 +120,8 @@ public class Negocio : EntidadeBase
         RedesSociais = redesSociais;
         WhatsAppAtivoParaConfirmacoes = whatsAppAtivoParaConfirmacoes;
     }
+
+    public void DefinirAvisoProfissionalPorWhatsApp(bool ativo) => WhatsAppAvisoProfissional = ativo;
 
     /// <summary>Substitui o horário de funcionamento inteiro — sempre os 7 dias da semana, um registro cada.</summary>
     public void DefinirHorarioFuncionamento(IEnumerable<HorarioFuncionamentoDia> horario)

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { ErroApi, requisicaoApi } from "@/lib/api";
-import type { EstadoAssinatura, Periodicidade, PlanoPublico } from "@/lib/tipos";
+import type { EstadoAssinatura, EstadoConexaoWhatsApp, Periodicidade, PlanoPublico, SaudeWhatsApp } from "@/lib/tipos";
 import { ROTULOS_ESTADO_ASSINATURA } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import { classeBotaoPerigo, classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
@@ -143,6 +143,8 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
         </div>
       </div>
 
+      <CartaoSaudeWhatsApp chamar={chamar} />
+
       <div className={classeCartao}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-200">
@@ -191,6 +193,65 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
         />
       )}
     </main>
+  );
+}
+
+const ROTULOS_CONEXAO: Record<EstadoConexaoWhatsApp, { texto: string; classe: string }> = {
+  Conectada: { texto: "Conectada", classe: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300" },
+  AguardandoQrCode: { texto: "Esperando novo QR code", classe: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" },
+  Desconectada: { texto: "Desconectada", classe: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  Indisponivel: { texto: "Instância fora do ar", classe: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300" },
+  NaoSeAplica: { texto: "Não se aplica", classe: "bg-gray-100 text-gray-700 dark:bg-neutral-800 dark:text-neutral-300" },
+};
+
+/**
+ * Saúde da conexão do WhatsApp (seção 7): sem isso, a queda da sessão da instância só seria
+ * percebida quando um cliente reclamasse de não ter recebido o código.
+ */
+function CartaoSaudeWhatsApp({ chamar }: { chamar: <T>(caminho: string) => Promise<T> }) {
+  const [saude, setSaude] = useState<SaudeWhatsApp | null>(null);
+  const [consultando, setConsultando] = useState(false);
+  const [erro, setErro] = useState(false);
+
+  const consultar = useCallback(async () => {
+    setConsultando(true);
+    setErro(false);
+    try {
+      setSaude(await chamar<SaudeWhatsApp>("/plataforma/whatsapp/saude"));
+    } catch {
+      setErro(true);
+    } finally {
+      setConsultando(false);
+    }
+  }, [chamar]);
+
+  useEffect(() => {
+    // Consulta disparada pela montagem do painel.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    consultar();
+  }, [consultar]);
+
+  const rotulo = saude ? ROTULOS_CONEXAO[saude.estado] : null;
+
+  return (
+    <section data-testid="saude-whatsapp" className={`${classeCartao} flex flex-wrap items-center justify-between gap-3 p-4`}>
+      <div className="space-y-1">
+        <h2 className="text-sm font-semibold">WhatsApp</h2>
+        {erro && <p className="text-sm text-red-600">Não foi possível consultar a conexão.</p>}
+        {saude && rotulo && (
+          <>
+            <p className="flex flex-wrap items-center gap-2 text-sm">
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${rotulo.classe}`}>{rotulo.texto}</span>
+              <span className="text-gray-500 dark:text-neutral-400">Provedor: {saude.provedor}</span>
+            </p>
+            {saude.detalhe && <p className="text-xs text-gray-500 dark:text-neutral-400">{saude.detalhe}</p>}
+          </>
+        )}
+      </div>
+      <button onClick={consultar} disabled={consultando} className={classeBotaoSecundario}>
+        {consultando ? "Consultando..." : "Consultar de novo"}
+      </button>
+    </section>
   );
 }
 

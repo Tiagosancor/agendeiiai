@@ -5,6 +5,7 @@ using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Negocios;
+using Plataforma.Dominio.Notificacoes;
 using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
@@ -40,34 +41,40 @@ public sealed class Notificador : INotificador
         _logger = logger;
     }
 
-    public async Task EnviarCodigoVerificacaoAsync(
-        TelefoneE164 telefone, string? email, string codigo, CancellationToken cancellationToken = default)
+    public async Task<ResultadoEnvioCanais> EnviarCodigoVerificacaoAsync(
+        TelefoneE164 telefone, string? email, string codigo, int validadeMinutos, CancellationToken cancellationToken = default)
     {
         var negocio = await ObterNegocioAsync(cancellationToken);
-        var mensagem = $"Seu código de confirmação em {negocio.NomeExibido}: {codigo}. Válido por 5 minutos.";
+        var mensagem = $"Seu código de confirmação em {negocio.NomeExibido}: {codigo}. Válido por {validadeMinutos} minutos.";
 
-        var tarefas = new List<Task>();
+        // Teto diário de WhatsApp por negócio (seção 8.1.5) — cada código (e cada reenvio dele)
+        // tenta 1 envio por WhatsApp, então a soma das últimas 24h aproxima bem quantos WhatsApp
+        // já foram tentados hoje; ao estourar, só e-mail.
+        var whatsAppHoje = await _dbContext.CodigosVerificacao
+            .Where(c => c.NegocioId == negocio.Id && c.CriadoEm >= DateTimeOffset.UtcNow.AddDays(-1))
+            .SumAsync(c => 1 + c.TentativasReenvio, cancellationToken);
 
-        // Teto diário de WhatsApp por negócio (seção 8.1.5) — cada código solicitado tenta 1
-        // envio por WhatsApp, então a contagem de códigos criados nas últimas 24h aproxima
-        // bem quantos WhatsApp já foram tentados hoje; ao estourar, só e-mail.
-        var codigosHoje = await _dbContext.CodigosVerificacao.CountAsync(
-            c => c.NegocioId == negocio.Id && c.CriadoEm >= DateTimeOffset.UtcNow.AddDays(-1), cancellationToken);
-
-        if (codigosHoje <= _opcoesVerificacao.MaximoWhatsAppPorNegocioPorDia)
-            tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(telefone, mensagem, cancellationToken), "WhatsApp/código"));
+        // Os dois canais saem em paralelo e cada um contém a própria falha (seção 8.1): o
+        // e-mail não espera o WhatsApp (nem o retry dele), e um não cancela o outro.
+        Task<ResultadoEnvioWhatsApp>? envioWhatsApp = null;
+        if (whatsAppHoje <= _opcoesVerificacao.MaximoWhatsAppPorNegocioPorDia)
+            envioWhatsApp = EnviarWhatsAppSemFalharAsync(telefone, mensagem, "WhatsApp/código", cancellationToken);
         else
             _logger.LogInformation("Teto diário de WhatsApp do negócio {NegocioId} atingido — código enviado só por e-mail.", negocio.Id);
 
+        Task<bool>? envioEmail = null;
         if (!string.IsNullOrWhiteSpace(email))
         {
             var corpo = Envelope(negocio.NomeExibido,
-                $"<p>Seu código de confirmação em <strong>{negocio.NomeExibido}</strong>:</p><h2>{codigo}</h2><p>Válido por 5 minutos.</p>");
-            tarefas.Add(ExecutarSemFalharAsync(
-                _email.EnviarAsync(email, $"Seu código de confirmação — {negocio.NomeExibido}", corpo, cancellationToken), "E-mail/código"));
+                $"<p>Seu código de confirmação em <strong>{negocio.NomeExibido}</strong>:</p><h2>{codigo}</h2><p>Válido por {validadeMinutos} minutos.</p>");
+            envioEmail = ExecutarSemFalharAsync(() =>
+                _email.EnviarAsync(email, $"Seu código de confirmação — {negocio.NomeExibido}", corpo, cancellationToken), "E-mail/código");
         }
 
-        await Task.WhenAll(tarefas);
+        var whatsApp = envioWhatsApp is null ? null : await envioWhatsApp;
+        var emailEnviado = envioEmail is null ? (bool?)null : await envioEmail;
+
+        return new ResultadoEnvioCanais(whatsApp?.Status, whatsApp?.IdMensagem, StatusDoEmail(emailEnviado));
     }
 
     public async Task EnviarConfirmacaoAgendamentoAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default)
@@ -86,7 +93,7 @@ public sealed class Notificador : INotificador
 
         if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
         {
-            tarefas.Add(ExecutarSemFalharAsync(
+            tarefas.Add(ExecutarSemFalharAsync(() =>
                 _email.EnviarAsync(dados.EmailCliente, $"Agendamento confirmado — {negocio.NomeExibido}", corpo, cancellationToken),
                 "E-mail/confirmação"));
         }
@@ -94,7 +101,7 @@ public sealed class Notificador : INotificador
         if (negocio.WhatsAppAtivoParaConfirmacoes)
         {
             var mensagem = $"Agendamento confirmado em {negocio.NomeExibido} para {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Total {FormatacaoBrasil.Reais(dados.Total)}.";
-            tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/confirmação"));
+            tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/confirmação", cancellationToken));
         }
 
         await Task.WhenAll(tarefas);
@@ -118,16 +125,13 @@ public sealed class Notificador : INotificador
             <p>{dados.Mensagem}</p>
             """);
 
-        await ExecutarSemFalharAsync(
+        await ExecutarSemFalharAsync(() =>
             _email.EnviarAsync(negocio.EmailContato, $"Nova mensagem pelo site — {negocio.NomeExibido}", corpo, cancellationToken),
             "E-mail/fale-conosco");
     }
 
-    public async Task EnviarNotificacaoProfissionalAsync(DadosNotificacaoProfissional dados, CancellationToken cancellationToken = default)
+    public async Task<ResultadoEnvioCanais> EnviarNotificacaoProfissionalAsync(DadosNotificacaoProfissional dados, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(dados.EmailProfissional))
-            return;
-
         var negocio = await ObterNegocioAsync(cancellationToken);
 
         var (assunto, titulo) = dados.Evento switch
@@ -146,9 +150,25 @@ public sealed class Notificador : INotificador
             {(string.IsNullOrWhiteSpace(dados.Observacoes) ? "" : $"<p><strong>Observações:</strong> {dados.Observacoes}</p>")}
             """);
 
-        await ExecutarSemFalharAsync(
-            _email.EnviarAsync(dados.EmailProfissional, $"{assunto} — {negocio.NomeExibido}", corpo, cancellationToken),
-            "E-mail/profissional");
+        // E-mail sempre (é a rede de segurança se a instância de WhatsApp cair); WhatsApp só com
+        // o aviso ligado no negócio e telefone válido no cadastro do profissional (seção 9).
+        Task<bool>? envioEmail = string.IsNullOrWhiteSpace(dados.EmailProfissional)
+            ? null
+            : ExecutarSemFalharAsync(() =>
+                _email.EnviarAsync(dados.EmailProfissional!, $"{assunto} — {negocio.NomeExibido}", corpo, cancellationToken),
+                "E-mail/profissional");
+
+        Task<ResultadoEnvioWhatsApp>? envioWhatsApp = null;
+        if (negocio.WhatsAppAvisoProfissional && TelefoneE164.TentarCriar(dados.TelefoneProfissional ?? "", out var telefone))
+        {
+            var mensagem = $"{titulo} em {negocio.NomeExibido}: {dados.NomeCliente}, {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)} — {string.Join(", ", dados.Servicos)}.";
+            envioWhatsApp = EnviarWhatsAppSemFalharAsync(telefone!, mensagem, "WhatsApp/profissional", cancellationToken);
+        }
+
+        var whatsApp = envioWhatsApp is null ? null : await envioWhatsApp;
+        var emailEnviado = envioEmail is null ? (bool?)null : await envioEmail;
+
+        return new ResultadoEnvioCanais(whatsApp?.Status, whatsApp?.IdMensagem, StatusDoEmail(emailEnviado));
     }
 
     public async Task EnviarLembreteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default)
@@ -166,7 +186,7 @@ public sealed class Notificador : INotificador
 
         if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
         {
-            tarefas.Add(ExecutarSemFalharAsync(
+            tarefas.Add(ExecutarSemFalharAsync(() =>
                 _email.EnviarAsync(dados.EmailCliente, $"Lembrete do seu agendamento — {negocio.NomeExibido}", corpo, cancellationToken),
                 "E-mail/lembrete"));
         }
@@ -174,7 +194,7 @@ public sealed class Notificador : INotificador
         if (negocio.WhatsAppAtivoParaConfirmacoes)
         {
             var mensagem = $"Lembrete: você tem um agendamento em {negocio.NomeExibido} em {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}.";
-            tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/lembrete"));
+            tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/lembrete", cancellationToken));
         }
 
         await Task.WhenAll(tarefas);
@@ -197,7 +217,7 @@ public sealed class Notificador : INotificador
 
         if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
         {
-            tarefas.Add(ExecutarSemFalharAsync(
+            tarefas.Add(ExecutarSemFalharAsync(() =>
                 _email.EnviarAsync(dados.EmailCliente, $"Agendamento cancelado — {negocio.NomeExibido}", corpo, cancellationToken),
                 "E-mail/cancelamento"));
         }
@@ -205,7 +225,7 @@ public sealed class Notificador : INotificador
         if (negocio.WhatsAppAtivoParaConfirmacoes)
         {
             var mensagem = $"{negocio.NomeExibido} precisou cancelar o seu agendamento de {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Se quiser, agende um novo horário pela página do negócio.";
-            tarefas.Add(ExecutarSemFalharAsync(_whatsApp.EnviarAsync(dados.TelefoneCliente, mensagem, cancellationToken), "WhatsApp/cancelamento"));
+            tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/cancelamento", cancellationToken));
         }
 
         await Task.WhenAll(tarefas);
@@ -226,13 +246,13 @@ public sealed class Notificador : INotificador
             """);
 
         await Task.WhenAll(dados.EmailsAdministradores.Select(email =>
-            ExecutarSemFalharAsync(_email.EnviarAsync(email, $"{assunto} — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/aviso-assinatura")));
+            ExecutarSemFalharAsync(() => _email.EnviarAsync(email, $"{assunto} — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/aviso-assinatura")));
     }
 
     public Task EnviarCodigoCadastroAsync(string email, string codigo, CancellationToken cancellationToken = default)
     {
         var corpo = Envelope(null, $"<p>Seu código para criar a conta:</p><h2>{codigo}</h2><p>Válido por 5 minutos. Se não foi você, ignore este e-mail.</p>");
-        return ExecutarSemFalharAsync(
+        return ExecutarSemFalharAsync(() =>
             _email.EnviarAsync(email, $"Seu código de cadastro — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/código-cadastro");
     }
 
@@ -243,7 +263,7 @@ public sealed class Notificador : INotificador
             <p><a href="{linkLogin}">Entrar no painel</a></p>
             <p>Se não lembra a senha, fale com o suporte do {_opcoesMarca.NomeProduto}. Se não foi você, ignore esta mensagem.</p>
             """);
-        return ExecutarSemFalharAsync(
+        return ExecutarSemFalharAsync(() =>
             _email.EnviarAsync(email, $"Você já tem uma conta — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/conta-existente");
     }
 
@@ -258,7 +278,7 @@ public sealed class Notificador : INotificador
             <p><strong>Seu link de agendamento:</strong> <a href="{dados.LinkPublico}">{dados.LinkPublico}</a></p>
             <p>Comece cadastrando serviços e equipe, e configure os horários de trabalho.</p>
             """);
-        return ExecutarSemFalharAsync(
+        return ExecutarSemFalharAsync(() =>
             _email.EnviarAsync(dados.Email, $"Bem-vindo ao {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/boas-vindas");
     }
 
@@ -288,15 +308,40 @@ public sealed class Notificador : INotificador
     private Task<Negocio> ObterNegocioAsync(CancellationToken cancellationToken) =>
         _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
 
-    private async Task ExecutarSemFalharAsync(Task tarefa, string rotulo)
+    /// <summary>Recebe a função, não a Task já criada: um provedor que lance antes do primeiro await também fica contido aqui.</summary>
+    private async Task<bool> ExecutarSemFalharAsync(Func<Task> envio, string rotulo)
     {
         try
         {
-            await tarefa;
+            await envio();
+            return true;
         }
         catch (Exception excecao)
         {
             _logger.LogError(excecao, "Falha ao enviar notificação ({Rotulo}).", rotulo);
+            return false;
         }
     }
+
+    /// <summary>O provedor já não deveria lançar (contrato de <see cref="IMensageriaWhatsApp"/>); isto é só a segunda barreira.</summary>
+    private async Task<ResultadoEnvioWhatsApp> EnviarWhatsAppSemFalharAsync(
+        TelefoneE164 telefone, string mensagem, string rotulo, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _whatsApp.EnviarAsync(telefone, mensagem, cancellationToken);
+        }
+        catch (Exception excecao)
+        {
+            _logger.LogError(excecao, "Falha ao enviar notificação ({Rotulo}).", rotulo);
+            return ResultadoEnvioWhatsApp.Indisponivel();
+        }
+    }
+
+    private static StatusCanal? StatusDoEmail(bool? enviado) => enviado switch
+    {
+        null => null,
+        true => StatusCanal.Enviado,
+        false => StatusCanal.Falhou,
+    };
 }
