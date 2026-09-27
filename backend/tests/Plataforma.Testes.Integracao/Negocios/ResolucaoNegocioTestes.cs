@@ -108,6 +108,43 @@ public sealed class ResolucaoNegocioTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task API_publicada_em_subdominio_reservado_atende_as_rotas_publicas()
+    {
+        // Produção: a API fica em api.{dominio}. "api" é reservado, então não é negócio — o
+        // tenant vem do cabeçalho que o proxy do frontend manda (ou do slug na rota).
+        await SemearNegocioAsync("acme", "Acme Barbearia", TipoNegocio.Barbearia);
+
+        using var api = _fabrica.CreateClient(new WebApplicationFactoryClientOptions { BaseAddress = new Uri($"http://api.{DominioBase}/") });
+
+        (await api.GetAsync("/publico/negocios-por-slug/acme")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await api.GetAsync("/publico/negocios-por-slug/nao-existe")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        using var comCabecalho = new HttpRequestMessage(HttpMethod.Get, "/publico/negocio");
+        comCabecalho.Headers.Add("X-Slug-Negocio", "acme");
+        var resposta = await api.SendAsync(comCabecalho);
+        resposta.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await resposta.Content.ReadFromJsonAsync<NegocioResumo>())!.Slug.Should().Be("acme");
+
+        // Sem o cabeçalho, não há negócio nenhum — e nunca o "api" como se fosse um.
+        (await api.GetAsync("/publico/negocio")).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Cabecalho_nunca_sobrepoe_o_negocio_do_host()
+    {
+        await SemearNegocioAsync("acme", "Acme Barbearia", TipoNegocio.Barbearia);
+        await SemearNegocioAsync("beta", "Beta Salão", TipoNegocio.Salao);
+
+        using var cliente = ClientePara("acme");
+        using var requisicao = new HttpRequestMessage(HttpMethod.Get, "/publico/negocio");
+        requisicao.Headers.Add("X-Slug-Negocio", "beta");
+
+        var negocio = await (await cliente.SendAsync(requisicao)).Content.ReadFromJsonAsync<NegocioResumo>();
+
+        negocio!.Slug.Should().Be("acme");
+    }
+
+    [Fact]
     public async Task Host_do_painel_ou_do_dominio_base_nao_exige_negocio()
     {
         using var clienteDominioBase = _fabrica.CreateClient();
