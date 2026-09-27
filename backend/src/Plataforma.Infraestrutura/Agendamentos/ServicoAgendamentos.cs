@@ -116,6 +116,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         return await estrategia.ExecuteAsync(async () =>
         {
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await TravarAgendaDoProfissionalAsync(dados.ProfissionalId, cancellationToken);
 
             // 1) Expira reservas vencidas deste profissional ANTES de checar disponibilidade
             // e inserir (seção 8.2.2) — a exclusion constraint não enxerga now().
@@ -436,6 +437,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         var resultado = await estrategia.ExecuteAsync(async () =>
         {
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await TravarAgendaDoProfissionalAsync(novoProfissionalId, cancellationToken);
 
             var agendamento = await _dbContext.Agendamentos
                 .Include(a => a.Servicos)
@@ -541,6 +543,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 await transacao.RollbackAsync(cancellationToken);
                 return ResultadoAgendamento.ComErro("Agendamento não encontrado.");
             }
+
+            await TravarAgendaDoProfissionalAsync(agendamento.ProfissionalId, cancellationToken);
 
             var negocio = await _dbContext.Negocios.AsNoTracking()
                 .FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
@@ -677,4 +681,15 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             agendamento.Id, negocio.NomeExibido, local, agendamento.Inicio, agendamento.Fim,
             agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, agendamento.Status.ToString());
     }
+
+    /// <summary>
+    /// Enfileira, dentro da transação, quem grava na agenda do mesmo profissional. A exclusion
+    /// constraint continua sendo a garantia (seção 8.2.1), mas inserções simultâneas sobrepostas
+    /// travam uma à outra conferindo a constraint (40P01, deadlock) — cada uma leva ~1 s para o
+    /// Postgres desfazer e volta pelo retry com backoff, o que numa rajada estourava o tempo das
+    /// requisições. A trava é liberada sozinha no commit/rollback.
+    /// </summary>
+    private Task TravarAgendaDoProfissionalAsync(Guid profissionalId, CancellationToken cancellationToken) =>
+        _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({profissionalId.ToString()}, 0))", cancellationToken);
 }
