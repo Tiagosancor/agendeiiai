@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Auditoria;
@@ -6,6 +5,7 @@ using Plataforma.Aplicacao.Cadastros;
 using Plataforma.Aplicacao.Servicos;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Servicos;
+using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Persistencia;
 
 namespace Plataforma.Infraestrutura.Servicos;
@@ -53,7 +53,7 @@ public sealed class GerenciadorServicos : IGerenciadorServicos
         // Serviço não é dado pessoal: o log guarda o antes → depois, útil para conferir preço.
         var alteracoes = new List<string>();
         if (servico.Nome != dados.Nome.Trim()) alteracoes.Add($"nome: {servico.Nome} → {dados.Nome.Trim()}");
-        if (servico.Preco != dados.Preco) alteracoes.Add($"preço: {Reais(servico.Preco)} → {Reais(dados.Preco)}");
+        if (servico.Preco != dados.Preco) alteracoes.Add($"preço: {FormatacaoBrasil.Reais(servico.Preco)} → {FormatacaoBrasil.Reais(dados.Preco)}");
         if (servico.DuracaoMinutos != dados.DuracaoMinutos) alteracoes.Add($"duração: {servico.DuracaoMinutos} → {dados.DuracaoMinutos} min");
         if (servico.CategoriaId != dados.CategoriaId) alteracoes.Add("categoria");
         if (servico.Popular != dados.Popular) alteracoes.Add($"popular: {(dados.Popular ? "sim" : "não")}");
@@ -128,12 +128,6 @@ public sealed class GerenciadorServicos : IGerenciadorServicos
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
-
-    /// <summary>
-    /// "R$ 45,00" sem depender de cultura: a imagem Alpine da API roda em modo de globalização
-    /// invariante (sem ICU), e <c>CultureInfo("pt-BR")</c> lança só lá — nunca nos testes no host.
-    /// </summary>
-    private static string Reais(decimal valor) => "R$ " + valor.ToString("0.00", CultureInfo.InvariantCulture).Replace(".", ",");
 
     /// <summary>Já entrou em algum agendamento (de qualquer status) = tem histórico (seção 7).</summary>
     private Task<bool> TemHistoricoAsync(Guid servicoId, CancellationToken cancellationToken) =>

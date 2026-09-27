@@ -199,7 +199,7 @@ public sealed class ServicoCadastro : IServicoCadastro
         {
             var assinatura = await _dbContext.Assinaturas.IgnoreQueryFilters().AsNoTracking().FirstAsync(a => a.NegocioId == criado.Id, cancellationToken);
             await _notificador.EnviarBoasVindasAsync(new DadosBoasVindas(
-                email, dados.Nome.Trim(), criado.NomeExibido,
+                email, dados.Nome.Trim(), criado.NomeExibido, criado.Fuso,
                 ConstrutorUrlPublica.ConstruirPainel(_opcoesMarca, "/painel"),
                 ConstrutorUrlPublica.Construir(_opcoesMarca, criado.Slug.Valor, "/"),
                 assinatura.FimTeste!.Value), cancellationToken);

@@ -45,10 +45,10 @@ public interface INotificador
 }
 
 public sealed record DadosBoasVindas(
-    string Email, string NomeUsuario, string NomeNegocio, string LinkPainel, string LinkPublico, DateTimeOffset FimTeste);
+    string Email, string NomeUsuario, string NomeNegocio, string Fuso, string LinkPainel, string LinkPublico, DateTimeOffset FimTeste);
 
 public sealed record DadosAvisoAssinatura(
-    IReadOnlyList<string> EmailsAdministradores, string NomeNegocio, bool EmTeste, int DiasRestantes,
+    IReadOnlyList<string> EmailsAdministradores, string NomeNegocio, string Fuso, bool EmTeste, int DiasRestantes,
     DateTimeOffset Prazo, string NomePlano, decimal ValorDoPeriodo, string LinkAssinatura);
 
 public enum EventoAgendamentoProfissional
