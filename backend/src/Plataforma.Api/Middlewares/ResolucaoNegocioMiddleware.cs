@@ -14,7 +14,8 @@ namespace Plataforma.Api.Middlewares;
 /// o tenant delas vem do JWT, nunca do host.
 ///
 /// Hosts reconhecidos, dado o domínio base configurado em <c>Marca__Dominio</c>:
-///   - <c>{dominio}</c> ou <c>app.{dominio}</c>              → sem tenant por subdomínio (painel/raiz).
+///   - <c>{dominio}</c> ou <c>{reservado}.{dominio}</c>      → sem tenant por subdomínio (raiz, painel em
+///     (<c>app</c>, <c>api</c>, <c>www</c>... — <c>Slug.Reservados</c>)      <c>app</c>, a própria API em <c>api</c>).
 ///   - <c>{slug}.{dominio}</c>, slug válido e negócio ativo   → tenant resolvido, segue o pipeline.
 ///   - <c>{slug}.{dominio}</c>, slug inválido/reservado/não   → 404 em rotas <c>/publico/**</c>;
 ///     encontrado                                               nas demais rotas, segue sem tenant.
@@ -61,11 +62,19 @@ public sealed class ResolucaoNegocioMiddleware
 
         string? candidatoSlug = null;
 
-        if (host != dominioBase && host != "app." + dominioBase && host.EndsWith(sufixo, StringComparison.Ordinal))
+        // Subdomínio reservado (app, api, www...) nunca é negócio: é o host da própria
+        // plataforma. Sem isso, a API publicada em api.{dominio} tratava "api" como slug e
+        // respondia 404 em TODA rota /publico — inclusive as que o frontend chama com o
+        // cabeçalho abaixo (bug real de produção; em dev a API fica em localhost e não aparecia).
+        if (host != dominioBase && host.EndsWith(sufixo, StringComparison.Ordinal))
         {
-            candidatoSlug = host[..^sufixo.Length];
+            var subdominio = host[..^sufixo.Length];
+            if (!Slug.Reservados.Contains(subdominio))
+                candidatoSlug = subdominio;
         }
-        else if (contexto.Request.Headers.TryGetValue(CabecalhoSlugInterno, out var valorCabecalho)
+
+        if (candidatoSlug is null
+            && contexto.Request.Headers.TryGetValue(CabecalhoSlugInterno, out var valorCabecalho)
             && !string.IsNullOrWhiteSpace(valorCabecalho))
         {
             candidatoSlug = valorCabecalho.ToString();
