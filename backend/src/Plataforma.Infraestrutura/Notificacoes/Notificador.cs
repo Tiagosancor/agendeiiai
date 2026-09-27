@@ -261,7 +261,7 @@ public sealed class Notificador : INotificador
         var corpo = Envelope(null, $"""
             <p>Alguém tentou criar uma conta nova com este e-mail, mas ele já tem uma conta.</p>
             <p><a href="{linkLogin}">Entrar no painel</a></p>
-            <p>Se não lembra a senha, fale com o suporte do {_opcoesMarca.NomeProduto}. Se não foi você, ignore esta mensagem.</p>
+            <p>Se não lembra a senha, use "Esqueci minha senha" na tela de entrada. Se não foi você, ignore esta mensagem.</p>
             """);
         return ExecutarSemFalharAsync(() =>
             _email.EnviarAsync(email, $"Você já tem uma conta — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/conta-existente");
@@ -280,6 +280,19 @@ public sealed class Notificador : INotificador
             """);
         return ExecutarSemFalharAsync(() =>
             _email.EnviarAsync(dados.Email, $"Bem-vindo ao {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/boas-vindas");
+    }
+
+    public Task EnviarRedefinicaoSenhaAsync(string email, string nomeUsuario, string link, int validadeMinutos, CancellationToken cancellationToken = default)
+    {
+        var nome = System.Net.WebUtility.HtmlEncode(nomeUsuario);
+        var corpo = Envelope(null, $"""
+            <p>Olá, {nome}! Recebemos um pedido para redefinir a senha do seu acesso ao painel.</p>
+            <p><a href="{link}">Criar uma senha nova</a></p>
+            <p>O link vale por {validadeMinutos} minutos e só pode ser usado uma vez.</p>
+            <p>Se não foi você, ignore esta mensagem: sua senha continua a mesma.</p>
+            """);
+        return ExecutarSemFalharAsync(() =>
+            _email.EnviarAsync(email, $"Redefinir sua senha — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/redefinir-senha");
     }
 
     /// <summary>

@@ -6,6 +6,7 @@ import { ErroApi } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 import { ModalExclusao } from "@/components/painel/ModalExclusao";
 import { CamposEndereco } from "@/components/painel/CamposEndereco";
+import { CampoSenha } from "@/components/CampoSenha";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { ENDERECO_VAZIO, PERFIS, PERMISSOES, type Endereco, type Perfil, type Permissao, type UsuarioDetalhe, type UsuarioResumo } from "@/lib/tipos";
 
@@ -237,10 +238,9 @@ function ModalCriarUsuario({
           <span className={classeLabel}>E-mail</span>
           <input required type="email" className={classeInput} value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
-        <label>
-          <span className={classeLabel}>Senha</span>
-          <input required type="password" minLength={8} className={classeInput} value={senha} onChange={(e) => setSenha(e.target.value)} />
-        </label>
+        <div>
+          <CampoSenha rotulo="Senha" required minLength={8} autoComplete="new-password" className={classeInput} value={senha} onChange={(e) => setSenha(e.target.value)} />
+        </div>
         <label>
           <span className={classeLabel}>Perfil</span>
           <select className={classeInput} value={perfil} onChange={(e) => setPerfil(e.target.value as Perfil)}>

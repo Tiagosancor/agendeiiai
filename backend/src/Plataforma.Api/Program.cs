@@ -151,6 +151,10 @@ builder.Services.AddRateLimiter(opcoes =>
     opcoes.AddPolicy(Plataforma.Api.Controllers.Administracao.AutenticacaoPlataformaController.PoliticaLoginPorIp, contexto =>
         LimitePorIpPorMinuto(contexto, "Plataforma:LimiteLoginPorIpPorMinuto", padrao: 5));
 
+    // Esqueci minha senha do painel (pedido e troca). O limite por usuário fica no serviço.
+    opcoes.AddPolicy(Plataforma.Api.Controllers.Painel.AutenticacaoController.PoliticaRedefinicaoSenhaPorIp, contexto =>
+        LimitePorIpPorMinuto(contexto, "Autenticacao:LimiteRedefinicaoSenhaPorIpPorMinuto", padrao: 5));
+
     static RateLimitPartition<string> LimitePorIpPorMinuto(HttpContext contexto, string chaveConfiguracao, int padrao)
     {
         var limite = contexto.RequestServices.GetRequiredService<IConfiguration>().GetValue(chaveConfiguracao, padrao);
