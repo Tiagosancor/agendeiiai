@@ -20,4 +20,16 @@ public sealed class OpcoesVerificacao
     /// <summary>Teto diário de códigos por WhatsApp por negócio (seção 8.1.5) — ao atingir, os códigos seguintes vão só por e-mail.</summary>
     [Range(1, 100000)]
     public int MaximoWhatsAppPorNegocioPorDia { get; set; } = 500;
+
+    /// <summary>Validade do código (seção 8.1.2).</summary>
+    [Range(1, 30)]
+    public int ValidadeCodigoMinutos { get; set; } = 5;
+
+    /// <summary>Tentativas de validação de cada código (seção 8.1.2) — errou todas, precisa de um código novo.</summary>
+    [Range(1, 10)]
+    public int MaximoTentativasValidacao { get; set; } = 3;
+
+    /// <summary>Quantas vezes o mesmo código pode ser reenviado (<c>POST /publico/codigos/reenviar</c>). O pedido seguinte é negado.</summary>
+    [Range(0, 10)]
+    public int MaximoReenvios { get; set; } = 3;
 }

@@ -193,6 +193,18 @@ export interface PerfilNegocio {
   whatsApp: string | null;
   whatsAppAtivoParaConfirmacoes: boolean;
   horarioFuncionamento: HorarioFuncionamentoDia[];
+  /** Avisar o profissional também por WhatsApp (novo/remarcado/cancelado). O e-mail sai sempre. */
+  whatsAppAvisoProfissional: boolean;
+}
+
+/** Saúde da conexão do WhatsApp (administração da plataforma). */
+export type EstadoConexaoWhatsApp = "NaoSeAplica" | "Conectada" | "Desconectada" | "AguardandoQrCode" | "Indisponivel";
+
+export interface SaudeWhatsApp {
+  provedor: string;
+  estado: EstadoConexaoWhatsApp;
+  detalhe: string | null;
+  consultadoEm: string;
 }
 
 export const NOMES_DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];

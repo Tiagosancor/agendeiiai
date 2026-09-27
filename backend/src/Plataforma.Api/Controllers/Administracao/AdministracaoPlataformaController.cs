@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Administracao;
+using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Assinaturas;
 
 namespace Plataforma.Api.Controllers.Administracao;
@@ -95,4 +96,22 @@ public sealed class AdministracaoPlataformaController : ControllerBase
             return BadRequest(new ProblemDetails { Title = excecao.Message });
         }
     }
+}
+
+/// <summary>
+/// Saúde da conexão do WhatsApp (seção 7): conectada, desconectada ou esperando QR code novo —
+/// sem isso, a queda da sessão da instância só apareceria quando um cliente não recebesse o código.
+/// </summary>
+[ApiController]
+[Route("plataforma/whatsapp")]
+[Authorize(Policy = ClaimsPlataforma.PoliticaAdministradorPlataforma)]
+public sealed class SaudeWhatsAppPlataformaController : ControllerBase
+{
+    private readonly IConsultaSaudeWhatsApp _consulta;
+
+    public SaudeWhatsAppPlataformaController(IConsultaSaudeWhatsApp consulta) => _consulta = consulta;
+
+    [HttpGet("saude")]
+    public async Task<ActionResult<SaudeWhatsApp>> Obter(CancellationToken cancellationToken) =>
+        Ok(await _consulta.ObterAsync(cancellationToken));
 }

@@ -14,7 +14,7 @@ namespace Plataforma.Testes.Integracao.Publico;
 
 /// <summary>
 /// Código de confirmação (seção 8.1) — testes obrigatórios listados na seção 8.1: código
-/// reutilizado, 6ª tentativa, respostas indistinguíveis entre telefone existente e novo,
+/// reutilizado, tentativa além do limite, respostas indistinguíveis entre telefone existente e novo,
 /// rate limit. Expiração de 5 minutos é testada a nível de unidade (o domínio recebe
 /// "agora" como parâmetro explícito, feito pra isso — reproduzir 5 min de espera real aqui
 /// só deixaria o teste lento sem cobrir nada a mais).
@@ -78,7 +78,7 @@ public sealed class VerificacaoPublicaTestes : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Sexta_tentativa_falha_mesmo_com_o_codigo_certo()
+    public async Task Quarta_tentativa_falha_mesmo_com_o_codigo_certo()
     {
         var slug = await SemearNegocioAsync();
         using var cliente = ClientePara(slug);
@@ -87,14 +87,14 @@ public sealed class VerificacaoPublicaTestes : IAsyncLifetime
         await cliente.PostAsJsonAsync("/publico/codigos", new CodigosPublicoController.SolicitarCodigoRequisicao(telefone, "cliente@teste.com"));
         var codigoCerto = ExtrairCodigo(_fabrica.Services.GetRequiredService<EspiaWhatsApp>().Enviados[0].Mensagem);
 
-        // 5 tentativas erradas consomem todo o limite (seção 8.1.2: no máximo 5 tentativas).
-        for (var i = 0; i < 5; i++)
+        // 3 tentativas erradas consomem todo o limite (seção 8.1.2 — padrão de OpcoesVerificacao).
+        for (var i = 0; i < 3; i++)
         {
             var errada = await cliente.PostAsJsonAsync("/publico/codigos/validar", new CodigosPublicoController.ValidarCodigoRequisicao(telefone, "000000"));
             errada.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         }
 
-        // A 6ª, mesmo com o código certo, já não vale mais.
+        // A 4ª, mesmo com o código certo, já não vale mais.
         var comCodigoCerto = await cliente.PostAsJsonAsync("/publico/codigos/validar", new CodigosPublicoController.ValidarCodigoRequisicao(telefone, codigoCerto));
         comCodigoCerto.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

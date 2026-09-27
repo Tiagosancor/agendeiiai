@@ -13,7 +13,8 @@ public sealed record PerfilNegocio(
     string? TituloPagina, string? SubtituloPagina, string? TextoSobre,
     string? Bairro, string? Cidade, string? Rua, string? Numero, string? Cep,
     string? Telefone, string? EmailContato, string? Instagram, string? Facebook, string? WhatsApp,
-    bool WhatsAppAtivoParaConfirmacoes, IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento);
+    bool WhatsAppAtivoParaConfirmacoes, IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento,
+    bool WhatsAppAvisoProfissional);
 
 public sealed record HorarioFuncionamentoDiaDto(int DiaSemana, TimeOnly? Abertura, TimeOnly? Fechamento, bool Fechado);
 
@@ -22,4 +23,6 @@ public sealed record AtualizarPerfilNegocio(
     string? TituloPagina, string? SubtituloPagina, string? TextoSobre,
     string? Bairro, string? Cidade, string? Rua, string? Numero, string? Cep,
     string? Telefone, string? EmailContato, string? Instagram, string? Facebook, string? WhatsApp,
-    bool WhatsAppAtivoParaConfirmacoes, IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento);
+    bool WhatsAppAtivoParaConfirmacoes, IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento,
+    // Opcional para quem ainda não manda o campo: nulo mantém o que está gravado.
+    bool? WhatsAppAvisoProfissional = null);

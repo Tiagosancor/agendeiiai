@@ -76,6 +76,7 @@ export default function PaginaPerfilNegocio() {
           whatsApp: perfil.whatsApp || null,
           whatsAppAtivoParaConfirmacoes: perfil.whatsAppAtivoParaConfirmacoes,
           horarioFuncionamento: horario,
+          whatsAppAvisoProfissional: perfil.whatsAppAvisoProfissional,
         },
       });
       setMensagemSucesso("Perfil atualizado.");
@@ -189,6 +190,14 @@ export default function PaginaPerfilNegocio() {
             onChange={(e) => atualizarCampo("whatsAppAtivoParaConfirmacoes", e.target.checked)}
           />
           Enviar confirmações e lembretes também por WhatsApp (além do código, que é sempre enviado)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-neutral-300">
+          <input
+            type="checkbox"
+            checked={perfil.whatsAppAvisoProfissional}
+            onChange={(e) => atualizarCampo("whatsAppAvisoProfissional", e.target.checked)}
+          />
+          Avisar o profissional também por WhatsApp de agendamento novo, remarcado ou cancelado (o e-mail é sempre enviado)
         </label>
       </section>
 

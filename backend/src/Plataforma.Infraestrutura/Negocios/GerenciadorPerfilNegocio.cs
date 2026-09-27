@@ -38,6 +38,9 @@ public sealed class GerenciadorPerfilNegocio : IGerenciadorPerfilNegocio
             dados.TituloPagina, dados.SubtituloPagina, dados.TextoSobre, endereco, dados.Telefone,
             dados.EmailContato, redesSociais, dados.WhatsAppAtivoParaConfirmacoes);
 
+        if (dados.WhatsAppAvisoProfissional is { } avisoProfissional)
+            negocio.DefinirAvisoProfissionalPorWhatsApp(avisoProfissional);
+
         negocio.DefinirHorarioFuncionamento(dados.HorarioFuncionamento.Select(h =>
             new HorarioFuncionamentoDia((DiaSemana)h.DiaSemana, h.Abertura, h.Fechamento, h.Fechado)));
 
@@ -64,5 +67,6 @@ public sealed class GerenciadorPerfilNegocio : IGerenciadorPerfilNegocio
         negocio.Telefone, negocio.EmailContato, negocio.RedesSociais.Instagram, negocio.RedesSociais.Facebook, negocio.RedesSociais.WhatsApp,
         negocio.WhatsAppAtivoParaConfirmacoes, negocio.HorarioFuncionamento
             .Select(h => new HorarioFuncionamentoDiaDto((int)h.DiaSemana, h.Abertura, h.Fechamento, h.Fechado))
-            .ToList());
+            .ToList(),
+        negocio.WhatsAppAvisoProfissional);
 }

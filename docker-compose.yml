@@ -54,6 +54,12 @@ services:
       WhatsApp__Meta__Token: ${WHATSAPP_TOKEN_ACESSO:-}
       WhatsApp__Meta__NumeroTelefoneId: ${WHATSAPP_ID_NUMERO_TELEFONE:-}
       WhatsApp__PermitirNaoOficial: ${WHATSAPP__PERMITIRNAOOFICIAL:-false}
+      # Evolution API (não oficial — seção 4): só com WHATSAPP_PROVEDOR=EvolutionApi E
+      # WHATSAPP__PERMITIRNAOOFICIAL=true. Suba a instância com: docker compose --profile whatsapp up -d
+      WhatsApp__Evolution__UrlBase: ${EVOLUTION_URL_BASE:-http://evolution:8080}
+      WhatsApp__Evolution__ChaveApi: ${EVOLUTION_CHAVE_API:-}
+      WhatsApp__Evolution__NomeInstancia: ${EVOLUTION_NOME_INSTANCIA:-agendeiiai-dev}
+      WhatsApp__Evolution__SegredoWebhook: ${EVOLUTION_SEGREDO_WEBHOOK:-}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}
@@ -85,5 +91,36 @@ services:
     ports:
       - "${FRONTEND_PORTA_HOST:-3000}:3000"
 
+  # Instância local do Evolution API (WhatsApp NÃO oficial — viola os termos do WhatsApp e pode
+  # levar ao banimento do número; seção 4). Opcional: só sobe com --profile whatsapp. Guarda os
+  # dados no schema "evolution" do mesmo Postgres (o EF só usa o "public"). O webhook global aponta
+  # para a API com o segredo na URL (POST /webhooks/evolution/status?token=...).
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.0
+    profiles: ["whatsapp"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVER_URL: http://localhost:${EVOLUTION_PORTA_HOST:-8081}
+      # Defina EVOLUTION_CHAVE_API no .env (openssl rand -hex 24) antes de subir o profile.
+      AUTHENTICATION_API_KEY: ${EVOLUTION_CHAVE_API:-}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: "postgresql://${POSTGRES_USER:-plataforma}:${POSTGRES_PASSWORD:-plataforma_dev}@postgres:5432/${POSTGRES_DB:-plataforma}?schema=evolution"
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_dev
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_ENABLED: "true"
+      WEBHOOK_GLOBAL_URL: "http://api:8080/webhooks/evolution/status?token=${EVOLUTION_SEGREDO_WEBHOOK:-}"
+      WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS: "false"
+      WEBHOOK_EVENTS_MESSAGES_UPDATE: "true"
+    ports:
+      - "${EVOLUTION_PORTA_HOST:-8081}:8080"
+    volumes:
+      - instancias_evolution:/evolution/instances
+
 volumes:
   dados_postgres:
+  instancias_evolution:

@@ -14,6 +14,7 @@ using Plataforma.Dominio.Cupons;
 using Plataforma.Dominio.Fidelidade;
 using Plataforma.Dominio.Financeiro;
 using Plataforma.Dominio.Negocios;
+using Plataforma.Dominio.Notificacoes;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.Servicos;
 using Plataforma.Dominio.Usuarios;
@@ -89,6 +90,10 @@ public class PlataformaDbContext : DbContext
     public DbSet<LogAuditoriaPlataforma> LogsAuditoriaPlataforma => Set<LogAuditoriaPlataforma>();
 
     public DbSet<LogAuditoriaNegocio> LogsAuditoriaNegocio => Set<LogAuditoriaNegocio>();
+
+    public DbSet<NotificacaoProfissional> NotificacoesProfissional => Set<NotificacaoProfissional>();
+
+    public DbSet<EventoWebhookWhatsApp> EventosWebhookWhatsApp => Set<EventoWebhookWhatsApp>();
 
     public DbSet<CodigoCadastro> CodigosCadastro => Set<CodigoCadastro>();
 

@@ -212,10 +212,17 @@ public static class InfraestruturaServiceCollectionExtensions
 
         servicos.AddScoped<MensageriaWhatsAppFake>();
         servicos.AddHttpClient<MensageriaWhatsAppOficial>();
+        servicos.AddHttpClient<MensageriaWhatsAppEvolution>();
         servicos.AddScoped<IMensageriaWhatsApp>(sp =>
-            sp.GetRequiredService<IOptions<OpcoesWhatsApp>>().Value.Provedor == ProvedorWhatsApp.Oficial
-                ? sp.GetRequiredService<MensageriaWhatsAppOficial>()
-                : sp.GetRequiredService<MensageriaWhatsAppFake>());
+            sp.GetRequiredService<IOptions<OpcoesWhatsApp>>().Value.Provedor switch
+            {
+                ProvedorWhatsApp.Oficial => sp.GetRequiredService<MensageriaWhatsAppOficial>(),
+                // Não oficial: OpcoesWhatsApp não deixa subir sem WhatsApp:PermitirNaoOficial (seção 4).
+                ProvedorWhatsApp.EvolutionApi => sp.GetRequiredService<MensageriaWhatsAppEvolution>(),
+                _ => sp.GetRequiredService<MensageriaWhatsAppFake>(),
+            });
+        servicos.AddScoped<IProcessadorWebhookWhatsApp, ProcessadorWebhookWhatsApp>();
+        servicos.AddScoped<IConsultaSaudeWhatsApp, ConsultaSaudeWhatsApp>();
 
         servicos
             .AddHealthChecks()

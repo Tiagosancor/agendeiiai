@@ -37,6 +37,35 @@ public sealed class CodigosPublicoController : ControllerBase
         return Accepted();
     }
 
+    /// <summary>
+    /// Mesmo texto para qualquer motivo interno (WhatsApp fora, número sem WhatsApp, e-mail
+    /// devolvido): a resposta nunca diz qual canal falhou, para não vazar nada sobre o número.
+    /// </summary>
+    public const string MensagemLimiteReenvios =
+        "Você já pediu o código várias vezes. Use o último código que enviamos — confira também o seu e-mail.";
+
+    /// <summary>
+    /// Reenvia o código (seção 8.1): troca o código em vigor e manda de novo pelos dois canais,
+    /// até o limite de reenvios. Passa pelo mesmo rate limit por IP do pedido original.
+    /// </summary>
+    [HttpPost("reenviar")]
+    [BloquearComAssinaturaSuspensa]
+    public async Task<IActionResult> Reenviar(SolicitarCodigoRequisicao requisicao, CancellationToken cancellationToken)
+    {
+        if (!TelefoneE164.TentarCriar(requisicao.Telefone, out var telefone))
+            return BadRequest(new ProblemDetails { Title = "Telefone inválido." });
+
+        var resultado = await _servico.ReenviarCodigoAsync(telefone!, requisicao.Email, cancellationToken);
+
+        if (resultado.LimiteReenviosAtingido)
+            return StatusCode(StatusCodes.Status429TooManyRequests, new ProblemDetails { Title = MensagemLimiteReenvios });
+
+        if (resultado.LimiteExcedido)
+            return StatusCode(StatusCodes.Status429TooManyRequests, new ProblemDetails { Title = "Muitos pedidos de código. Tente novamente mais tarde." });
+
+        return Accepted();
+    }
+
     public sealed record ValidarCodigoRequisicao(string Telefone, string Codigo);
 
     [HttpPost("validar")]
