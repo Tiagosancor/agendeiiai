@@ -257,7 +257,8 @@ function ModalCliente({
             className={`${classeInput} disabled:opacity-60`}
             value={telefone}
             onChange={(e) => setTelefone(e.target.value)}
-            placeholder="+5571988887777"
+            type="tel"
+            placeholder="(71) 98888-7777"
           />
         </label>
         <label>

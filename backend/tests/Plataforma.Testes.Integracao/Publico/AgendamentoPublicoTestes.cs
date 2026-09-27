@@ -139,6 +139,36 @@ public sealed class AgendamentoPublicoTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Cliente_digita_so_DDD_e_numero_e_o_fluxo_inteiro_funciona()
+    {
+        var (slug, negocioId, profissionalId, servicoId) = await SemearNegocioComAgendaAsync();
+        using var cliente = ClientePara(slug);
+        var numero = Random.Shared.Next(10000000, 99999999).ToString();
+        var digitado = $"(71) 9{numero[..4]}-{numero[4..]}"; // sem +55, como as pessoas escrevem
+        var e164 = $"+55719{numero}";
+
+        var agendamentoId = await CriarReservaAsync(cliente, profissionalId, servicoId);
+
+        (await cliente.PostAsJsonAsync("/publico/codigos", new CodigosPublicoController.SolicitarCodigoRequisicao(digitado, null)))
+            .StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var mensagem = _fabrica.Services.GetRequiredService<EspiaWhatsApp>().Enviados.Last(e => e.Telefone.Valor == e164).Mensagem;
+        var codigo = Regex.Match(mensagem, @"\b\d{6}\b").Value;
+
+        var validar = await cliente.PostAsJsonAsync("/publico/codigos/validar", new CodigosPublicoController.ValidarCodigoRequisicao(digitado, codigo));
+        validar.StatusCode.Should().Be(HttpStatusCode.OK);
+        var token = (await validar.Content.ReadFromJsonAsync<Dictionary<string, string>>())!["tokenVerificacao"];
+
+        var resposta = await cliente.PostAsJsonAsync("/publico/agendamentos", new AgendamentosPublicoController.ConfirmarAgendamentoRequisicao(
+            agendamentoId, token, "Fulano Sem DDI", digitado, null, null, null));
+        resposta.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        using var escopo = _fabrica.Services.CreateScope();
+        var dbContext = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
+        (await dbContext.Clientes.IgnoreQueryFilters().SingleAsync(c => c.NegocioId == negocioId && c.Telefone == TelefoneE164.Criar(e164)))
+            .Nome.Should().Be("Fulano Sem DDI");
+    }
+
+    [Fact]
     public async Task Identificacao_automatica_nao_sobrescreve_dados_do_cliente_existente()
     {
         var (slug, negocioId, profissionalId, servicoId) = await SemearNegocioComAgendaAsync();

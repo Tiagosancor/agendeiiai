@@ -39,22 +39,19 @@ public sealed class JobEnviarLembretes
     public async Task ExecutarAsync(CancellationToken cancellationToken = default)
     {
         var agora = DateTimeOffset.UtcNow;
-        var antecedencia1 = _opcoesLembretes.AntecedenciaPrimeiroLembreteHoras;
-        var antecedencia2 = _opcoesLembretes.AntecedenciaSegundoLembreteHoras;
+        var antecedencia = TimeSpan.FromMinutes(_opcoesLembretes.AntecedenciaMinutos);
+        var intervaloMinimo = TimeSpan.FromMinutes(_opcoesLembretes.IntervaloMinimoAposMarcarMinutos);
+        var limite = agora + antecedencia;
 
         // Descarta os vencidos (seção 8.5.6): agendamento cujo horário já passou nunca mais
         // recebe lembrete, mesmo que o job tenha ficado muito tempo sem rodar.
         await _dbContext.Agendamentos.IgnoreQueryFilters()
-            .Where(a => a.Status == StatusAgendamento.Agendado && a.Inicio <= agora && (!a.Lembrete24hEnviado || !a.Lembrete2hEnviado))
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(a => a.Lembrete24hEnviado, true)
-                .SetProperty(a => a.Lembrete2hEnviado, true), cancellationToken);
+            .Where(a => a.Status == StatusAgendamento.Agendado && a.Inicio <= agora && !a.LembreteEnviado)
+            .ExecuteUpdateAsync(s => s.SetProperty(a => a.LembreteEnviado, true), cancellationToken);
 
         var candidatos = await _dbContext.Agendamentos.IgnoreQueryFilters()
             .Include(a => a.Servicos)
-            .Where(a => a.Status == StatusAgendamento.Agendado && a.Inicio > agora
-                && ((!a.Lembrete24hEnviado && a.Inicio <= agora.AddHours(antecedencia1))
-                    || (!a.Lembrete2hEnviado && a.Inicio <= agora.AddHours(antecedencia2))))
+            .Where(a => a.Status == StatusAgendamento.Agendado && !a.LembreteEnviado && a.Inicio > agora && a.Inicio <= limite)
             .ToListAsync(cancellationToken);
 
         foreach (var grupo in candidatos.GroupBy(a => a.NegocioId))
@@ -68,6 +65,16 @@ public sealed class JobEnviarLembretes
 
             foreach (var agendamento in grupo)
             {
+                if (!agendamento.NaJanelaDoLembrete(agora, antecedencia))
+                    continue;
+
+                // Marcado em cima da hora: a confirmação acabou de sair — dispensa (e não volta a olhar).
+                if (!agendamento.LembreteFazSentido(antecedencia, intervaloMinimo))
+                {
+                    agendamento.MarcarLembreteEnviado();
+                    continue;
+                }
+
                 if (agendamento.ClienteId is null)
                     continue;
 
@@ -77,12 +84,6 @@ public sealed class JobEnviarLembretes
                 if (cliente is null)
                     continue;
 
-                var precisa24h = agendamento.PrecisaLembrete24h(agora, antecedencia1);
-                var precisa2h = agendamento.PrecisaLembrete2h(agora, antecedencia2);
-
-                if (!precisa24h && !precisa2h)
-                    continue;
-
                 var tokenAgendamento = _servicoToken.GerarTokenAgendamento(negocio.Id, agendamento.Id);
                 var link = ConstrutorUrlPublica.Construir(_opcoesMarca, negocio.Slug.Valor, $"/agendamentos/{tokenAgendamento}");
 
@@ -90,11 +91,7 @@ public sealed class JobEnviarLembretes
                     cliente.Nome, cliente.Email, cliente.Telefone, agendamento.Inicio, agendamento.Fim,
                     agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, link, link), cancellationToken);
 
-                if (precisa24h)
-                    agendamento.MarcarLembrete24hEnviado();
-
-                if (precisa2h)
-                    agendamento.MarcarLembrete2hEnviado();
+                agendamento.MarcarLembreteEnviado();
             }
         }
 

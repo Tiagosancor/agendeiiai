@@ -157,6 +157,8 @@ public sealed class BloqueiosAssinaturaTestes : IAsyncLifetime
     {
         var (slug, negocioId, profissionalId, servicoId) = await SemearNegocioComAgendaAsync();
         var (agendamentoId, token) = await SemearAgendamentoConfirmadoAsync(negocioId, profissionalId, servicoId, DateTimeOffset.UtcNow.AddHours(23));
+        // Outro, marcado ontem para daqui a 50 min: já na janela do lembrete (60 min antes).
+        await SemearAgendamentoConfirmadoAsync(negocioId, profissionalId, servicoId, DateTimeOffset.UtcNow.AddMinutes(50), marcadoHa: TimeSpan.FromDays(1));
         await DarAssinaturaAsync(negocioId, Situacao.Suspensa);
 
         using (var escopo = _fabrica.Services.CreateScope())
@@ -221,7 +223,8 @@ public sealed class BloqueiosAssinaturaTestes : IAsyncLifetime
         return (slug, negocio.Id, cenario.ProfissionalId, cenario.ServicoId);
     }
 
-    private async Task<(Guid AgendamentoId, string Token)> SemearAgendamentoConfirmadoAsync(Guid negocioId, Guid profissionalId, Guid servicoId, DateTimeOffset inicio)
+    private async Task<(Guid AgendamentoId, string Token)> SemearAgendamentoConfirmadoAsync(
+        Guid negocioId, Guid profissionalId, Guid servicoId, DateTimeOffset inicio, TimeSpan? marcadoHa = null)
     {
         using var escopo = _fabrica.Services.CreateScope();
         var dbContext = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
@@ -232,6 +235,8 @@ public sealed class BloqueiosAssinaturaTestes : IAsyncLifetime
 
         var agendamento = Agendamento.CriarConfirmado(negocioId, profissionalId, cliente.Id, inicio,
             [new ItemServicoAgendamento(servicoId, "Serviço de Teste", 50m, 30)]);
+        if (marcadoHa is { } ha)
+            typeof(Agendamento).GetProperty(nameof(Agendamento.HorarioCombinadoEm))!.SetValue(agendamento, DateTimeOffset.UtcNow - ha);
         dbContext.Agendamentos.Add(agendamento);
         await dbContext.SaveChangesAsync();
 

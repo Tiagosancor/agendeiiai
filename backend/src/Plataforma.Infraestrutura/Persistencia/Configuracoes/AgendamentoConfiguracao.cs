@@ -20,6 +20,12 @@ public sealed class AgendamentoConfiguracao : IEntityTypeConfiguration<Agendamen
         builder.Property(a => a.ReservadoAte);
         builder.Property(a => a.DescontoAplicado).HasColumnType("numeric(10,2)").HasDefaultValue(0m);
 
+        // Lembrete único (ajuste de 2026-09-27): reaproveita a coluna do antigo lembrete de 2h
+        // em vez de renomear — um rename quebraria a versão ainda no ar entre a migration no
+        // Neon e o deploy. A coluna lembrete24h_enviado ficou órfã no banco (default false),
+        // sem uso; pode sair numa limpeza futura.
+        builder.Property(a => a.LembreteEnviado).HasColumnName("lembrete2h_enviado");
+
         // Calculado a partir dos serviços e do desconto — nunca uma coluna própria (seção 6.2.4).
         builder.Ignore(a => a.Total);
 
