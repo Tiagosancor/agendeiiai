@@ -81,7 +81,7 @@ public sealed class GerenciadorServicos : IGerenciadorServicos
 
         var agora = DateTimeOffset.UtcNow;
         var futuros = await _dbContext.Agendamentos.CountAsync(
-            a => a.Inicio > agora && a.Status == StatusAgendamento.Agendado && a.Servicos.Any(s => s.ServicoId == servicoId),
+            a => a.Inicio > agora && (a.Status == StatusAgendamento.Agendado || a.Status == StatusAgendamento.EmAtendimento) && a.Servicos.Any(s => s.ServicoId == servicoId),
             cancellationToken);
 
         return new PreviaExclusao(servico.Nome, await TemHistoricoAsync(servicoId, cancellationToken), futuros, null, []);

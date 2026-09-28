@@ -15,6 +15,7 @@ public sealed class AgendamentoConfiguracao : IEntityTypeConfiguration<Agendamen
         builder.Property(a => a.Inicio).IsRequired();
         builder.Property(a => a.Fim).IsRequired();
         builder.Property(a => a.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(a => a.Forcado).HasDefaultValue(false).IsRequired();
         builder.Property(a => a.Observacoes).HasMaxLength(2000);
         builder.Property(a => a.NomeInformado).HasMaxLength(200);
         builder.Property(a => a.ReservadoAte);

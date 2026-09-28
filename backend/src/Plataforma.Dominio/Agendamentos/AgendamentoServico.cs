@@ -20,6 +20,15 @@ public class AgendamentoServico : EntidadeBase, IEntidadeDoNegocio
 
     public int DuracaoMinutos { get; private set; }
 
+    /// <summary>
+    /// Valor depois do ajuste feito durante o atendimento (seção 7); nulo = sem ajuste. O <see cref="Preco"/>
+    /// original nunca é sobrescrito. O histórico de cada ajuste fica em <see cref="AjusteValorAtendimento"/>.
+    /// </summary>
+    public decimal? PrecoAjustado { get; private set; }
+
+    /// <summary>O que vale para cobrança, faturamento e base da comissão (antes do rateio do cupom).</summary>
+    public decimal ValorCobrado => PrecoAjustado ?? Preco;
+
     // Comissão (seção 7), gravada na conclusão e nula em qualquer outro estado. É um retrato,
     // como o preço: mudar o percentual do profissional depois não mexe aqui.
 
@@ -48,6 +57,8 @@ public class AgendamentoServico : EntidadeBase, IEntidadeDoNegocio
         Preco = preco;
         DuracaoMinutos = duracaoMinutos;
     }
+
+    internal void DefinirPrecoAjustado(decimal valor) => PrecoAjustado = valor;
 
     internal void RegistrarComissao(Guid profissionalId, decimal valorBase, decimal percentual, decimal valor, DateTimeOffset agora)
     {

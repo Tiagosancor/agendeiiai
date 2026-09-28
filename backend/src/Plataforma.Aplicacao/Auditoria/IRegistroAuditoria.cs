@@ -24,4 +24,6 @@ public static class AcoesAuditoria
     public const string ExcluirQuinzena = "ExcluirQuinzena";
     public const string FecharQuinzena = "FecharQuinzena";
     public const string ReabrirQuinzena = "ReabrirQuinzena";
+    public const string AjustarValorAtendimento = "AjustarValorAtendimento";
+    public const string CorrigirValorAtendimento = "CorrigirValorAtendimento";
 }

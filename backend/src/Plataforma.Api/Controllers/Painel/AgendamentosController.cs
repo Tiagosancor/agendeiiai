@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Aplicacao.Servicos;
 using Plataforma.Dominio.Usuarios;
 
 namespace Plataforma.Api.Controllers.Painel;
@@ -15,11 +17,28 @@ namespace Plataforma.Api.Controllers.Painel;
 public sealed class AgendamentosController : ControllerBase
 {
     private readonly IServicoAgendamentos _servicoAgendamentos;
+    private readonly IGerenciadorProfissionais _profissionais;
+    private readonly IGerenciadorServicos _servicos;
 
-    public AgendamentosController(IServicoAgendamentos servicoAgendamentos)
+    public AgendamentosController(
+        IServicoAgendamentos servicoAgendamentos, IGerenciadorProfissionais profissionais, IGerenciadorServicos servicos)
     {
         _servicoAgendamentos = servicoAgendamentos;
+        _profissionais = profissionais;
+        _servicos = servicos;
     }
+
+    /// <summary>
+    /// Listas que a tela da agenda usa, sob "gerenciar agenda": a Recepcionista padrão não tem
+    /// "gerenciar profissionais" nem "gerenciar serviços", e a agenda dela ficava sem ninguém para escolher.
+    /// </summary>
+    [HttpGet("~/painel/agenda/profissionais")]
+    public async Task<ActionResult<IReadOnlyList<ProfissionalResumo>>> ProfissionaisDaAgenda(CancellationToken cancellationToken) =>
+        Ok(await _profissionais.ListarAsync(cancellationToken));
+
+    [HttpGet("~/painel/agenda/servicos")]
+    public async Task<ActionResult<IReadOnlyList<ServicoResumo>>> ServicosDaAgenda(CancellationToken cancellationToken) =>
+        Ok(await _servicos.ListarAsync(cancellationToken));
 
     [HttpPost]
     public async Task<ActionResult<Guid>> Criar(CriarAgendamento dados, CancellationToken cancellationToken)
@@ -53,6 +72,10 @@ public sealed class AgendamentosController : ControllerBase
         var resultado = await _servicoAgendamentos.MoverAsync(id, dados.NovoInicio, cancellationToken);
         return resultado.Sucesso ? NoContent() : TraduzirErro(resultado);
     }
+
+    [HttpPost("{id:guid}/iniciar")]
+    public Task<IActionResult> IniciarAtendimento(Guid id, CancellationToken cancellationToken) =>
+        MudarStatusAsync(() => _servicoAgendamentos.IniciarAtendimentoAsync(id, cancellationToken));
 
     [HttpPost("{id:guid}/concluir")]
     public Task<IActionResult> MarcarConcluido(Guid id, CancellationToken cancellationToken) =>

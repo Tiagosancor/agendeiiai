@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
+import { ModalAjusteValor } from "@/components/painel/ModalAjusteValor";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import type {
   AgendamentoResumo,
@@ -24,8 +25,11 @@ function formatarHora(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+const ROTULO_STATUS: Record<string, string> = { EmAtendimento: "Em atendimento", Concluido: "Concluído" };
+
 const RUBRICA_STATUS: Record<string, string> = {
   Agendado: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  EmAtendimento: "bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   Concluido: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300",
   Cancelado: "bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-neutral-400 line-through",
   Faltou: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",
@@ -42,23 +46,31 @@ export default function PaginaAgenda() {
   const [erro, setErro] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [agendamentoParaPagar, setAgendamentoParaPagar] = useState<AgendamentoResumo | null>(null);
+  const [agendamentoValores, setAgendamentoValores] = useState<string | null>(null);
+  const podeAjustarValor = temPermissao("AjustarValorAtendimento");
 
   useEffect(() => {
     // Busca disparada pela montagem, não estado derivado de props.
-    chamarApi<ProfissionalResumo[]>("/painel/profissionais").then((lista) => {
+    chamarApi<ProfissionalResumo[]>("/painel/agenda/profissionais").then((lista) => {
       setProfissionais(lista);
       if (lista[0]) setProfissionalId((atual) => atual || lista[0].id);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Trocar profissional e data em seguida dispara duas buscas; só a última pode escrever na tela
+  // (a resposta mais antiga, chegando depois, mostrava a agenda do filtro anterior).
+  const ultimaBusca = useRef(0);
+
   const carregarAgenda = useCallback(async () => {
     if (!profissionalId) return;
+    const busca = ++ultimaBusca.current;
     try {
       setErro(null);
-      setAgenda(await chamarApi<AgendamentoResumo[]>(`/painel/agenda?profissionalId=${profissionalId}&data=${data}`));
+      const resultado = await chamarApi<AgendamentoResumo[]>(`/painel/agenda?profissionalId=${profissionalId}&data=${data}`);
+      if (busca === ultimaBusca.current) setAgenda(resultado);
     } catch {
-      setErro("Não foi possível carregar a agenda.");
+      if (busca === ultimaBusca.current) setErro("Não foi possível carregar a agenda.");
     }
   }, [chamarApi, profissionalId, data]);
 
@@ -68,7 +80,7 @@ export default function PaginaAgenda() {
     carregarAgenda();
   }, [carregarAgenda]);
 
-  async function executarAcao(id: string, acao: "cancelar" | "concluir" | "faltou" | "reabrir") {
+  async function executarAcao(id: string, acao: "iniciar" | "cancelar" | "concluir" | "faltou" | "reabrir") {
     try {
       setErro(null);
       await chamarApi(`/painel/agendamentos/${id}/${acao}`, { metodo: "POST" });
@@ -120,7 +132,9 @@ export default function PaginaAgenda() {
                 <span className="text-sm font-medium text-gray-900 dark:text-neutral-50">
                   {formatarHora(item.inicio)}–{formatarHora(item.fim)}
                 </span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${RUBRICA_STATUS[item.status] ?? ""}`}>{item.status}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${RUBRICA_STATUS[item.status] ?? ""}`}>
+                  {ROTULO_STATUS[item.status] ?? item.status}
+                </span>
               </div>
               <p className="text-sm text-gray-700 dark:text-neutral-300">{item.clienteNome}</p>
               <p className="text-xs text-gray-500 dark:text-neutral-400">
@@ -129,7 +143,10 @@ export default function PaginaAgenda() {
               {item.observacoes && <p className="text-xs text-gray-500 dark:text-neutral-400">Obs.: {item.observacoes}</p>}
             </div>
             {item.status === "Agendado" && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
+                <button className="text-sm font-medium text-violet-700 hover:underline dark:text-violet-300" onClick={() => executarAcao(item.id, "iniciar")}>
+                  Iniciar atendimento
+                </button>
                 <button className="text-sm text-green-700 hover:underline dark:text-green-400" onClick={() => executarAcao(item.id, "concluir")}>
                   Concluir
                 </button>
@@ -141,8 +158,23 @@ export default function PaginaAgenda() {
                 </button>
               </div>
             )}
+            {item.status === "EmAtendimento" && (
+              <div className="flex flex-wrap gap-2">
+                {podeAjustarValor && (
+                  <button className="text-sm font-medium text-violet-700 hover:underline dark:text-violet-300" onClick={() => setAgendamentoValores(item.id)}>
+                    Ajustar valor
+                  </button>
+                )}
+                <button className="text-sm text-green-700 hover:underline dark:text-green-400" onClick={() => executarAcao(item.id, "concluir")}>
+                  Concluir
+                </button>
+                <button className="text-sm text-gray-600 hover:underline dark:text-neutral-300" onClick={() => executarAcao(item.id, "cancelar")}>
+                  Cancelar
+                </button>
+              </div>
+            )}
             {item.status === "Concluido" && (
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <button
                   className="text-sm text-green-700 hover:underline dark:text-green-400"
                   onClick={() => setAgendamentoParaPagar(item)}
@@ -152,6 +184,11 @@ export default function PaginaAgenda() {
                 {temPermissao("VerFinanceiro") && (
                   <button className="text-sm text-gray-600 hover:underline dark:text-neutral-300" onClick={() => reabrir(item)}>
                     Reabrir
+                  </button>
+                )}
+                {podeAjustarValor && (
+                  <button className="text-sm text-gray-600 hover:underline dark:text-neutral-300" onClick={() => setAgendamentoValores(item.id)}>
+                    Valores
                   </button>
                 )}
               </div>
@@ -168,6 +205,14 @@ export default function PaginaAgenda() {
         aoCriar={async () => {
           setModalAberto(false);
           await carregarAgenda();
+        }}
+      />
+
+      <ModalAjusteValor
+        agendamentoId={agendamentoValores}
+        aoFechar={async (mudou) => {
+          setAgendamentoValores(null);
+          if (mudou) await carregarAgenda();
         }}
       />
 
@@ -283,7 +328,7 @@ function ModalNovoAgendamento({
     if (!aberto) return;
     // Busca disparada pela abertura do modal.
     Promise.all([
-      chamarApi<ServicoResumo[]>("/painel/servicos"),
+      chamarApi<ServicoResumo[]>("/painel/agenda/servicos"),
       chamarApi<ClienteResumo[]>("/painel/clientes"),
     ]).then(([listaServicos, listaClientes]) => {
       setServicos(listaServicos.filter((s) => s.ativo));

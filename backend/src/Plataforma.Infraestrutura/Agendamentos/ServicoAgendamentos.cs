@@ -641,6 +641,17 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         return resultado;
     }
 
+    public async Task<bool> IniciarAtendimentoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    {
+        var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
+        if (agendamento is null)
+            return false;
+
+        agendamento.IniciarAtendimento();
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     public Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
         ExecutarNaTravaDeQuinzenasAsync(() => ConcluirAsync(agendamentoId, cancellationToken), cancellationToken);
 
@@ -751,7 +762,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             a.Id, a.ProfissionalId, a.ClienteId,
             a.ClienteId is not null && clientes.TryGetValue(a.ClienteId.Value, out var cliente) ? cliente.Nome : "Reservando...",
             a.Inicio, a.Fim, a.Status.ToString(), a.Observacoes,
-            a.Servicos.Select(s => s.Nome).ToList(), a.Servicos.Sum(s => s.Preco))).ToList();
+            // Total a cobrar: valor ajustado no atendimento, menos o cupom (é o que a tela sugere no pagamento).
+            a.Servicos.Select(s => s.Nome).ToList(), a.Total)).ToList();
     }
 
     public async Task<DetalhePublicoAgendamento?> ObterDetalhePublicoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)

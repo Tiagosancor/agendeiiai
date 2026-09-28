@@ -33,6 +33,24 @@ public sealed class AgendamentosControllerTestes : IAsyncLifetime
 
     public async Task DisposeAsync() => await _fabrica.DisposeAsync();
 
+    [Fact]
+    public async Task Recepcionista_padrao_carrega_profissionais_e_servicos_da_agenda()
+    {
+        var (_, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var cenario = await _fabrica.CriarCenarioPadraoAsync(negocioId);
+        using var recepcao = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Recepcionista);
+
+        // Sem "gerenciar profissionais" nem "gerenciar serviços" — antes a agenda dela ficava vazia.
+        (await recepcao.GetAsync("/painel/profissionais")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await recepcao.GetFromJsonAsync<List<Plataforma.Aplicacao.Profissionais.ProfissionalResumo>>("/painel/agenda/profissionais"))!
+            .Should().ContainSingle(p => p.Id == cenario.ProfissionalId);
+        (await recepcao.GetFromJsonAsync<List<Plataforma.Aplicacao.Servicos.ServicoResumo>>("/painel/agenda/servicos"))!
+            .Should().ContainSingle(s => s.Id == cenario.ServicoId);
+
+        using var profissional = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Profissional);
+        (await profissional.GetAsync("/painel/agenda/profissionais")).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     /// <summary>Próxima segunda-feira, sempre no futuro — o cenário padrão tem expediente de segunda a sexta.</summary>
     private static DateOnly ProximaSegundaFeira()
     {
