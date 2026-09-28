@@ -5,8 +5,13 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { ComissoesDoProfissional, ResumoComissaoProfissional, TotaisComissao } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
+import { MinhasQuinzenas, VisaoQuinzenas } from "@/components/painel/Quinzenas";
 
 const TAMANHO_PAGINA = 20;
+
+type Aba = "minhas" | "equipe" | "quinzenas";
+
+const ROTULOS_ABA: Record<Aba, string> = { minhas: "Minhas comissões", equipe: "Equipe", quinzenas: "Quinzenas" };
 
 type Periodo = { de: string; ate: string };
 
@@ -49,7 +54,7 @@ const formatarDataHora = (iso: string) =>
 export default function PaginaComissoes() {
   const { temPermissao } = useAutenticacao();
   const podeVerEquipe = temPermissao("VerComissoesDeTodos");
-  const [aba, setAba] = useState<"minhas" | "equipe">("minhas");
+  const [aba, setAba] = useState<Aba>("minhas");
   const [periodo, setPeriodo] = useState<Periodo>(esteMes);
 
   return (
@@ -58,7 +63,7 @@ export default function PaginaComissoes() {
 
       {podeVerEquipe && (
         <div role="tablist" className="flex gap-2">
-          {(["minhas", "equipe"] as const).map((valor) => (
+          {(["minhas", "equipe", "quinzenas"] as const).map((valor) => (
             <button
               key={valor}
               role="tab"
@@ -70,15 +75,20 @@ export default function PaginaComissoes() {
                   : "text-gray-700 hover:bg-gray-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
               }`}
             >
-              {valor === "minhas" ? "Minhas comissões" : "Equipe"}
+              {ROTULOS_ABA[valor]}
             </button>
           ))}
         </div>
       )}
 
-      <FiltroPeriodo periodo={periodo} aoMudar={setPeriodo} />
-
-      {aba === "equipe" && podeVerEquipe ? <VisaoEquipe periodo={periodo} /> : <MinhasComissoes periodo={periodo} />}
+      {aba === "quinzenas" && podeVerEquipe ? (
+        <VisaoQuinzenas />
+      ) : (
+        <>
+          <FiltroPeriodo periodo={periodo} aoMudar={setPeriodo} />
+          {aba === "equipe" && podeVerEquipe ? <VisaoEquipe periodo={periodo} /> : <MinhasComissoes periodo={periodo} />}
+        </>
+      )}
     </div>
   );
 }
@@ -122,7 +132,12 @@ function FiltroPeriodo({ periodo, aoMudar }: { periodo: Periodo; aoMudar: (p: Pe
 }
 
 function MinhasComissoes({ periodo }: { periodo: Periodo }) {
-  return <ListaComissoes periodo={periodo} caminho="/painel/comissoes/minhas" />;
+  return (
+    <div className="space-y-6">
+      <MinhasQuinzenas />
+      <ListaComissoes periodo={periodo} caminho="/painel/comissoes/minhas" />
+    </div>
+  );
 }
 
 /** Cartões de resumo + lista paginada — a mesma para "Minhas comissões" e para o detalhe de um profissional (visão do Administrador). */

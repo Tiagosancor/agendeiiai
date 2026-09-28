@@ -13,6 +13,8 @@ export class ErroApi extends Error {
     message: string,
     /** `codigo` do ProblemDetails da API (ex.: "limite_profissionais", "assinatura_suspensa"). */
     public codigo?: string,
+    /** Corpo do ProblemDetails, para erros que trazem dados (ex.: `pendentes` ao fechar uma quinzena). */
+    public corpo?: Record<string, unknown>,
   ) {
     super(message);
   }
@@ -45,14 +47,15 @@ export async function requisicaoApi<T>(caminho: string, opcoes: OpcoesRequisicao
   if (!resposta.ok) {
     let mensagem = `Erro ${resposta.status}`;
     let codigo: string | undefined;
+    let corpoErro: Record<string, unknown> | undefined;
     try {
-      const corpoErro = await resposta.json();
-      mensagem = corpoErro.detail ?? corpoErro.title ?? mensagem;
-      codigo = corpoErro.codigo;
+      corpoErro = await resposta.json();
+      mensagem = (corpoErro?.detail as string) ?? (corpoErro?.title as string) ?? mensagem;
+      codigo = corpoErro?.codigo as string | undefined;
     } catch {
       // corpo não é JSON (ex.: 401 sem corpo) — mantém a mensagem genérica.
     }
-    throw new ErroApi(resposta.status, mensagem, codigo);
+    throw new ErroApi(resposta.status, mensagem, codigo, corpoErro);
   }
 
   return lerCorpoJson<T>(resposta);

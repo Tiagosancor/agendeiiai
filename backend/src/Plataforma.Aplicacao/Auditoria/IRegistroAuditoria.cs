@@ -19,4 +19,9 @@ public static class AcoesAuditoria
     public const string CancelarAgendamento = "CancelarAgendamento";
     public const string ReabrirAtendimento = "ReabrirAtendimento";
     public const string AlterarComissao = "AlterarComissao";
+    public const string CriarQuinzena = "CriarQuinzena";
+    public const string EditarQuinzena = "EditarQuinzena";
+    public const string ExcluirQuinzena = "ExcluirQuinzena";
+    public const string FecharQuinzena = "FecharQuinzena";
+    public const string ReabrirQuinzena = "ReabrirQuinzena";
 }

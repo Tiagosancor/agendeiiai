@@ -541,3 +541,50 @@ export interface ResumoComissaoProfissional {
   percentualAtual: number;
   totais: TotaisComissao;
 }
+
+/** Quinzenas de acerto de comissões (seção 7) — espelha `IServicoQuinzenas`. */
+export type EstadoQuinzena = "Aberta" | "Fechada";
+
+export interface QuinzenaResumo {
+  id: string;
+  inicio: string;
+  fim: string;
+  estado: EstadoQuinzena;
+  fechadoEm: string | null;
+  fechadoPor: string | null;
+  diasSemPeriodoAntes: number;
+}
+
+export interface LinhaQuinzena {
+  profissionalId: string;
+  nome: string;
+  totais: TotaisComissao;
+}
+
+export interface AtendimentoPendente {
+  agendamentoId: string;
+  inicio: string;
+  profissional: string;
+  status: string;
+}
+
+export interface DetalheQuinzena {
+  quinzena: QuinzenaResumo;
+  parcial: boolean;
+  linhas: LinhaQuinzena[];
+  pendentes: AtendimentoPendente[];
+}
+
+export interface QuinzenaDoProfissional {
+  periodoId: string;
+  inicio: string;
+  fim: string;
+  estado: EstadoQuinzena;
+  parcial: boolean;
+  totais: TotaisComissao;
+}
+
+export interface QuinzenasDoProfissional {
+  acertoPorQuinzena: boolean;
+  quinzenas: QuinzenaDoProfissional[];
+}

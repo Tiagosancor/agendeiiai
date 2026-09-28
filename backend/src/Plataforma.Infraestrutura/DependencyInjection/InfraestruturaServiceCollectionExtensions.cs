@@ -181,6 +181,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<JobEnviarLembretes>();
         servicos.AddScoped<IGerenciadorPagamentos, GerenciadorPagamentos>();
         servicos.AddScoped<Plataforma.Aplicacao.Comissoes.IServicoComissoes, Plataforma.Infraestrutura.Comissoes.ServicoComissoes>();
+        servicos.AddScoped<Plataforma.Infraestrutura.Comissoes.TravaQuinzenas>();
+        servicos.AddScoped<Plataforma.Aplicacao.Comissoes.IServicoQuinzenas, Plataforma.Infraestrutura.Comissoes.ServicoQuinzenas>();
         servicos.AddScoped<IServicoFinanceiro, ServicoFinanceiro>();
         servicos.AddScoped<IGerenciadorFidelidade, GerenciadorFidelidade>();
 

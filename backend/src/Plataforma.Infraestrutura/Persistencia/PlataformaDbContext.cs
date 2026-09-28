@@ -51,6 +51,10 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<RedefinicaoSenha> RedefinicoesSenha => Set<RedefinicaoSenha>();
 
+    public DbSet<Plataforma.Dominio.Comissoes.PeriodoComissao> PeriodosComissao => Set<Plataforma.Dominio.Comissoes.PeriodoComissao>();
+
+    public DbSet<Plataforma.Dominio.Comissoes.FechamentoComissao> FechamentosComissao => Set<Plataforma.Dominio.Comissoes.FechamentoComissao>();
+
     public DbSet<Profissional> Profissionais => Set<Profissional>();
 
     public DbSet<Categoria> Categorias => Set<Categoria>();

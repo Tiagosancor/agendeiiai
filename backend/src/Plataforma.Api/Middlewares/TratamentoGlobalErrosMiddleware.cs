@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.AspNetCore.Mvc;
+using Plataforma.Dominio.Comissoes;
 
 namespace Plataforma.Api.Middlewares;
 
@@ -25,6 +26,21 @@ public sealed class TratamentoGlobalErrosMiddleware
         try
         {
             await _proximo(contexto);
+        }
+        catch (QuinzenaFechadaException excecao) when (!contexto.Response.HasStarted)
+        {
+            // Regra de negócio, não erro (seção 7): 409 em qualquer rota que mexa no atendimento.
+            // Na página pública, texto neutro — o cliente final não sabe nada de comissão.
+            var publico = contexto.Request.Path.StartsWithSegments("/publico");
+            contexto.Response.ContentType = "application/problem+json";
+            contexto.Response.StatusCode = StatusCodes.Status409Conflict;
+            await contexto.Response.WriteAsJsonAsync(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = publico ? "Não é possível alterar este agendamento pelo link. Fale com o estabelecimento." : excecao.Message,
+                Detail = publico ? null : excecao.Message,
+                Extensions = { ["codigo"] = publico ? "nao_permitido" : "quinzena_fechada" },
+            });
         }
         catch (Exception excecao)
         {

@@ -20,38 +20,46 @@ public sealed class ServicoComissoes : IServicoComissoes
     public const int TamanhoMaximoPagina = 100;
 
     private readonly PlataformaDbContext _dbContext;
-    private readonly IContextoNegocio _contextoNegocio;
     private readonly IUsuarioAtual _usuarioAtual;
     private readonly IRegistroAuditoria _auditoria;
+    private readonly TravaQuinzenas _travaQuinzenas;
 
     public ServicoComissoes(
-        PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria)
+        PlataformaDbContext dbContext, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria, TravaQuinzenas travaQuinzenas)
     {
         _dbContext = dbContext;
-        _contextoNegocio = contextoNegocio;
         _usuarioAtual = usuarioAtual;
         _auditoria = auditoria;
+        _travaQuinzenas = travaQuinzenas;
     }
 
-    public Task<decimal?> ObterPercentualAsync(Guid profissionalId, CancellationToken cancellationToken = default) =>
+    public Task<ConfiguracaoComissao?> ObterConfiguracaoAsync(Guid profissionalId, CancellationToken cancellationToken = default) =>
         _dbContext.Profissionais
             .Where(p => p.Id == profissionalId && !p.Excluido)
-            .Select(p => (decimal?)p.PercentualComissao)
+            .Select(p => new ConfiguracaoComissao(p.PercentualComissao, p.AcertoPorQuinzena))
             .FirstOrDefaultAsync(cancellationToken);
 
-    public async Task<bool> DefinirPercentualAsync(Guid profissionalId, decimal percentual, CancellationToken cancellationToken = default)
+    public async Task<bool> DefinirConfiguracaoAsync(
+        Guid profissionalId, ConfiguracaoComissao configuracao, CancellationToken cancellationToken = default)
     {
         var profissional = await _dbContext.Profissionais.FirstOrDefaultAsync(p => p.Id == profissionalId && !p.Excluido, cancellationToken);
         if (profissional is null)
             return false;
 
-        var anterior = profissional.PercentualComissao;
-        profissional.DefinirPercentualComissao(percentual);
+        var percentualAnterior = profissional.PercentualComissao;
+        var acertoAnterior = profissional.AcertoPorQuinzena;
+        profissional.DefinirPercentualComissao(configuracao.Percentual);
+        profissional.DefinirAcertoPorQuinzena(configuracao.AcertoPorQuinzena);
 
-        if (anterior != percentual)
+        var mudancas = new List<string>();
+        if (percentualAnterior != configuracao.Percentual)
+            mudancas.Add($"Comissão: {Percentual(percentualAnterior)} → {Percentual(configuracao.Percentual)}");
+        if (acertoAnterior != configuracao.AcertoPorQuinzena)
+            mudancas.Add($"Acerto por quinzena: {SimNao(acertoAnterior)} → {SimNao(configuracao.AcertoPorQuinzena)}");
+
+        if (mudancas.Count > 0)
         {
-            _auditoria.Registrar(AcoesAuditoria.AlterarComissao, nameof(Profissional), profissional.Id,
-                $"Comissão: {Percentual(anterior)} → {Percentual(percentual)}");
+            _auditoria.Registrar(AcoesAuditoria.AlterarComissao, nameof(Profissional), profissional.Id, string.Join("; ", mudancas));
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 
@@ -81,7 +89,7 @@ public sealed class ServicoComissoes : IServicoComissoes
             return null;
 
         var (inicioUtc, fimUtc) = await IntervaloUtcAsync(filtro.De, filtro.Ate, cancellationToken);
-        var linhas = LinhasConcluidas(inicioUtc, fimUtc).Where(l => l.ProfissionalId == profissionalId);
+        var linhas = ConsultaLinhasComissao.Concluidas(_dbContext, inicioUtc, fimUtc).Where(l => l.ProfissionalId == profissionalId);
 
         var totais = await linhas
             .GroupBy(_ => 1)
@@ -116,7 +124,7 @@ public sealed class ServicoComissoes : IServicoComissoes
     {
         var (inicioUtc, fimUtc) = await IntervaloUtcAsync(de, ate, cancellationToken);
 
-        var porProfissional = await LinhasConcluidas(inicioUtc, fimUtc)
+        var porProfissional = await ConsultaLinhasComissao.Concluidas(_dbContext, inicioUtc, fimUtc)
             .GroupBy(l => l.ProfissionalId)
             .Select(g => new { ProfissionalId = g.Key, Comissao = g.Sum(l => l.Comissao), Base = g.Sum(l => l.ValorBase), Quantidade = g.Count() })
             .ToDictionaryAsync(g => g.ProfissionalId, cancellationToken);
@@ -136,59 +144,17 @@ public sealed class ServicoComissoes : IServicoComissoes
             .ToList();
     }
 
-    /// <summary>Classe com init (não record posicional): o EF só traduz filtros sobre projeção feita por inicializador.</summary>
-    private sealed class LinhaComissao
-    {
-        public Guid LinhaId { get; init; }
-        public Guid AgendamentoId { get; init; }
-        public Guid ProfissionalId { get; init; }
-        public Guid? ClienteId { get; init; }
-        public DateTimeOffset Inicio { get; init; }
-        public string Servico { get; init; } = string.Empty;
-        public decimal ValorBase { get; init; }
-        public decimal Percentual { get; init; }
-        public decimal Comissao { get; init; }
-    }
-
-    /// <summary>Linhas com comissão gravada de atendimentos concluídos que começam no intervalo (data do atendimento, não da conclusão).</summary>
-    private IQueryable<LinhaComissao> LinhasConcluidas(DateTimeOffset inicioUtc, DateTimeOffset fimUtc) =>
-        from s in _dbContext.Set<AgendamentoServico>()
-        join a in _dbContext.Agendamentos on s.AgendamentoId equals a.Id
-        where a.Status == StatusAgendamento.Concluido
-            && s.ComissaoProfissionalId != null && s.ComissaoValor != null
-            && a.Inicio >= inicioUtc && a.Inicio < fimUtc
-        select new LinhaComissao
-        {
-            LinhaId = s.Id,
-            AgendamentoId = a.Id,
-            ProfissionalId = s.ComissaoProfissionalId!.Value,
-            ClienteId = a.ClienteId,
-            Inicio = a.Inicio,
-            Servico = s.Nome,
-            ValorBase = s.ComissaoValorBase!.Value,
-            Percentual = s.ComissaoPercentual!.Value,
-            Comissao = s.ComissaoValor!.Value,
-        };
-
-    /// <summary>Do início do dia <paramref name="de"/> (00:00) até o fim do dia <paramref name="ate"/> (23:59:59), no fuso do negócio.</summary>
     private async Task<(DateTimeOffset InicioUtc, DateTimeOffset FimUtc)> IntervaloUtcAsync(
-        DateOnly de, DateOnly ate, CancellationToken cancellationToken)
-    {
-        var fusoId = await _dbContext.Negocios.AsNoTracking()
-            .Where(n => n.Id == _contextoNegocio.NegocioId)
-            .Select(n => n.Fuso)
-            .FirstAsync(cancellationToken);
-        var fuso = TimeZoneInfo.FindSystemTimeZoneById(fusoId);
-
-        return (ConversorFusoHorario.ParaUtc(de, TimeOnly.MinValue, fuso).ToUniversalTime(),
-                ConversorFusoHorario.ParaUtc(ate.AddDays(1), TimeOnly.MinValue, fuso).ToUniversalTime());
-    }
+        DateOnly de, DateOnly ate, CancellationToken cancellationToken) =>
+        ConsultaLinhasComissao.IntervaloUtc(de, ate, await _travaQuinzenas.FusoAsync(cancellationToken));
 
     private static string PrimeiroNome(string? nome)
     {
         var primeiro = nome?.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
         return string.IsNullOrEmpty(primeiro) ? "Cliente" : primeiro;
     }
+
+    private static string SimNao(bool valor) => valor ? "sim" : "não";
 
     private static string Percentual(decimal valor) =>
         valor.ToString("0.##", CultureInfo.InvariantCulture).Replace('.', ',') + "%";
