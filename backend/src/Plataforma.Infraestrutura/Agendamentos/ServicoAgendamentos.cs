@@ -11,6 +11,7 @@ using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Cupons;
 using Plataforma.Dominio.Notificacoes;
+using Plataforma.Infraestrutura.Comissoes;
 using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Negocios;
 using Plataforma.Infraestrutura.Notificacoes;
@@ -38,14 +39,17 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly IGerenciadorFidelidade _gerenciadorFidelidade;
 
     private readonly IRegistroAuditoria _auditoria;
+    private readonly TravaQuinzenas _travaQuinzenas;
     private readonly ILogger<ServicoAgendamentos> _logger;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
-        IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, ILogger<ServicoAgendamentos> logger)
+        IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, TravaQuinzenas travaQuinzenas,
+        ILogger<ServicoAgendamentos> logger)
     {
         _auditoria = auditoria;
+        _travaQuinzenas = travaQuinzenas;
         _logger = logger;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
@@ -414,12 +418,20 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
     public async Task<bool> CancelarAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
     {
-        var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
-        if (agendamento is null)
-            return false;
+        var cancelado = await ExecutarNaTravaDeQuinzenasAsync(async () =>
+        {
+            var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
+            if (agendamento is null)
+                return false;
 
-        agendamento.Cancelar();
-        await _dbContext.SaveChangesAsync(cancellationToken);
+            await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
+            agendamento.Cancelar();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return true;
+        }, cancellationToken);
+
+        if (!cancelado)
+            return false;
 
         await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Cancelado, cancellationToken);
         return true;
@@ -629,13 +641,18 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         return resultado;
     }
 
-    public async Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    public Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
+        ExecutarNaTravaDeQuinzenasAsync(() => ConcluirAsync(agendamentoId, cancellationToken), cancellationToken);
+
+    private async Task<bool> ConcluirAsync(Guid agendamentoId, CancellationToken cancellationToken)
     {
         var agendamento = await _dbContext.Agendamentos
             .Include(a => a.Servicos)
             .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
         if (agendamento is null)
             return false;
+
+        await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
 
         // Percentual vigente agora (seção 7): fica gravado em cada linha, e mudar depois não mexe nela.
         var percentualComissao = await _dbContext.Profissionais
@@ -659,13 +676,18 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     /// comissão das linhas, o pagamento registrado e o selo de fidelidade daquele atendimento.
     /// Selo já usado num resgate fica (a recompensa já foi entregue).
     /// </summary>
-    public async Task<bool> ReabrirAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    public Task<bool> ReabrirAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
+        ExecutarNaTravaDeQuinzenasAsync(() => ReabrirNaTravaAsync(agendamentoId, cancellationToken), cancellationToken);
+
+    private async Task<bool> ReabrirNaTravaAsync(Guid agendamentoId, CancellationToken cancellationToken)
     {
         var agendamento = await _dbContext.Agendamentos
             .Include(a => a.Servicos)
             .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
         if (agendamento is null)
             return false;
+
+        await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
 
         var comissaoAnterior = agendamento.Servicos.Sum(s => s.ComissaoValor ?? 0m);
         agendamento.Reabrir();
@@ -757,6 +779,23 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     /// Postgres desfazer e volta pelo retry com backoff, o que numa rajada estourava o tempo das
     /// requisições. A trava é liberada sozinha no commit/rollback.
     /// </summary>
+    /// <summary>
+    /// Concluir, reabrir e cancelar rodam numa transação com a trava de quinzenas do negócio
+    /// (seção 7), a mesma que o fechamento toma — ver <see cref="TravaQuinzenas"/>.
+    /// </summary>
+    private Task<bool> ExecutarNaTravaDeQuinzenasAsync(Func<Task<bool>> acao, CancellationToken cancellationToken)
+    {
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        return estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await _travaQuinzenas.TravarNegocioAsync(cancellationToken);
+            var resultado = await acao();
+            await transacao.CommitAsync(cancellationToken);
+            return resultado;
+        });
+    }
+
     private Task TravarAgendaDoProfissionalAsync(Guid profissionalId, CancellationToken cancellationToken) =>
         _dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({profissionalId.ToString()}, 0))", cancellationToken);

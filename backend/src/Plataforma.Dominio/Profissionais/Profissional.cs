@@ -44,6 +44,9 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
     /// </summary>
     public decimal PercentualComissao { get; private set; }
 
+    /// <summary>Entra no fechamento de comissões por quinzena (seção 7). Padrão: não.</summary>
+    public bool AcertoPorQuinzena { get; private set; }
+
     protected Profissional()
     {
     }
@@ -86,6 +89,8 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
     public void DefinirCpf(CpfProtegido cpf) => Cpf = cpf;
 
     public void DefinirFoto(string? fotoUrl) => FotoUrl = fotoUrl;
+
+    public void DefinirAcertoPorQuinzena(bool acertoPorQuinzena) => AcertoPorQuinzena = acertoPorQuinzena;
 
     public void DefinirPercentualComissao(decimal percentual)
     {

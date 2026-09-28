@@ -226,13 +226,20 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
 function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string; podeAlterar: boolean }) {
   const { chamarApi } = useAutenticacao();
   const [percentual, setPercentual] = useState("");
+  const [acertoPorQuinzena, setAcertoPorQuinzena] = useState(false);
+  // O formulário só aparece carregado: senão a resposta, chegando depois, apagaria o que já foi digitado.
+  const [carregado, setCarregado] = useState(false);
   const [mensagem, setMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
     // Busca disparada pela montagem, não estado derivado de props.
-    chamarApi<{ percentual: number }>(`/painel/profissionais/${profissionalId}/comissao`)
-      .then((r) => setPercentual(String(r.percentual).replace(".", ",")))
+    chamarApi<{ percentual: number; acertoPorQuinzena: boolean }>(`/painel/profissionais/${profissionalId}/comissao`)
+      .then((r) => {
+        setPercentual(String(r.percentual).replace(".", ","));
+        setAcertoPorQuinzena(r.acertoPorQuinzena);
+        setCarregado(true);
+      })
       .catch(() => setMensagem({ tipo: "erro", texto: "Não foi possível carregar a comissão." }));
   }, [chamarApi, profissionalId]);
 
@@ -247,7 +254,7 @@ function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string
 
     setSalvando(true);
     try {
-      await chamarApi(`/painel/profissionais/${profissionalId}/comissao`, { metodo: "PUT", corpo: { percentual: valor } });
+      await chamarApi(`/painel/profissionais/${profissionalId}/comissao`, { metodo: "PUT", corpo: { percentual: valor, acertoPorQuinzena } });
       setMensagem({ tipo: "ok", texto: "Comissão salva. Vale para os atendimentos concluídos a partir de agora." });
     } catch (excecao) {
       setMensagem({ tipo: "erro", texto: excecao instanceof Error ? excecao.message : "Não foi possível salvar." });
@@ -262,27 +269,48 @@ function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string
       <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
         Percentual sobre o valor cobrado de cada serviço concluído (já com o desconto de cupom). Mudar não altera atendimentos já concluídos.
       </p>
-      <form onSubmit={salvar} className="flex flex-wrap items-end gap-2">
-        <label>
-          <span className={classeLabel}>Comissão (%)</span>
-          <input
-            inputMode="decimal"
-            className={`${classeInput} w-32`}
-            value={percentual}
-            onChange={(e) => setPercentual(e.target.value)}
-            disabled={!podeAlterar}
-            aria-describedby="ajuda-comissao"
-          />
-        </label>
-        {podeAlterar && (
-          <button type="submit" disabled={salvando} className={classeBotaoPrimario}>
-            {salvando ? "Salvando..." : "Salvar comissão"}
-          </button>
-        )}
-      </form>
-      <p id="ajuda-comissao" className="mt-1 text-xs text-gray-500 dark:text-neutral-400">
-        De 0 a 100, com até duas casas decimais (ex.: 40 ou 12,5).
-      </p>
+      {!carregado ? (
+        !mensagem && <p className="text-sm text-gray-500 dark:text-neutral-400">Carregando...</p>
+      ) : (
+        <>
+          <form onSubmit={salvar} className="flex flex-wrap items-end gap-2">
+            <label>
+              <span className={classeLabel}>Comissão (%)</span>
+              <input
+                inputMode="decimal"
+                className={`${classeInput} w-32`}
+                value={percentual}
+                onChange={(e) => setPercentual(e.target.value)}
+                disabled={!podeAlterar}
+                aria-describedby="ajuda-comissao"
+              />
+            </label>
+            {podeAlterar && (
+              <button type="submit" disabled={salvando} className={classeBotaoPrimario}>
+                {salvando ? "Salvando..." : "Salvar comissão"}
+              </button>
+            )}
+          </form>
+          <p id="ajuda-comissao" className="mt-1 text-xs text-gray-500 dark:text-neutral-400">
+            De 0 a 100, com até duas casas decimais (ex.: 40 ou 12,5).
+          </p>
+          <label className="mt-3 flex items-start gap-2 text-sm text-gray-700 dark:text-neutral-300">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={acertoPorQuinzena}
+              onChange={(e) => setAcertoPorQuinzena(e.target.checked)}
+              disabled={!podeAlterar}
+            />
+            <span>
+              Acerto por quinzena
+              <span className="block text-xs text-gray-500 dark:text-neutral-400">
+                Entra no fechamento de comissões das quinzenas. Salve para aplicar.
+              </span>
+            </span>
+          </label>
+        </>
+      )}
       {mensagem && (
         <p role={mensagem.tipo === "erro" ? "alert" : "status"} className={`mt-2 text-sm ${mensagem.tipo === "erro" ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>
           {mensagem.texto}

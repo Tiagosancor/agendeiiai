@@ -7,10 +7,13 @@ namespace Plataforma.Aplicacao.Comissoes;
 /// </summary>
 public interface IServicoComissoes
 {
-    Task<decimal?> ObterPercentualAsync(Guid profissionalId, CancellationToken cancellationToken = default);
+    Task<ConfiguracaoComissao?> ObterConfiguracaoAsync(Guid profissionalId, CancellationToken cancellationToken = default);
 
-    /// <summary>Altera o percentual (vale só para atendimentos concluídos daqui em diante) e registra na auditoria.</summary>
-    Task<bool> DefinirPercentualAsync(Guid profissionalId, decimal percentual, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Altera o percentual (vale só para atendimentos concluídos daqui em diante) e o acerto por
+    /// quinzena, registrando na auditoria o que mudou.
+    /// </summary>
+    Task<bool> DefinirConfiguracaoAsync(Guid profissionalId, ConfiguracaoComissao configuracao, CancellationToken cancellationToken = default);
 
     /// <summary>"Minhas comissões": o profissional vem sempre do usuário logado, nunca de parâmetro.</summary>
     Task<ComissoesDoProfissional> ListarMinhasAsync(FiltroComissoes filtro, CancellationToken cancellationToken = default);
@@ -21,6 +24,8 @@ public interface IServicoComissoes
     Task<ComissoesDoProfissional?> ListarDoProfissionalAsync(
         Guid profissionalId, FiltroComissoes filtro, CancellationToken cancellationToken = default);
 }
+
+public sealed record ConfiguracaoComissao(decimal Percentual, bool AcertoPorQuinzena);
 
 public sealed record FiltroComissoes(DateOnly De, DateOnly Ate, int Pagina = 1, int TamanhoPagina = 20);
 

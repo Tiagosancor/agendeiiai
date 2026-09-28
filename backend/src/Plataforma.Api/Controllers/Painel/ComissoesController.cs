@@ -18,8 +18,13 @@ namespace Plataforma.Api.Controllers.Painel;
 public sealed class ComissoesController : ControllerBase
 {
     private readonly IServicoComissoes _servico;
+    private readonly IServicoQuinzenas _quinzenas;
 
-    public ComissoesController(IServicoComissoes servico) => _servico = servico;
+    public ComissoesController(IServicoComissoes servico, IServicoQuinzenas quinzenas)
+    {
+        _servico = servico;
+        _quinzenas = quinzenas;
+    }
 
     [HttpGet("comissoes/minhas")]
     public async Task<ActionResult<ComissoesDoProfissional>> Minhas(
@@ -31,6 +36,11 @@ public sealed class ComissoesController : ControllerBase
 
         return Ok(await _servico.ListarMinhasAsync(new FiltroComissoes(de, ate, pagina, tamanho), cancellationToken));
     }
+
+    /// <summary>Quinzenas do profissional logado (seção 7): a aberta, parcial, e as fechadas, com o valor final — só os dele.</summary>
+    [HttpGet("comissoes/minhas/quinzenas")]
+    public async Task<ActionResult<QuinzenasDoProfissional>> MinhasQuinzenas(CancellationToken cancellationToken) =>
+        Ok(await _quinzenas.ListarMinhasAsync(cancellationToken));
 
     [HttpGet("comissoes/resumo")]
     [Authorize(Policy = nameof(Permissao.VerComissoesDeTodos))]
@@ -58,22 +68,22 @@ public sealed class ComissoesController : ControllerBase
 
     /// <summary>Percentual atual, para a ficha do profissional: quem altera ou quem vê as comissões de todos.</summary>
     [HttpGet("profissionais/{id:guid}/comissao")]
-    public async Task<ActionResult<PercentualComissaoResposta>> ObterPercentual(Guid id, CancellationToken cancellationToken)
+    public async Task<ActionResult<ConfiguracaoComissao>> ObterConfiguracao(Guid id, CancellationToken cancellationToken)
     {
         if (!TemPermissao(Permissao.GerenciarComissoes) && !TemPermissao(Permissao.VerComissoesDeTodos))
             return Forbid();
 
-        var percentual = await _servico.ObterPercentualAsync(id, cancellationToken);
-        return percentual is null ? NotFound() : Ok(new PercentualComissaoResposta(percentual.Value));
+        var configuracao = await _servico.ObterConfiguracaoAsync(id, cancellationToken);
+        return configuracao is null ? NotFound() : Ok(configuracao);
     }
 
     [HttpPut("profissionais/{id:guid}/comissao")]
     [Authorize(Policy = nameof(Permissao.GerenciarComissoes))]
-    public async Task<IActionResult> DefinirPercentual(Guid id, PercentualComissaoRequisicao dados, CancellationToken cancellationToken)
+    public async Task<IActionResult> DefinirConfiguracao(Guid id, ConfiguracaoComissao dados, CancellationToken cancellationToken)
     {
         try
         {
-            return await _servico.DefinirPercentualAsync(id, dados.Percentual, cancellationToken) ? NoContent() : NotFound();
+            return await _servico.DefinirConfiguracaoAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
         }
         catch (ArgumentException excecao)
         {
@@ -98,7 +108,3 @@ public sealed class ComissoesController : ControllerBase
     private static string MensagemSemParametro(ArgumentException excecao) =>
         excecao.ParamName is null ? excecao.Message : excecao.Message.Replace($" (Parameter '{excecao.ParamName}')", string.Empty);
 }
-
-public sealed record PercentualComissaoRequisicao(decimal Percentual);
-
-public sealed record PercentualComissaoResposta(decimal Percentual);

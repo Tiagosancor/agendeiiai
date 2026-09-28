@@ -75,8 +75,9 @@ public sealed class AgendamentosController : ControllerBase
         {
             return await mudanca() ? NoContent() : NotFound();
         }
-        catch (InvalidOperationException excecao)
+        catch (InvalidOperationException excecao) when (excecao is not Plataforma.Dominio.Comissoes.QuinzenaFechadaException)
         {
+            // Quinzena fechada segue para o TratamentoGlobalErrosMiddleware (409 com codigo "quinzena_fechada").
             return Problem(statusCode: StatusCodes.Status409Conflict, detail: excecao.Message);
         }
     }
