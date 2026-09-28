@@ -77,7 +77,7 @@ export default function PaginaClientes() {
               {clientes?.map((cliente) => (
                 <tr key={cliente.id} className={cliente.excluido ? "opacity-50" : ""}>
                   <td className={classeTd}>{cliente.nome}</td>
-                  <td className={classeTd}>{cliente.telefone}</td>
+                  <td className={classeTd}>{cliente.telefone ?? "—"}</td>
                   <td className={classeTd}>{cliente.email ?? "—"}</td>
                   <td className={`${classeTd} space-x-3`}>
                     {cliente.excluido ? (

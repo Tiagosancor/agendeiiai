@@ -18,13 +18,14 @@ public sealed class ClienteConfiguracao : IEntityTypeConfiguration<Cliente>
         builder.Property(c => c.Observacoes).HasMaxLength(2000);
         builder.Property(c => c.Origem).HasConversion<string>().HasMaxLength(20).IsRequired();
 
+        // Opcional só no cadastro rápido do encaixe (seção 7); o EF não passa nulo pelo conversor.
         builder.Property(c => c.Telefone)
-            .HasConversion(telefone => telefone.Valor, valor => TelefoneE164.Criar(valor))
+            .HasConversion(telefone => telefone!.Valor, valor => TelefoneE164.Criar(valor))
             .HasColumnName("telefone")
-            .HasMaxLength(20)
-            .IsRequired();
+            .HasMaxLength(20);
 
-        // Chave de identificação do cliente dentro do negócio (seção 7 / 8.1.4).
+        // Chave de identificação do cliente dentro do negócio (seção 7 / 8.1.4). NULL não conflita:
+        // vários clientes sem telefone convivem, e dois com o mesmo telefone continuam recusados.
         builder.HasIndex(c => new { c.NegocioId, c.Telefone }).IsUnique();
     }
 }

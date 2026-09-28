@@ -47,6 +47,13 @@ public interface IServicoAgendamentos
 
     Task<ResultadoAgendamento> MoverAsync(Guid agendamentoId, DateTimeOffset novoInicio, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Atendimento sem agendamento (seção 7): cliente existente ou cadastro rápido (telefone opcional),
+    /// e "Lançar e iniciar" (EmAtendimento, começa agora) ou "Apenas encaixar" (Agendado no horário dado).
+    /// Mesmas regras de horário do painel (409 com próximos horários livres).
+    /// </summary>
+    Task<ResultadoEncaixe> LancarEncaixeAsync(LancarEncaixe dados, CancellationToken cancellationToken = default);
+
     /// <summary>"Iniciar atendimento" (seção 7): Agendado → EmAtendimento.</summary>
     Task<bool> IniciarAtendimentoAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
 
@@ -70,6 +77,16 @@ public sealed record DetalhePublicoAgendamento(
 
 public sealed record CriarAgendamento(
     Guid ProfissionalId, Guid? ClienteId, IReadOnlyList<Guid> ServicoIds, DateTimeOffset Inicio, string? Observacoes = null);
+
+public sealed record NovoClienteEncaixe(string Nome, string? Telefone);
+
+/// <summary><c>Inicio</c> só vale para "Apenas encaixar"; "Lançar e iniciar" começa agora.</summary>
+public sealed record LancarEncaixe(
+    Guid ProfissionalId, Guid? ClienteId, NovoClienteEncaixe? NovoCliente, IReadOnlyList<Guid> ServicoIds,
+    DateTimeOffset? Inicio, bool IniciarAtendimento, bool ClienteAutorizouMensagens, string? Observacoes = null);
+
+/// <summary><c>ClienteId</c> vem mesmo quando o horário falha: o cadastro rápido já foi feito e a tela passa a usá-lo.</summary>
+public sealed record ResultadoEncaixe(ResultadoAgendamento Agendamento, Guid? ClienteId);
 
 public sealed record CriarReservaPublica(Guid ProfissionalId, IReadOnlyList<Guid> ServicoIds, DateTimeOffset Inicio);
 

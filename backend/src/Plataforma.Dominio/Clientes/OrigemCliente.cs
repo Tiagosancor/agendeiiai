@@ -5,4 +5,7 @@ public enum OrigemCliente
 {
     Painel = 1,
     LinkPublico = 2,
+
+    /// <summary>Cadastro rápido no balcão, ao lançar um atendimento sem agendamento (seção 7).</summary>
+    Encaixe = 3,
 }

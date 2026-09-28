@@ -3,8 +3,9 @@ using Plataforma.Dominio.Comum;
 namespace Plataforma.Dominio.Clientes;
 
 /// <summary>
-/// Ficha do cliente final (seção 7). O telefone E.164 é a chave de identificação dentro
-/// do negócio (índice único em <c>(NegocioId, Telefone)</c> — seção 8.1.4); histórico de
+/// Ficha do cliente final (seção 7). O telefone E.164, quando existe, é a chave de identificação
+/// dentro do negócio (índice único em <c>(NegocioId, Telefone)</c> — seção 8.1.4). É opcional só
+/// no cadastro rápido do balcão (encaixe); no Postgres, NULL não conflita no índice único. Histórico de
 /// atendimentos vem de <c>Agendamento</c> (Sprint 2/3), não é guardado aqui.
 /// </summary>
 public class Cliente : EntidadeBase, IEntidadeDoNegocio
@@ -13,7 +14,7 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
 
     public string Nome { get; private set; } = string.Empty;
 
-    public TelefoneE164 Telefone { get; private set; } = null!;
+    public TelefoneE164? Telefone { get; private set; }
 
     public string? Email { get; private set; }
 
@@ -30,7 +31,7 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
     {
     }
 
-    private Cliente(Guid negocioId, string nome, TelefoneE164 telefone, OrigemCliente origem)
+    private Cliente(Guid negocioId, string nome, TelefoneE164? telefone, OrigemCliente origem)
     {
         NegocioId = negocioId;
         Nome = nome;
@@ -39,13 +40,11 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
     }
 
     public static Cliente Criar(
-        Guid negocioId, string nome, TelefoneE164 telefone, OrigemCliente origem = OrigemCliente.Painel,
+        Guid negocioId, string nome, TelefoneE164? telefone, OrigemCliente origem = OrigemCliente.Painel,
         string? email = null, string? observacoes = null)
     {
         if (string.IsNullOrWhiteSpace(nome))
             throw new ArgumentException("O nome é obrigatório.", nameof(nome));
-
-        ArgumentNullException.ThrowIfNull(telefone);
 
         return new Cliente(negocioId, nome.Trim(), telefone, origem)
         {

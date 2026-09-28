@@ -36,4 +36,7 @@ public enum Permissao
     /// só o Administrador a tem de origem. O Profissional com ela ajusta só os atendimentos dele.
     /// </summary>
     AjustarValorAtendimento = 15,
+
+    /// <summary>Lançar atendimento sem agendamento — o encaixe do balcão (seção 7). Administrador e Recepcionista, por padrão.</summary>
+    LancarAtendimentoSemAgendamento = 16,
 }

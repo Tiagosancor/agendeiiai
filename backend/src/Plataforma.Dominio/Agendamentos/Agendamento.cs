@@ -77,6 +77,20 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// </summary>
     public bool Forcado { get; private set; }
 
+    /// <summary>De onde veio o agendamento (seção 7), para filtros e relatórios.</summary>
+    public OrigemAgendamento Origem { get; private set; } = OrigemAgendamento.Painel;
+
+    /// <summary>
+    /// Encaixe (seção 7): o cliente não passou pela caixa de consentimento do link público, então
+    /// só recebe confirmação e lembrete se quem lançou marcou que ele autorizou — com quem e quando.
+    /// </summary>
+    public DateTimeOffset? MensagensAutorizadasEm { get; private set; }
+
+    public Guid? MensagensAutorizadasPorUsuarioId { get; private set; }
+
+    /// <summary>Confirmação e lembrete ao cliente: sempre, exceto encaixe sem autorização registrada.</summary>
+    public bool PodeReceberMensagens => Origem != OrigemAgendamento.Encaixe || MensagensAutorizadasEm is not null;
+
     protected Agendamento()
     {
     }
@@ -95,12 +109,14 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Cria já confirmado — o fluxo do painel (Sprint 2), sem passar pela reserva temporária (só o fluxo público, Sprint 3, precisa dela).</summary>
     public static Agendamento CriarConfirmado(
         Guid negocioId, Guid profissionalId, Guid clienteId, DateTimeOffset inicio,
-        IReadOnlyCollection<ItemServicoAgendamento> servicos, string? observacoes = null)
+        IReadOnlyCollection<ItemServicoAgendamento> servicos, string? observacoes = null,
+        OrigemAgendamento origem = OrigemAgendamento.Painel)
     {
         var agendamento = new Agendamento(
             negocioId, profissionalId, clienteId, inicio, CalcularFim(inicio, servicos), StatusAgendamento.Agendado)
         {
             Observacoes = observacoes,
+            Origem = origem,
         };
 
         agendamento.DefinirServicos(servicos);
@@ -120,6 +136,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
             negocioId, profissionalId, clienteId, inicio, CalcularFim(inicio, servicos), StatusAgendamento.Reservado)
         {
             ReservadoAte = agora + duracaoDaReserva,
+            Origem = OrigemAgendamento.LinkPublico,
         };
 
         agendamento.DefinirServicos(servicos);
@@ -220,6 +237,13 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
             throw new InvalidOperationException("Só um agendamento ativo pode ser transferido.");
 
         ProfissionalId = novoProfissionalId;
+    }
+
+    /// <summary>Encaixe (seção 7): quem lançou marcou que o cliente autorizou receber mensagens.</summary>
+    public void AutorizarMensagens(Guid? usuarioId, DateTimeOffset agora)
+    {
+        MensagensAutorizadasEm = agora;
+        MensagensAutorizadasPorUsuarioId = usuarioId;
     }
 
     /// <summary>O cliente chegou: "Iniciar atendimento" (seção 7).</summary>

@@ -40,14 +40,16 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
     private readonly IRegistroAuditoria _auditoria;
     private readonly TravaQuinzenas _travaQuinzenas;
+    private readonly IUsuarioAtual _usuarioAtual;
     private readonly ILogger<ServicoAgendamentos> _logger;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
         IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, TravaQuinzenas travaQuinzenas,
-        ILogger<ServicoAgendamentos> logger)
+        IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger)
     {
+        _usuarioAtual = usuarioAtual;
         _auditoria = auditoria;
         _travaQuinzenas = travaQuinzenas;
         _logger = logger;
@@ -58,6 +60,87 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         _servicoToken = servicoToken;
         _opcoesMarca = opcoesMarca.Value;
         _gerenciadorFidelidade = gerenciadorFidelidade;
+    }
+
+    public async Task<ResultadoEncaixe> LancarEncaixeAsync(LancarEncaixe dados, CancellationToken cancellationToken = default)
+    {
+        if (!dados.IniciarAtendimento && dados.Inicio is null)
+            return new ResultadoEncaixe(ResultadoAgendamento.ComErro("Escolha o horário do encaixe."), dados.ClienteId);
+
+        var cliente = await ResolverClienteDoEncaixeAsync(dados, cancellationToken);
+        if (cliente.Erro is not null)
+            return new ResultadoEncaixe(ResultadoAgendamento.ComErro(cliente.Erro), null);
+
+        // "Lançar e iniciar": começa agora (no minuto), com a duração somada dos serviços.
+        var agora = DateTimeOffset.UtcNow;
+        var inicio = dados.IniciarAtendimento
+            ? new DateTimeOffset(agora.Year, agora.Month, agora.Day, agora.Hour, agora.Minute, 0, TimeSpan.Zero)
+            : dados.Inicio!.Value;
+
+        var resultado = await CriarInternoAsync(
+            new CriarAgendamento(dados.ProfissionalId, cliente.Id, dados.ServicoIds, inicio, dados.Observacoes),
+            confirmarDeImediato: true, cancellationToken,
+            new OpcoesCriacao(OrigemAgendamento.Encaixe, dados.IniciarAtendimento, dados.ClienteAutorizouMensagens));
+
+        if (resultado.Sucesso)
+        {
+            // Sem aceite do cliente, só o profissional é avisado (seção 7). Com aceite, a confirmação só
+            // faz sentido para quem vai voltar mais tarde, não para quem já está sendo atendido.
+            if (dados.ClienteAutorizouMensagens && !dados.IniciarAtendimento)
+                await NotificarConfirmacaoAsync(resultado.AgendamentoId!.Value, cancellationToken);
+            else
+                await NotificarProfissionalAsync(resultado.AgendamentoId!.Value, EventoAgendamentoProfissional.Novo, cancellationToken);
+        }
+
+        return new ResultadoEncaixe(resultado, cliente.Id);
+    }
+
+    /// <summary>
+    /// Cliente existente ou cadastro rápido (nome obrigatório, telefone opcional). Com telefone, vale a regra de
+    /// sempre: se já existe cliente com ele, usa esse (não duplica); sem telefone, cria um novo.
+    /// </summary>
+    private async Task<(Guid? Id, string? Erro)> ResolverClienteDoEncaixeAsync(LancarEncaixe dados, CancellationToken cancellationToken)
+    {
+        if (dados.ClienteId is { } clienteId)
+            return await _dbContext.Clientes.AnyAsync(c => c.Id == clienteId && !c.Excluido, cancellationToken)
+                ? (clienteId, null)
+                : (null, "Cliente não encontrado.");
+
+        if (dados.NovoCliente is null || string.IsNullOrWhiteSpace(dados.NovoCliente.Nome))
+            return (null, "Informe o nome do cliente.");
+
+        TelefoneE164? telefone = null;
+        if (!string.IsNullOrWhiteSpace(dados.NovoCliente.Telefone))
+        {
+            try
+            {
+                telefone = TelefoneE164.Criar(dados.NovoCliente.Telefone);
+            }
+            catch (ArgumentException)
+            {
+                return (null, "Telefone inválido. Informe o DDD e o número.");
+            }
+
+            var existente = await _dbContext.Clientes.FirstOrDefaultAsync(c => c.Telefone == telefone, cancellationToken);
+            if (existente is not null)
+                return (existente.Id, null);
+        }
+
+        var novo = Cliente.Criar(_contextoNegocio.NegocioId!.Value, dados.NovoCliente.Nome, telefone, OrigemCliente.Encaixe);
+        _dbContext.Clientes.Add(novo);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            // Outra requisição cadastrou o mesmo telefone agora há pouco: usa o dela.
+            _dbContext.Entry(novo).State = EntityState.Detached;
+            var existente = await _dbContext.Clientes.FirstAsync(c => c.Telefone == telefone, cancellationToken);
+            return (existente.Id, null);
+        }
+
+        return (novo.Id, null);
     }
 
     public async Task<ResultadoAgendamento> CriarAsync(CriarAgendamento dados, CancellationToken cancellationToken = default)
@@ -77,8 +160,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         CriarInternoAsync(
             new CriarAgendamento(dados.ProfissionalId, null, dados.ServicoIds, dados.Inicio), confirmarDeImediato: false, cancellationToken);
 
+    /// <summary>O que muda na criação do encaixe (seção 7) em relação ao agendamento comum do painel.</summary>
+    private sealed record OpcoesCriacao(OrigemAgendamento Origem, bool IniciarAtendimento, bool ClienteAutorizouMensagens);
+
     private async Task<ResultadoAgendamento> CriarInternoAsync(
-        CriarAgendamento dados, bool confirmarDeImediato, CancellationToken cancellationToken)
+        CriarAgendamento dados, bool confirmarDeImediato, CancellationToken cancellationToken, OpcoesCriacao? opcoes = null)
     {
         var negocioId = _contextoNegocio.NegocioId!.Value;
 
@@ -172,8 +258,13 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 ? Agendamento.CriarConfirmado(
                     negocioId, dados.ProfissionalId,
                     dados.ClienteId ?? throw new InvalidOperationException("Um agendamento confirmado de imediato precisa de um cliente."),
-                    dados.Inicio, itens, dados.Observacoes)
+                    dados.Inicio, itens, dados.Observacoes, opcoes?.Origem ?? OrigemAgendamento.Painel)
                 : Agendamento.CriarReserva(negocioId, dados.ProfissionalId, dados.ClienteId, dados.Inicio, itens, agora, DuracaoDaReserva);
+
+            if (opcoes?.IniciarAtendimento == true)
+                agendamento.IniciarAtendimento();
+            if (opcoes?.ClienteAutorizouMensagens == true)
+                agendamento.AutorizarMensagens(_usuarioAtual.UsuarioId, agora);
 
             _dbContext.Agendamentos.Add(agendamento);
 

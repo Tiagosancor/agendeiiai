@@ -18,14 +18,20 @@ public interface IGerenciadorClientes
     Task<bool> ExcluirAsync(Guid clienteId, CancellationToken cancellationToken = default);
 }
 
-public sealed record ClienteResumo(Guid Id, string Nome, string Telefone, string? Email, string? Observacoes, bool Excluido);
+/// <summary>Busca curta por nome ou telefone, para escolher o cliente no balcão (encaixe, seção 7).</summary>
+public interface IBuscaClientes
+{
+    Task<IReadOnlyList<ClienteResumo>> BuscarAsync(string termo, int limite, CancellationToken cancellationToken = default);
+}
 
-public sealed record CriarCliente(string Nome, string Telefone, string? Email = null, string? Observacoes = null);
+public sealed record ClienteResumo(Guid Id, string Nome, string? Telefone, string? Email, string? Observacoes, bool Excluido);
+
+public sealed record CriarCliente(string Nome, string? Telefone, string? Email = null, string? Observacoes = null);
 
 public sealed record AtualizarCliente(string Nome, string? Email, string? Observacoes);
 
 public sealed record ExportacaoCliente(
-    Guid Id, string Nome, string Telefone, string? Email, string? Observacoes, string Origem, DateTimeOffset CriadoEm,
+    Guid Id, string Nome, string? Telefone, string? Email, string? Observacoes, string Origem, DateTimeOffset CriadoEm,
     IReadOnlyList<ExportacaoAgendamento> Agendamentos);
 
 public sealed record ExportacaoAgendamento(

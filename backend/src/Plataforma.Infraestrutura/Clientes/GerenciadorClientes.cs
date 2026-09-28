@@ -7,7 +7,7 @@ using Plataforma.Infraestrutura.Persistencia;
 
 namespace Plataforma.Infraestrutura.Clientes;
 
-public sealed class GerenciadorClientes : IGerenciadorClientes
+public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
 {
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
@@ -21,8 +21,42 @@ public sealed class GerenciadorClientes : IGerenciadorClientes
     public async Task<IReadOnlyList<ClienteResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Clientes
             .OrderBy(c => c.Nome)
-            .Select(c => new ClienteResumo(c.Id, c.Nome, c.Telefone.Valor, c.Email, c.Observacoes, c.Excluido))
+            .Select(c => new ClienteResumo(c.Id, c.Nome, c.Telefone == null ? null : c.Telefone.Valor, c.Email, c.Observacoes, c.Excluido))
             .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<ClienteResumo>> BuscarAsync(string termo, int limite, CancellationToken cancellationToken = default)
+    {
+        termo = termo.Trim();
+        if (termo.Length < 2)
+            return [];
+
+        // Telefone: compara só os dígitos (as pessoas digitam com parêntese, traço, sem o 55...).
+        var digitos = new string(termo.Where(char.IsDigit).ToArray());
+        var padraoNome = $"%{termo.Replace("%", "").Replace("_", "")}%";
+        var padraoTelefone = digitos.Length >= 4 ? $"%{digitos}%" : null;
+
+        var encontrados = await _dbContext.Clientes
+            .Where(c => !c.Excluido && EF.Functions.ILike(c.Nome, padraoNome))
+            .OrderBy(c => c.Nome)
+            .Take(limite)
+            .ToListAsync(cancellationToken);
+
+        // A coluna do telefone tem conversor (TelefoneE164), e o EF não traduz LIKE sobre ela: vai em SQL
+        // direto, que ainda passa pelo filtro do negócio (FromSql compõe com o global query filter).
+        if (padraoTelefone is not null)
+            encontrados.AddRange(await _dbContext.Clientes
+                .FromSqlInterpolated($"SELECT * FROM clientes WHERE telefone LIKE {padraoTelefone}")
+                .Where(c => !c.Excluido)
+                .Take(limite)
+                .ToListAsync(cancellationToken));
+
+        return encontrados
+            .DistinctBy(c => c.Id)
+            .OrderBy(c => c.Nome)
+            .Take(limite)
+            .Select(Mapear)
+            .ToList();
+    }
 
     public async Task<ClienteResumo?> ObterAsync(Guid clienteId, CancellationToken cancellationToken = default)
     {
@@ -32,10 +66,10 @@ public sealed class GerenciadorClientes : IGerenciadorClientes
 
     public async Task<Guid> CriarAsync(CriarCliente dados, CancellationToken cancellationToken = default)
     {
-        var telefone = TelefoneE164.Criar(dados.Telefone);
+        // Telefone opcional (seção 7); quando existe, continua único no negócio.
+        var telefone = string.IsNullOrWhiteSpace(dados.Telefone) ? null : TelefoneE164.Criar(dados.Telefone);
 
-        var jaExiste = await _dbContext.Clientes.AnyAsync(c => c.Telefone == telefone, cancellationToken);
-        if (jaExiste)
+        if (telefone is not null && await _dbContext.Clientes.AnyAsync(c => c.Telefone == telefone, cancellationToken))
             throw new TelefoneJaCadastradoException(telefone.Valor);
 
         var cliente = Cliente.Criar(
@@ -50,7 +84,7 @@ public sealed class GerenciadorClientes : IGerenciadorClientes
         }
         catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
         {
-            throw new TelefoneJaCadastradoException(telefone.Valor);
+            throw new TelefoneJaCadastradoException(telefone!.Valor);
         }
 
         return cliente.Id;
@@ -80,7 +114,7 @@ public sealed class GerenciadorClientes : IGerenciadorClientes
             .ToListAsync(cancellationToken);
 
         return new ExportacaoCliente(
-            cliente.Id, cliente.Nome, cliente.Telefone.Valor, cliente.Email, cliente.Observacoes,
+            cliente.Id, cliente.Nome, cliente.Telefone?.Valor, cliente.Email, cliente.Observacoes,
             cliente.Origem.ToString(), cliente.CriadoEm,
             agendamentos.Select(a => new ExportacaoAgendamento(
                 a.Inicio, a.Fim, a.Status.ToString(), a.Servicos.Select(s => s.Nome).ToList(), a.Total, a.Observacoes)).ToList());
@@ -105,5 +139,5 @@ public sealed class GerenciadorClientes : IGerenciadorClientes
     }
 
     private static ClienteResumo Mapear(Cliente cliente) =>
-        new(cliente.Id, cliente.Nome, cliente.Telefone.Valor, cliente.Email, cliente.Observacoes, cliente.Excluido);
+        new(cliente.Id, cliente.Nome, cliente.Telefone?.Valor, cliente.Email, cliente.Observacoes, cliente.Excluido);
 }
