@@ -99,6 +99,7 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
             Permissao.GerenciarAgenda,
             Permissao.VerAgendaDeOutrosProfissionais,
             Permissao.GerenciarCupons,
+            Permissao.LancarAtendimentoSemAgendamento,
         ],
         Perfil.Profissional => [],
         _ => throw new ArgumentOutOfRangeException(nameof(perfil), perfil, "Perfil desconhecido."),

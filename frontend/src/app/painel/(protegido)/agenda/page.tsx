@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { ModalAjusteValor } from "@/components/painel/ModalAjusteValor";
+import { ModalEncaixe } from "@/components/painel/ModalEncaixe";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import type {
   AgendamentoResumo,
@@ -48,6 +49,7 @@ export default function PaginaAgenda() {
   const [agendamentoParaPagar, setAgendamentoParaPagar] = useState<AgendamentoResumo | null>(null);
   const [agendamentoValores, setAgendamentoValores] = useState<string | null>(null);
   const podeAjustarValor = temPermissao("AjustarValorAtendimento");
+  const [encaixeAberto, setEncaixeAberto] = useState(false);
 
   useEffect(() => {
     // Busca disparada pela montagem, não estado derivado de props.
@@ -116,9 +118,16 @@ export default function PaginaAgenda() {
             <input type="date" className={classeInput} value={data} onChange={(e) => setData(e.target.value)} />
           </label>
         </div>
-        <button className={classeBotaoPrimario} disabled={!profissionalId} onClick={() => setModalAberto(true)}>
-          Novo agendamento
-        </button>
+        <div className="flex flex-wrap gap-2">
+          {temPermissao("LancarAtendimentoSemAgendamento") && (
+            <button className={classeBotaoSecundario} onClick={() => setEncaixeAberto(true)}>
+              Atendimento sem agendamento
+            </button>
+          )}
+          <button className={classeBotaoPrimario} disabled={!profissionalId} onClick={() => setModalAberto(true)}>
+            Novo agendamento
+          </button>
+        </div>
       </div>
 
       {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
@@ -204,6 +213,16 @@ export default function PaginaAgenda() {
         data={data}
         aoCriar={async () => {
           setModalAberto(false);
+          await carregarAgenda();
+        }}
+      />
+
+      <ModalEncaixe
+        aberto={encaixeAberto}
+        profissionalSugerido={profissionalId}
+        aoFechar={() => setEncaixeAberto(false)}
+        aoLancar={async () => {
+          setEncaixeAberto(false);
           await carregarAgenda();
         }}
       />
@@ -417,7 +436,8 @@ function ModalNovoAgendamento({
             <option value="">Selecione...</option>
             {clientes.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.nome} ({c.telefone})
+                {c.nome}
+                {c.telefone && ` (${c.telefone})`}
               </option>
             ))}
           </select>

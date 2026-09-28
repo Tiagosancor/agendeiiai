@@ -68,8 +68,9 @@ public sealed class JobEnviarLembretes
                 if (!agendamento.NaJanelaDoLembrete(agora, antecedencia))
                     continue;
 
-                // Marcado em cima da hora: a confirmação acabou de sair — dispensa (e não volta a olhar).
-                if (!agendamento.LembreteFazSentido(antecedencia, intervaloMinimo))
+                // Marcado em cima da hora (a confirmação acabou de sair) ou encaixe sem autorização do
+                // cliente para receber mensagens (seção 7) — dispensa (e não volta a olhar).
+                if (!agendamento.LembreteFazSentido(antecedencia, intervaloMinimo) || !agendamento.PodeReceberMensagens)
                 {
                     agendamento.MarcarLembreteEnviado();
                     continue;

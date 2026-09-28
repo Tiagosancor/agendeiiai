@@ -60,7 +60,7 @@ public sealed class ClienteTestes
         cliente.Observacoes.Should().BeNull();
         cliente.Excluido.Should().BeTrue();
         cliente.ExcluidoEm.Should().Be(agora);
-        cliente.Telefone.Valor.Should().NotBe("+5571988887777"); // não pode mais identificar/contatar a pessoa
+        cliente.Telefone!.Valor.Should().NotBe("+5571988887777"); // não pode mais identificar/contatar a pessoa
     }
 
     [Fact]

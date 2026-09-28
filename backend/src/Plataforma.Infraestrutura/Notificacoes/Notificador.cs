@@ -98,7 +98,7 @@ public sealed class Notificador : INotificador
                 "E-mail/confirmação"));
         }
 
-        if (negocio.WhatsAppAtivoParaConfirmacoes)
+        if (negocio.WhatsAppAtivoParaConfirmacoes && dados.TelefoneCliente is not null)
         {
             var mensagem = $"Agendamento confirmado em {negocio.NomeExibido} para {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Total {FormatacaoBrasil.Reais(dados.Total)}.";
             tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/confirmação", cancellationToken));
@@ -191,7 +191,7 @@ public sealed class Notificador : INotificador
                 "E-mail/lembrete"));
         }
 
-        if (negocio.WhatsAppAtivoParaConfirmacoes)
+        if (negocio.WhatsAppAtivoParaConfirmacoes && dados.TelefoneCliente is not null)
         {
             var mensagem = $"Lembrete: você tem um agendamento em {negocio.NomeExibido} em {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}.";
             tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/lembrete", cancellationToken));
@@ -222,7 +222,7 @@ public sealed class Notificador : INotificador
                 "E-mail/cancelamento"));
         }
 
-        if (negocio.WhatsAppAtivoParaConfirmacoes)
+        if (negocio.WhatsAppAtivoParaConfirmacoes && dados.TelefoneCliente is not null)
         {
             var mensagem = $"{negocio.NomeExibido} precisou cancelar o seu agendamento de {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Se quiser, agende um novo horário pela página do negócio.";
             tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/cancelamento", cancellationToken));

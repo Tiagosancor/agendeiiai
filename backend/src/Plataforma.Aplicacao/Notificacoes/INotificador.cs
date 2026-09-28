@@ -78,7 +78,7 @@ public sealed record DadosNotificacaoProfissional(
     DateTimeOffset Inicio, DateTimeOffset Fim, IReadOnlyList<string> Servicos, string? Observacoes);
 
 public sealed record DadosNotificacaoAgendamento(
-    string NomeCliente, string? EmailCliente, TelefoneE164 TelefoneCliente,
+    string NomeCliente, string? EmailCliente, TelefoneE164? TelefoneCliente,
     DateTimeOffset Inicio, DateTimeOffset Fim, IReadOnlyList<string> Servicos, decimal Total,
     string LinkCancelar, string LinkRemarcar);
 

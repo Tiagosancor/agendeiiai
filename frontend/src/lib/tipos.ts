@@ -24,7 +24,8 @@ export type Permissao =
   | "ExcluirCadastros"
   | "GerenciarComissoes"
   | "VerComissoesDeTodos"
-  | "AjustarValorAtendimento";
+  | "AjustarValorAtendimento"
+  | "LancarAtendimentoSemAgendamento";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -42,6 +43,7 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarComissoes", rotulo: "Gerenciar comissões (alterar o percentual)" },
   { valor: "VerComissoesDeTodos", rotulo: "Ver comissões de todos os profissionais" },
   { valor: "AjustarValorAtendimento", rotulo: "Ajustar valor do atendimento (desconto/acréscimo)" },
+  { valor: "LancarAtendimentoSemAgendamento", rotulo: "Lançar atendimento sem agendamento (encaixe)" },
 ];
 
 /** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
@@ -144,7 +146,8 @@ export interface ServicoResumo {
 export interface ClienteResumo {
   id: string;
   nome: string;
-  telefone: string;
+  /** Opcional só para o cliente cadastrado no balcão (encaixe, seção 7). */
+  telefone: string | null;
   email: string | null;
   observacoes: string | null;
   excluido: boolean;
