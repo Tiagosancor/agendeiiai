@@ -56,6 +56,7 @@ public sealed class ConsultaDisponibilidade : IConsultaDisponibilidade
                 && a.Inicio < fimDiaUtc && a.Fim > inicioDiaUtc
                 && (a.Status == StatusAgendamento.Reservado
                     || a.Status == StatusAgendamento.Agendado
+                    || a.Status == StatusAgendamento.EmAtendimento
                     || a.Status == StatusAgendamento.Concluido))
             .Select(a => new { a.Inicio, a.Fim })
             .ToListAsync(cancellationToken);

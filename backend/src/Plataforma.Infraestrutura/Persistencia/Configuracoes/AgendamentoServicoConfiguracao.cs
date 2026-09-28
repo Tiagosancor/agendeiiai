@@ -16,6 +16,9 @@ public sealed class AgendamentoServicoConfiguracao : IEntityTypeConfiguration<Ag
         builder.Property(s => s.Preco).HasColumnType("numeric(10,2)").IsRequired();
         builder.Property(s => s.DuracaoMinutos).IsRequired();
 
+        builder.Property(s => s.PrecoAjustado).HasColumnType("numeric(10,2)");
+        builder.Ignore(s => s.ValorCobrado);
+
         builder.Property(s => s.ComissaoValorBase).HasColumnType("numeric(10,2)");
         builder.Property(s => s.ComissaoPercentual).HasColumnType("numeric(5,2)");
         builder.Property(s => s.ComissaoValor).HasColumnType("numeric(10,2)");

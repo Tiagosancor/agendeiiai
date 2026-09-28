@@ -23,7 +23,8 @@ export type Permissao =
   | "EditarCadastros"
   | "ExcluirCadastros"
   | "GerenciarComissoes"
-  | "VerComissoesDeTodos";
+  | "VerComissoesDeTodos"
+  | "AjustarValorAtendimento";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -40,6 +41,7 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "ExcluirCadastros", rotulo: "Excluir cadastros (usuários, profissionais, serviços)" },
   { valor: "GerenciarComissoes", rotulo: "Gerenciar comissões (alterar o percentual)" },
   { valor: "VerComissoesDeTodos", rotulo: "Ver comissões de todos os profissionais" },
+  { valor: "AjustarValorAtendimento", rotulo: "Ajustar valor do atendimento (desconto/acréscimo)" },
 ];
 
 /** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
@@ -587,4 +589,37 @@ export interface QuinzenaDoProfissional {
 export interface QuinzenasDoProfissional {
   acertoPorQuinzena: boolean;
   quinzenas: QuinzenaDoProfissional[];
+}
+
+/** Ajuste de valor durante o atendimento (seção 7) — espelha `IServicoAjustesAtendimento`. */
+export type TipoAjusteValor = "Desconto" | "Acrescimo";
+export type ModoAjusteValor = "Reais" | "Percentual";
+
+export interface AjusteRegistrado {
+  em: string;
+  tipo: TipoAjusteValor;
+  modo: ModoAjusteValor;
+  valorInformado: number;
+  valorAntes: number;
+  valorDepois: number;
+  motivo: string;
+  por: string | null;
+  aposConclusao: boolean;
+}
+
+export interface LinhaValores {
+  linhaId: string;
+  servico: string;
+  precoOriginal: number;
+  valorCobrado: number;
+  ajustes: AjusteRegistrado[];
+}
+
+export interface ValoresAtendimento {
+  agendamentoId: string;
+  status: string;
+  descontoCupom: number;
+  total: number;
+  podeAjustar: boolean;
+  linhas: LinhaValores[];
 }

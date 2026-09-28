@@ -67,9 +67,10 @@ public sealed class ServicoFinanceiro : IServicoFinanceiro
             .ToList();
 
         var porServico = pagamentos
-            .SelectMany(p => mapaAgendamentos[p.AgendamentoId].Servicos.Select(s => new { s.ServicoId, s.Nome, s.Preco }))
+            // Valor cobrado de cada serviço: já com o ajuste feito durante o atendimento (seção 7).
+            .SelectMany(p => mapaAgendamentos[p.AgendamentoId].Servicos.Select(s => new { s.ServicoId, s.Nome, s.ValorCobrado }))
             .GroupBy(x => new { x.ServicoId, x.Nome })
-            .Select(g => new FaturamentoPorServico(g.Key.ServicoId, g.Key.Nome, g.Sum(x => x.Preco), g.Count()))
+            .Select(g => new FaturamentoPorServico(g.Key.ServicoId, g.Key.Nome, g.Sum(x => x.ValorCobrado), g.Count()))
             .OrderByDescending(f => f.Total)
             .ToList();
 

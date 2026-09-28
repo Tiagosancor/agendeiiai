@@ -71,6 +71,12 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
 
     public IReadOnlyCollection<AgendamentoServico> Servicos => _servicos.AsReadOnly();
 
+    /// <summary>
+    /// Criado por cima das regras de horário (seção 7, "Forçar agendamento" — item 10). Já existe para a
+    /// exclusion constraint ser recriada uma vez só (`AND NOT forcado`); por ora é sempre falso.
+    /// </summary>
+    public bool Forcado { get; private set; }
+
     protected Agendamento()
     {
     }
@@ -216,6 +222,15 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
         ProfissionalId = novoProfissionalId;
     }
 
+    /// <summary>O cliente chegou: "Iniciar atendimento" (seção 7).</summary>
+    public void IniciarAtendimento()
+    {
+        if (Status != StatusAgendamento.Agendado)
+            throw new InvalidOperationException("Só um agendamento confirmado pode ter o atendimento iniciado.");
+
+        Status = StatusAgendamento.EmAtendimento;
+    }
+
     public void Cancelar()
     {
         if (Status is StatusAgendamento.Cancelado or StatusAgendamento.Concluido)
@@ -231,15 +246,51 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// </summary>
     public void MarcarConcluido(decimal percentualComissao, DateTimeOffset agora)
     {
-        if (Status != StatusAgendamento.Agendado)
-            throw new InvalidOperationException("Só um agendamento confirmado pode virar concluído.");
+        if (Status is not (StatusAgendamento.Agendado or StatusAgendamento.EmAtendimento))
+            throw new InvalidOperationException("Só um agendamento confirmado ou em atendimento pode virar concluído.");
 
+        CalcularComissao(percentualComissao, agora);
+        Status = StatusAgendamento.Concluido;
+    }
+
+    /// <summary>
+    /// Ajusta o valor de um serviço (seção 7): desconto ou acréscimo, em R$ ou %, sempre sobre o preço
+    /// original da linha — um ajuste novo substitui o anterior, não se acumula. Só com o atendimento
+    /// aberto; depois de concluído, só a correção do Administrador (<paramref name="correcaoAposConclusao"/>),
+    /// que recalcula a comissão da linha com o percentual gravado na conclusão.
+    /// </summary>
+    public AjusteValorAtendimento AjustarValor(
+        Guid linhaId, TipoAjusteValor tipo, ModoAjusteValor modo, decimal valorInformado, string motivo,
+        Guid? usuarioId, DateTimeOffset agora, bool correcaoAposConclusao = false)
+    {
+        var permitido = correcaoAposConclusao ? Status == StatusAgendamento.Concluido : Status == StatusAgendamento.EmAtendimento;
+        if (!permitido)
+            throw new InvalidOperationException(correcaoAposConclusao
+                ? "Só um atendimento concluído pode ter o valor corrigido."
+                : "O valor só pode ser ajustado com o atendimento em andamento.");
+
+        var linha = _servicos.FirstOrDefault(s => s.Id == linhaId)
+            ?? throw new KeyNotFoundException("Serviço não encontrado neste atendimento.");
+
+        var ajuste = AjusteValorAtendimento.Calcular(
+            NegocioId, Id, linha, tipo, modo, valorInformado, motivo, usuarioId, agora);
+        if (correcaoAposConclusao)
+            ajuste.MarcarAposConclusao();
+        linha.DefinirPrecoAjustado(ajuste.ValorDepois);
+
+        if (Status == StatusAgendamento.Concluido)
+            CalcularComissao(linha.ComissaoPercentual ?? 0m, agora);
+
+        return ajuste;
+    }
+
+    /// <summary>Grava a comissão de cada linha sobre o valor cobrado (já ajustado), com o cupom rateado (seção 7).</summary>
+    private void CalcularComissao(decimal percentualComissao, DateTimeOffset agora)
+    {
         var linhas = _servicos.ToList();
-        var comissoes = CalculadoraComissao.Calcular(linhas.Select(s => s.Preco).ToList(), DescontoAplicado, percentualComissao);
+        var comissoes = CalculadoraComissao.Calcular(linhas.Select(s => s.ValorCobrado).ToList(), DescontoAplicado, percentualComissao);
         for (var i = 0; i < linhas.Count; i++)
             linhas[i].RegistrarComissao(ProfissionalId, comissoes[i].ValorBase, percentualComissao, comissoes[i].Comissao, agora);
-
-        Status = StatusAgendamento.Concluido;
     }
 
     /// <summary>Volta um atendimento concluído para <see cref="StatusAgendamento.Agendado"/>, estornando a comissão das linhas.</summary>
@@ -289,5 +340,5 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     }
 
     /// <summary>Total sempre recalculado a partir da soma dos serviços menos o desconto (seção 6.2.4) — nunca guardado por fora.</summary>
-    public decimal Total => _servicos.Sum(s => s.Preco) - DescontoAplicado;
+    public decimal Total => Math.Max(0m, _servicos.Sum(s => s.ValorCobrado) - DescontoAplicado);
 }

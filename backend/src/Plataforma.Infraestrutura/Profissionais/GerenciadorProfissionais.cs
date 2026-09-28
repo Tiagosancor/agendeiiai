@@ -257,15 +257,16 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         ? "Este profissional tem 1 agendamento futuro. Transfira para outro profissional ou cancele antes de excluir."
         : $"Este profissional tem {quantidade} agendamentos futuros. Transfira cada um para outro profissional ou cancele antes de excluir.";
 
-    /// <summary>Agendados e reservas ainda válidas que ainda não começaram.</summary>
+    /// <summary>Agendados e reservas ainda válidas que ainda não começaram, e atendimentos em andamento.</summary>
     private Task<List<Agendamento>> BuscarAgendamentosFuturosAsync(Guid profissionalId, CancellationToken cancellationToken)
     {
         var agora = DateTimeOffset.UtcNow;
         return _dbContext.Agendamentos.AsNoTracking()
             .Include(a => a.Servicos)
-            .Where(a => a.ProfissionalId == profissionalId && a.Inicio > agora
-                && (a.Status == StatusAgendamento.Agendado
-                    || (a.Status == StatusAgendamento.Reservado && a.ReservadoAte > agora)))
+            .Where(a => a.ProfissionalId == profissionalId
+                && ((a.Inicio > agora && (a.Status == StatusAgendamento.Agendado
+                        || (a.Status == StatusAgendamento.Reservado && a.ReservadoAte > agora)))
+                    || a.Status == StatusAgendamento.EmAtendimento))
             .OrderBy(a => a.Inicio)
             .ToListAsync(cancellationToken);
     }

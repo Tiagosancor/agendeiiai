@@ -45,13 +45,13 @@ public static class SemeadorDeComissoes
     /// <summary>Agendamento confirmado direto no banco (sem expediente). Serviços de R$ 50,00 por padrão.</summary>
     public static Task<Guid> SemearAgendamentoAsync(
         this PlataformaWebApplicationFactory fabrica, Guid negocioId, Guid profissionalId, DateTimeOffset inicio,
-        decimal desconto = 0m, decimal[]? precos = null) =>
+        decimal desconto = 0m, decimal[]? precos = null, Guid? servicoId = null) =>
         fabrica.NoBancoAsync(async db =>
         {
             var cliente = Cliente.Criar(negocioId, "Cliente Sobrenome", TelefoneE164.Criar($"+55719{Random.Shared.Next(10000000, 99999999)}"));
             db.Clientes.Add(cliente);
 
-            var itens = (precos ?? [50m]).Select((preco, i) => new ItemServicoAgendamento(Guid.NewGuid(), $"Serviço {i + 1}", preco, 20)).ToList();
+            var itens = (precos ?? [50m]).Select((preco, i) => new ItemServicoAgendamento(servicoId ?? Guid.NewGuid(), $"Serviço {i + 1}", preco, 20)).ToList();
             var agendamento = Agendamento.CriarConfirmado(negocioId, profissionalId, cliente.Id, inicio, itens);
             if (desconto > 0)
                 typeof(Agendamento).GetProperty(nameof(Agendamento.DescontoAplicado))!.SetValue(agendamento, desconto);
@@ -72,7 +72,8 @@ public static class SemeadorDeComissoes
 
     /// <summary>Usuário novo no negócio, opcionalmente vinculado a um profissional, já logado.</summary>
     public static async Task<HttpClient> LogarNovoUsuarioAsync(
-        this PlataformaWebApplicationFactory fabrica, Guid negocioId, Perfil perfil, Guid? profissionalId = null)
+        this PlataformaWebApplicationFactory fabrica, Guid negocioId, Perfil perfil, Guid? profissionalId = null,
+        params Permissao[] permissoesExtras)
     {
         var email = $"u-{Guid.NewGuid():N}@teste.com";
         await fabrica.NoBancoAsync(async db =>
@@ -81,6 +82,8 @@ public static class SemeadorDeComissoes
             var usuario = Usuario.Criar(negocioId, "Usuário", email, perfil, hasher.Hash(SemeadorDeUsuarios.SenhaPadrao));
             if (profissionalId is { } id)
                 usuario.VincularProfissional(id);
+            foreach (var permissao in permissoesExtras)
+                usuario.ConcederPermissao(permissao);
             db.Usuarios.Add(usuario);
             await db.SaveChangesAsync();
             return 0;

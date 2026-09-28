@@ -30,4 +30,10 @@ public enum Permissao
 
     /// <summary>Ver as comissões de todos os profissionais (seção 7). Só o Administrador, por padrão; a Recepcionista só se ele conceder.</summary>
     VerComissoesDeTodos = 14,
+
+    /// <summary>
+    /// Ajustar o valor de um serviço durante o atendimento (seção 7). Desligada para todos os perfis;
+    /// só o Administrador a tem de origem. O Profissional com ela ajusta só os atendimentos dele.
+    /// </summary>
+    AjustarValorAtendimento = 15,
 }

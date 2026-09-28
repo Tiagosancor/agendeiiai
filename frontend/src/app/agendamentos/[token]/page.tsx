@@ -9,6 +9,8 @@ function formatarDataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" });
 }
 
+const ROTULO_STATUS: Record<string, string> = { EmAtendimento: "Em atendimento", Concluido: "Concluído" };
+
 export default function PaginaMeuAgendamento({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
 
@@ -83,7 +85,7 @@ export default function PaginaMeuAgendamento({ params }: { params: Promise<{ tok
       <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">{detalhe.nomeNegocio}</h1>
 
       <div className="rounded-xl border border-gray-200 p-4 dark:border-neutral-800">
-        <p className="text-sm text-gray-500 dark:text-neutral-400">Status: {detalhe.status}</p>
+        <p className="text-sm text-gray-500 dark:text-neutral-400">Status: {ROTULO_STATUS[detalhe.status] ?? detalhe.status}</p>
         <p className="mt-1 text-sm text-gray-800 dark:text-neutral-200">{formatarDataHora(detalhe.inicio)}</p>
         <p className="text-sm text-gray-600 dark:text-neutral-400">{detalhe.servicos.join(", ")}</p>
         <p className="text-sm text-gray-600 dark:text-neutral-400">{detalhe.local}</p>

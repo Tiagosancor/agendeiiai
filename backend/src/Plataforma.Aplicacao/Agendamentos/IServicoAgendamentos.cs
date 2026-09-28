@@ -47,6 +47,9 @@ public interface IServicoAgendamentos
 
     Task<ResultadoAgendamento> MoverAsync(Guid agendamentoId, DateTimeOffset novoInicio, CancellationToken cancellationToken = default);
 
+    /// <summary>"Iniciar atendimento" (seção 7): Agendado → EmAtendimento.</summary>
+    Task<bool> IniciarAtendimentoAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
+
     Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
 
     /// <summary>Volta um atendimento concluído para Agendado, estornando comissão, pagamento e selo (seção 7).</summary>

@@ -21,8 +21,8 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
     private const string Entidade = nameof(PeriodoComissao);
     public const int TamanhoMaximoMotivo = 500;
 
-    /// <summary>Status de quem ainda "deve" conclusão. O item 8 acrescenta <c>EmAtendimento</c> aqui.</summary>
-    private static readonly StatusAgendamento[] StatusSemConclusao = [StatusAgendamento.Agendado];
+    /// <summary>Status de quem ainda "deve" conclusão.</summary>
+    private static readonly StatusAgendamento[] StatusSemConclusao = [StatusAgendamento.Agendado, StatusAgendamento.EmAtendimento];
 
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
