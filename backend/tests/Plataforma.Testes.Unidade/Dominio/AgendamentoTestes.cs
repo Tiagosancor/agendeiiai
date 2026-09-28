@@ -101,7 +101,7 @@ public sealed class AgendamentoTestes
     public void Cancelar_um_agendamento_ja_concluido_lanca_excecao()
     {
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
-        agendamento.MarcarConcluido();
+        agendamento.MarcarConcluido(0m, Inicio);
 
         var acao = () => agendamento.Cancelar();
 
@@ -113,7 +113,7 @@ public sealed class AgendamentoTestes
     {
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
 
-        agendamento.MarcarConcluido();
+        agendamento.MarcarConcluido(0m, Inicio);
 
         agendamento.Status.Should().Be(StatusAgendamento.Concluido);
     }

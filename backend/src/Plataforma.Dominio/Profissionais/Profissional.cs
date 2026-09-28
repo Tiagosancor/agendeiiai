@@ -37,6 +37,13 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
     public DateTimeOffset? ExcluidoEm { get; private set; }
 
+    /// <summary>
+    /// Comissão (%) sobre os serviços que ele conclui (seção 7), 0 a 100 com até duas casas.
+    /// Só vale para atendimentos concluídos daqui em diante: cada linha concluída guarda o
+    /// percentual do momento.
+    /// </summary>
+    public decimal PercentualComissao { get; private set; }
+
     protected Profissional()
     {
     }
@@ -79,6 +86,17 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
     public void DefinirCpf(CpfProtegido cpf) => Cpf = cpf;
 
     public void DefinirFoto(string? fotoUrl) => FotoUrl = fotoUrl;
+
+    public void DefinirPercentualComissao(decimal percentual)
+    {
+        if (percentual is < 0 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(percentual), "A comissão precisa estar entre 0 e 100%.");
+
+        if (decimal.Round(percentual, 2) != percentual)
+            throw new ArgumentException("A comissão aceita no máximo duas casas decimais.", nameof(percentual));
+
+        PercentualComissao = percentual;
+    }
 
     public void Desativar() => Ativo = false;
 

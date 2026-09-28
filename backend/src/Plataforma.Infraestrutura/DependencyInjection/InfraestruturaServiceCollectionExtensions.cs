@@ -180,6 +180,7 @@ public static class InfraestruturaServiceCollectionExtensions
         // Notificações ao profissional, lembretes e financeiro (Sprint 4 — seção 9/7).
         servicos.AddScoped<JobEnviarLembretes>();
         servicos.AddScoped<IGerenciadorPagamentos, GerenciadorPagamentos>();
+        servicos.AddScoped<Plataforma.Aplicacao.Comissoes.IServicoComissoes, Plataforma.Infraestrutura.Comissoes.ServicoComissoes>();
         servicos.AddScoped<IServicoFinanceiro, ServicoFinanceiro>();
         servicos.AddScoped<IGerenciadorFidelidade, GerenciadorFidelidade>();
 

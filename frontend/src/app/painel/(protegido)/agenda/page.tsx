@@ -33,7 +33,7 @@ const RUBRICA_STATUS: Record<string, string> = {
 };
 
 export default function PaginaAgenda() {
-  const { chamarApi } = useAutenticacao();
+  const { chamarApi, temPermissao } = useAutenticacao();
 
   const [profissionais, setProfissionais] = useState<ProfissionalResumo[]>([]);
   const [profissionalId, setProfissionalId] = useState<string>("");
@@ -68,9 +68,21 @@ export default function PaginaAgenda() {
     carregarAgenda();
   }, [carregarAgenda]);
 
-  async function executarAcao(id: string, acao: "cancelar" | "concluir" | "faltou") {
-    await chamarApi(`/painel/agendamentos/${id}/${acao}`, { metodo: "POST" });
+  async function executarAcao(id: string, acao: "cancelar" | "concluir" | "faltou" | "reabrir") {
+    try {
+      setErro(null);
+      await chamarApi(`/painel/agendamentos/${id}/${acao}`, { metodo: "POST" });
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível concluir a ação.");
+    }
     await carregarAgenda();
+  }
+
+  function reabrir(item: AgendamentoResumo) {
+    const aviso =
+      "Reabrir este atendimento?\n\nEle volta para Agendado e, para manter o caixa certo, " +
+      "a comissão, o pagamento registrado e o selo de fidelidade dele são desfeitos. Ao concluir de novo, tudo é registrado outra vez.";
+    if (confirm(aviso)) executarAcao(item.id, "reabrir");
   }
 
   return (
@@ -130,12 +142,19 @@ export default function PaginaAgenda() {
               </div>
             )}
             {item.status === "Concluido" && (
-              <button
-                className="text-sm text-green-700 hover:underline dark:text-green-400"
-                onClick={() => setAgendamentoParaPagar(item)}
-              >
-                Registrar pagamento
-              </button>
+              <div className="flex gap-2">
+                <button
+                  className="text-sm text-green-700 hover:underline dark:text-green-400"
+                  onClick={() => setAgendamentoParaPagar(item)}
+                >
+                  Registrar pagamento
+                </button>
+                {temPermissao("VerFinanceiro") && (
+                  <button className="text-sm text-gray-600 hover:underline dark:text-neutral-300" onClick={() => reabrir(item)}>
+                    Reabrir
+                  </button>
+                )}
+              </div>
             )}
           </div>
         ))}

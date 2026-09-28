@@ -24,4 +24,10 @@ public enum Permissao
 
     /// <summary>Excluir usuários, profissionais e serviços (seção 7). Só o Administrador, por padrão.</summary>
     ExcluirCadastros = 12,
+
+    /// <summary>Alterar o percentual de comissão dos profissionais (seção 7). Só o Administrador, por padrão.</summary>
+    GerenciarComissoes = 13,
+
+    /// <summary>Ver as comissões de todos os profissionais (seção 7). Só o Administrador, por padrão; a Recepcionista só se ele conceder.</summary>
+    VerComissoesDeTodos = 14,
 }
