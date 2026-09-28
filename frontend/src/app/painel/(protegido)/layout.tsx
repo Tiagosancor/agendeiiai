@@ -16,6 +16,7 @@ const ITENS_MENU = [
   { href: "/painel/cupons", rotulo: "Cupons" },
   { href: "/painel/clientes", rotulo: "Clientes" },
   { href: "/painel/financeiro", rotulo: "Financeiro" },
+  { href: "/painel/comissoes", rotulo: "Comissões" },
   { href: "/painel/fidelidade", rotulo: "Fidelidade" },
   { href: "/painel/negocio", rotulo: "Meu negócio" },
   { href: "/painel/assinatura", rotulo: "Assinatura" },

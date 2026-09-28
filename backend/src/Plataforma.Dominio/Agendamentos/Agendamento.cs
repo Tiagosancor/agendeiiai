@@ -1,3 +1,4 @@
+using Plataforma.Dominio.Comissoes;
 using Plataforma.Dominio.Comum;
 
 namespace Plataforma.Dominio.Agendamentos;
@@ -224,12 +225,33 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
         ReservadoAte = null;
     }
 
-    public void MarcarConcluido()
+    /// <summary>
+    /// Conclui e grava a comissão de cada linha com o percentual vigente do profissional
+    /// (seção 7): a base é o preço menos a parte da linha no desconto do cupom.
+    /// </summary>
+    public void MarcarConcluido(decimal percentualComissao, DateTimeOffset agora)
     {
         if (Status != StatusAgendamento.Agendado)
             throw new InvalidOperationException("Só um agendamento confirmado pode virar concluído.");
 
+        var linhas = _servicos.ToList();
+        var comissoes = CalculadoraComissao.Calcular(linhas.Select(s => s.Preco).ToList(), DescontoAplicado, percentualComissao);
+        for (var i = 0; i < linhas.Count; i++)
+            linhas[i].RegistrarComissao(ProfissionalId, comissoes[i].ValorBase, percentualComissao, comissoes[i].Comissao, agora);
+
         Status = StatusAgendamento.Concluido;
+    }
+
+    /// <summary>Volta um atendimento concluído para <see cref="StatusAgendamento.Agendado"/>, estornando a comissão das linhas.</summary>
+    public void Reabrir()
+    {
+        if (Status != StatusAgendamento.Concluido)
+            throw new InvalidOperationException("Só um atendimento concluído pode ser reaberto.");
+
+        foreach (var linha in _servicos)
+            linha.EstornarComissao();
+
+        Status = StatusAgendamento.Agendado;
     }
 
     public void MarcarFaltou()

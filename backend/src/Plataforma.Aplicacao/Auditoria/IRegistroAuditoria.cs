@@ -17,4 +17,6 @@ public static class AcoesAuditoria
     public const string ExcluirLogicamente = "ExcluirLogicamente";
     public const string TransferirAgendamento = "TransferirAgendamento";
     public const string CancelarAgendamento = "CancelarAgendamento";
+    public const string ReabrirAtendimento = "ReabrirAtendimento";
+    public const string AlterarComissao = "AlterarComissao";
 }

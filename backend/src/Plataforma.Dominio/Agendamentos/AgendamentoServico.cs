@@ -20,6 +20,21 @@ public class AgendamentoServico : EntidadeBase, IEntidadeDoNegocio
 
     public int DuracaoMinutos { get; private set; }
 
+    // Comissão (seção 7), gravada na conclusão e nula em qualquer outro estado. É um retrato,
+    // como o preço: mudar o percentual do profissional depois não mexe aqui.
+
+    /// <summary>Quem recebe a comissão desta linha (o profissional do atendimento na conclusão).</summary>
+    public Guid? ComissaoProfissionalId { get; private set; }
+
+    /// <summary>Valor efetivamente cobrado pela linha: preço menos a parte dela no desconto do cupom.</summary>
+    public decimal? ComissaoValorBase { get; private set; }
+
+    public decimal? ComissaoPercentual { get; private set; }
+
+    public decimal? ComissaoValor { get; private set; }
+
+    public DateTimeOffset? ComissaoCalculadaEm { get; private set; }
+
     protected AgendamentoServico()
     {
     }
@@ -32,5 +47,23 @@ public class AgendamentoServico : EntidadeBase, IEntidadeDoNegocio
         Nome = nome;
         Preco = preco;
         DuracaoMinutos = duracaoMinutos;
+    }
+
+    internal void RegistrarComissao(Guid profissionalId, decimal valorBase, decimal percentual, decimal valor, DateTimeOffset agora)
+    {
+        ComissaoProfissionalId = profissionalId;
+        ComissaoValorBase = valorBase;
+        ComissaoPercentual = percentual;
+        ComissaoValor = valor;
+        ComissaoCalculadaEm = agora;
+    }
+
+    internal void EstornarComissao()
+    {
+        ComissaoProfissionalId = null;
+        ComissaoValorBase = null;
+        ComissaoPercentual = null;
+        ComissaoValor = null;
+        ComissaoCalculadaEm = null;
     }
 }

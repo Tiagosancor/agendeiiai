@@ -55,12 +55,31 @@ public sealed class AgendamentosController : ControllerBase
     }
 
     [HttpPost("{id:guid}/concluir")]
-    public async Task<IActionResult> MarcarConcluido(Guid id, CancellationToken cancellationToken) =>
-        await _servicoAgendamentos.MarcarConcluidoAsync(id, cancellationToken) ? NoContent() : NotFound();
+    public Task<IActionResult> MarcarConcluido(Guid id, CancellationToken cancellationToken) =>
+        MudarStatusAsync(() => _servicoAgendamentos.MarcarConcluidoAsync(id, cancellationToken));
 
     [HttpPost("{id:guid}/faltou")]
-    public async Task<IActionResult> MarcarFaltou(Guid id, CancellationToken cancellationToken) =>
-        await _servicoAgendamentos.MarcarFaltouAsync(id, cancellationToken) ? NoContent() : NotFound();
+    public Task<IActionResult> MarcarFaltou(Guid id, CancellationToken cancellationToken) =>
+        MudarStatusAsync(() => _servicoAgendamentos.MarcarFaltouAsync(id, cancellationToken));
+
+    /// <summary>Desfaz a conclusão: estorna comissão, pagamento e selo (seção 7). Mexe em dinheiro, então também exige ver o financeiro.</summary>
+    [HttpPost("{id:guid}/reabrir")]
+    [Authorize(Policy = nameof(Permissao.VerFinanceiro))]
+    public Task<IActionResult> Reabrir(Guid id, CancellationToken cancellationToken) =>
+        MudarStatusAsync(() => _servicoAgendamentos.ReabrirAsync(id, cancellationToken));
+
+    /// <summary>Transição que não vale para o status atual (ex.: concluir duas vezes) é 409, nunca 500.</summary>
+    private async Task<IActionResult> MudarStatusAsync(Func<Task<bool>> mudanca)
+    {
+        try
+        {
+            return await mudanca() ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException excecao)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, detail: excecao.Message);
+        }
+    }
 
     [HttpGet("~/painel/agenda")]
     public async Task<ActionResult<IReadOnlyList<AgendamentoResumo>>> ListarAgendaDoDia(

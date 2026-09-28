@@ -15,6 +15,8 @@ import {
 
 export default function PaginaDetalheProfissional({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { temPermissao } = useAutenticacao();
+  const podeVerComissao = temPermissao("GerenciarComissoes") || temPermissao("VerComissoesDeTodos");
 
   return (
     <div className="space-y-8">
@@ -25,6 +27,7 @@ export default function PaginaDetalheProfissional({ params }: { params: Promise<
       <SecaoHorariosTrabalho profissionalId={id} />
       <SecaoBloqueios profissionalId={id} />
       <SecaoServicosVinculados profissionalId={id} />
+      {podeVerComissao && <SecaoComissao profissionalId={id} podeAlterar={temPermissao("GerenciarComissoes")} />}
     </div>
   );
 }
@@ -212,6 +215,79 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
         </button>
         {mensagem && <p className="text-sm text-gray-600 dark:text-neutral-300">{mensagem}</p>}
       </div>
+    </section>
+  );
+}
+
+/**
+ * Comissão (%) do profissional (seção 7). Só aparece para quem gerencia ou vê as comissões; só
+ * quem gerencia altera. Mudar vale para os atendimentos concluídos daqui em diante.
+ */
+function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string; podeAlterar: boolean }) {
+  const { chamarApi } = useAutenticacao();
+  const [percentual, setPercentual] = useState("");
+  const [mensagem, setMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    // Busca disparada pela montagem, não estado derivado de props.
+    chamarApi<{ percentual: number }>(`/painel/profissionais/${profissionalId}/comissao`)
+      .then((r) => setPercentual(String(r.percentual).replace(".", ",")))
+      .catch(() => setMensagem({ tipo: "erro", texto: "Não foi possível carregar a comissão." }));
+  }, [chamarApi, profissionalId]);
+
+  async function salvar(evento: FormEvent) {
+    evento.preventDefault();
+    setMensagem(null);
+    const valor = Number(percentual.trim().replace(",", "."));
+    if (percentual.trim() === "" || Number.isNaN(valor)) {
+      setMensagem({ tipo: "erro", texto: "Informe um número de 0 a 100." });
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      await chamarApi(`/painel/profissionais/${profissionalId}/comissao`, { metodo: "PUT", corpo: { percentual: valor } });
+      setMensagem({ tipo: "ok", texto: "Comissão salva. Vale para os atendimentos concluídos a partir de agora." });
+    } catch (excecao) {
+      setMensagem({ tipo: "erro", texto: excecao instanceof Error ? excecao.message : "Não foi possível salvar." });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <section>
+      <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">Comissão</h2>
+      <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
+        Percentual sobre o valor cobrado de cada serviço concluído (já com o desconto de cupom). Mudar não altera atendimentos já concluídos.
+      </p>
+      <form onSubmit={salvar} className="flex flex-wrap items-end gap-2">
+        <label>
+          <span className={classeLabel}>Comissão (%)</span>
+          <input
+            inputMode="decimal"
+            className={`${classeInput} w-32`}
+            value={percentual}
+            onChange={(e) => setPercentual(e.target.value)}
+            disabled={!podeAlterar}
+            aria-describedby="ajuda-comissao"
+          />
+        </label>
+        {podeAlterar && (
+          <button type="submit" disabled={salvando} className={classeBotaoPrimario}>
+            {salvando ? "Salvando..." : "Salvar comissão"}
+          </button>
+        )}
+      </form>
+      <p id="ajuda-comissao" className="mt-1 text-xs text-gray-500 dark:text-neutral-400">
+        De 0 a 100, com até duas casas decimais (ex.: 40 ou 12,5).
+      </p>
+      {mensagem && (
+        <p role={mensagem.tipo === "erro" ? "alert" : "status"} className={`mt-2 text-sm ${mensagem.tipo === "erro" ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>
+          {mensagem.texto}
+        </p>
+      )}
     </section>
   );
 }

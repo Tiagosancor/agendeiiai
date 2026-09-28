@@ -49,6 +49,9 @@ public interface IServicoAgendamentos
 
     Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
 
+    /// <summary>Volta um atendimento concluído para Agendado, estornando comissão, pagamento e selo (seção 7).</summary>
+    Task<bool> ReabrirAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
+
     Task<bool> MarcarFaltouAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<AgendamentoResumo>> ListarAgendaDoDiaAsync(

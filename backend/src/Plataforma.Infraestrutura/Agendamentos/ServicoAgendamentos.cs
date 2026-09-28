@@ -11,6 +11,7 @@ using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Cupons;
 using Plataforma.Dominio.Notificacoes;
+using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Negocios;
 using Plataforma.Infraestrutura.Notificacoes;
 using Plataforma.Infraestrutura.Opcoes;
@@ -630,11 +631,19 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
     public async Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
     {
-        var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
+        var agendamento = await _dbContext.Agendamentos
+            .Include(a => a.Servicos)
+            .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
         if (agendamento is null)
             return false;
 
-        agendamento.MarcarConcluido();
+        // Percentual vigente agora (seção 7): fica gravado em cada linha, e mudar depois não mexe nela.
+        var percentualComissao = await _dbContext.Profissionais
+            .Where(p => p.Id == agendamento.ProfissionalId)
+            .Select(p => p.PercentualComissao)
+            .FirstAsync(cancellationToken);
+
+        agendamento.MarcarConcluido(percentualComissao, DateTimeOffset.UtcNow);
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // Selo do cartão de fidelidade (seção 7) — não faz nada se o negócio não tiver
@@ -642,6 +651,39 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         if (agendamento.ClienteId is not null)
             await _gerenciadorFidelidade.RegistrarSeloAsync(agendamento.ClienteId.Value, agendamento.Id, cancellationToken);
 
+        return true;
+    }
+
+    /// <summary>
+    /// Desfaz a conclusão (seção 7): volta para Agendado e estorna, no mesmo SaveChanges, a
+    /// comissão das linhas, o pagamento registrado e o selo de fidelidade daquele atendimento.
+    /// Selo já usado num resgate fica (a recompensa já foi entregue).
+    /// </summary>
+    public async Task<bool> ReabrirAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    {
+        var agendamento = await _dbContext.Agendamentos
+            .Include(a => a.Servicos)
+            .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
+        if (agendamento is null)
+            return false;
+
+        var comissaoAnterior = agendamento.Servicos.Sum(s => s.ComissaoValor ?? 0m);
+        agendamento.Reabrir();
+
+        var pagamento = await _dbContext.Pagamentos.FirstOrDefaultAsync(p => p.AgendamentoId == agendamentoId, cancellationToken);
+        if (pagamento is not null)
+            _dbContext.Pagamentos.Remove(pagamento);
+
+        var selo = await _dbContext.SelosCliente.FirstOrDefaultAsync(s => s.AgendamentoId == agendamentoId && !s.Resgatado, cancellationToken);
+        if (selo is not null)
+            _dbContext.SelosCliente.Remove(selo);
+
+        _auditoria.Registrar(AcoesAuditoria.ReabrirAtendimento, "Agendamento", agendamento.Id,
+            $"Comissão estornada: {FormatacaoBrasil.Reais(comissaoAnterior)} → {FormatacaoBrasil.Reais(0m)}"
+            + (pagamento is null ? "" : $"; pagamento removido: {FormatacaoBrasil.Reais(pagamento.Valor)} ({pagamento.Forma})")
+            + (selo is null ? "" : "; selo de fidelidade removido"));
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
 

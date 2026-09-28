@@ -21,7 +21,9 @@ export type Permissao =
   | "GerenciarCupons"
   | "GerenciarFidelidade"
   | "EditarCadastros"
-  | "ExcluirCadastros";
+  | "ExcluirCadastros"
+  | "GerenciarComissoes"
+  | "VerComissoesDeTodos";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -36,6 +38,8 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarFidelidade", rotulo: "Gerenciar fidelidade" },
   { valor: "EditarCadastros", rotulo: "Editar cadastros (usuários, profissionais, serviços)" },
   { valor: "ExcluirCadastros", rotulo: "Excluir cadastros (usuários, profissionais, serviços)" },
+  { valor: "GerenciarComissoes", rotulo: "Gerenciar comissões (alterar o percentual)" },
+  { valor: "VerComissoesDeTodos", rotulo: "Ver comissões de todos os profissionais" },
 ];
 
 /** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
@@ -501,3 +505,39 @@ export const ROTULOS_ESTADO_ASSINATURA: Record<EstadoAssinatura, string> = {
   Suspensa: "Suspensa",
   Cancelada: "Cancelada",
 };
+
+/** Comissões dos profissionais (seção 7) — espelha `Plataforma.Aplicacao.Comissoes`. */
+export interface TotaisComissao {
+  totalComissao: number;
+  totalAtendido: number;
+  quantidadeServicos: number;
+}
+
+export interface ItemComissao {
+  agendamentoId: string;
+  inicio: string;
+  servico: string;
+  cliente: string;
+  valorCobrado: number;
+  percentual: number;
+  comissao: number;
+}
+
+export interface ComissoesDoProfissional {
+  profissionalId: string | null;
+  nomeProfissional: string | null;
+  percentualAtual: number | null;
+  totais: TotaisComissao;
+  itens: ItemComissao[];
+  pagina: number;
+  tamanhoPagina: number;
+  totalItens: number;
+}
+
+export interface ResumoComissaoProfissional {
+  profissionalId: string;
+  nome: string;
+  ativo: boolean;
+  percentualAtual: number;
+  totais: TotaisComissao;
+}
