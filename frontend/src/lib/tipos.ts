@@ -402,6 +402,22 @@ export interface AgendamentoResumo {
   forcadoRegras: string[] | null;
 }
 
+/** Visão "Semana" (seção 7) — espelha `IConsultaAgendaSemana`. Turnos e bloqueios já no fuso do negócio. */
+export interface DiaAgendaSemana {
+  data: string;
+  folga: boolean;
+  turnos: string[];
+  bloqueios: string[];
+  agendamentos: AgendamentoResumo[];
+}
+
+export interface AgendaSemana {
+  profissionalId: string;
+  nome: string;
+  inicio: string;
+  dias: DiaAgendaSemana[];
+}
+
 /** O que se quer forçar: horário novo (serviços) ou mover um existente. `inicio` nulo = agora. */
 export interface ConsultaForcar {
   profissionalId: string | null;

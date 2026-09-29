@@ -88,8 +88,10 @@ public sealed class ConsultaDisponibilidade : IConsultaDisponibilidade
 
             while (cursor + duracao <= fimSegmento)
             {
+                // Sempre em UTC de fato (offset 0): o início de um turno vinha com o offset do fuso e o de depois de um
+                // agendamento em UTC — o mesmo instante com dois textos, e as telas que comparam texto se perdiam.
                 if (cursor > agora)
-                    horarios.Add(cursor);
+                    horarios.Add(cursor.ToUniversalTime());
 
                 cursor += TamanhoDaGrade;
             }

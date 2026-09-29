@@ -147,7 +147,8 @@ public sealed class ConsultaGradeAgenda : IConsultaGradeAgenda
         for (var minuto = primeiro; minuto < ultimo; minuto += MinutosDaGrade)
         {
             var hora = new TimeOnly(minuto / 60, minuto % 60);
-            linhas.Add(new Linha(hora, hora.ToString("HH:mm", CultureInfo.InvariantCulture), ConversorFusoHorario.ParaUtc(data, hora, fuso)));
+            // Em UTC de fato (offset 0): é o mesmo formato dos horários livres, e a tela compara os dois como texto.
+            linhas.Add(new Linha(hora, hora.ToString("HH:mm", CultureInfo.InvariantCulture), ConversorFusoHorario.ParaUtc(data, hora, fuso).ToUniversalTime()));
         }
 
         return linhas;

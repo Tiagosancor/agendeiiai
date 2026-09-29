@@ -6,10 +6,14 @@ import { Modal } from "@/components/Modal";
 import { ModalAjusteValor } from "@/components/painel/ModalAjusteValor";
 import { ModalEncaixe } from "@/components/painel/ModalEncaixe";
 import { ModalConcluirAtendimento } from "@/components/painel/ModalConcluirAtendimento";
+import { ModalRemarcar } from "@/components/painel/ModalRemarcar";
+import { MinhaAgenda } from "@/components/painel/MinhaAgenda";
+import { SemanaAgenda, inicioDaSemana, somarDias } from "@/components/painel/SemanaAgenda";
 import { AvisoForcar } from "@/components/painel/AvisoForcar";
 import { GradeDoDia } from "@/components/painel/GradeDoDia";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import type {
+  AgendaSemana,
   AgendamentoResumo,
   ClienteResumo,
   ConsultaForcar,
@@ -24,6 +28,11 @@ import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 
 function hojeISO(): string {
   return dataLocalIso();
+}
+
+/** Compara horários pelo instante, não pelo texto (o mesmo horário pode vir com offsets diferentes). */
+function mesmoInstante(a: string, b: string): boolean {
+  return new Date(a).getTime() === new Date(b).getTime();
 }
 
 function formatarHora(iso: string): string {
@@ -41,7 +50,13 @@ const RUBRICA_STATUS: Record<string, string> = {
   Reservado: "bg-yellow-50 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300",
 };
 
+/** Quem gerencia a agenda vê a de todos; o Profissional logado sem essa permissão vê só a própria (seção 7). */
 export default function PaginaAgenda() {
+  const { temPermissao } = useAutenticacao();
+  return temPermissao("GerenciarAgenda") ? <AgendaGeral /> : <MinhaAgenda />;
+}
+
+function AgendaGeral() {
   const { chamarApi, temPermissao } = useAutenticacao();
 
   const [profissionais, setProfissionais] = useState<ProfissionalResumo[]>([]);
@@ -53,10 +68,12 @@ export default function PaginaAgenda() {
   const [agendamentoParaPagar, setAgendamentoParaPagar] = useState<AgendamentoResumo | null>(null);
   const [agendamentoValores, setAgendamentoValores] = useState<string | null>(null);
   const [agendamentoParaConcluir, setAgendamentoParaConcluir] = useState<AgendamentoResumo | null>(null);
+  const [agendamentoParaRemarcar, setAgendamentoParaRemarcar] = useState<AgendamentoResumo | null>(null);
+  const [semana, setSemana] = useState<AgendaSemana | null>(null);
   const podeAjustarValor = temPermissao("AjustarValorAtendimento");
   const [encaixeAberto, setEncaixeAberto] = useState(false);
   // Visão "Dia" em grade é a padrão (seção 7); a lista de um profissional guarda as ações de cada atendimento.
-  const [visao, setVisao] = useState<"grade" | "lista">("grade");
+  const [visao, setVisao] = useState<"grade" | "lista" | "semana">("grade");
   const [versaoGrade, setVersaoGrade] = useState(0);
   const [horarioInicialNovo, setHorarioInicialNovo] = useState<string | null>(null);
 
@@ -91,10 +108,32 @@ export default function PaginaAgenda() {
     carregarAgenda();
   }, [carregarAgenda]);
 
-  /** Depois de qualquer mudança: a grade do dia e a lista do profissional. */
+  // Visão "Semana" (seção 7): o profissional escolhido, a semana (segunda a domingo) do dia selecionado.
+  // Como na lista do dia, só a última busca escreve na tela (trocar profissional e data em seguida dispara duas).
+  const inicioSemana = inicioDaSemana(data);
+  const ultimaBuscaSemana = useRef(0);
+  const carregarSemana = useCallback(async () => {
+    if (visao !== "semana" || !profissionalId) return;
+    const busca = ++ultimaBuscaSemana.current;
+    setSemana(null);
+    try {
+      const resultado = await chamarApi<AgendaSemana>(`/painel/agenda/semana?profissionalId=${profissionalId}&inicio=${inicioSemana}`);
+      if (busca === ultimaBuscaSemana.current) setSemana(resultado);
+    } catch {
+      if (busca === ultimaBuscaSemana.current) setErro("Não foi possível carregar a semana.");
+    }
+  }, [chamarApi, visao, profissionalId, inicioSemana]);
+
+  useEffect(() => {
+    // Busca disparada pela troca de visão, profissional ou semana.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    carregarSemana();
+  }, [carregarSemana]);
+
+  /** Depois de qualquer mudança: a grade do dia, a lista do profissional e a semana. */
   async function recarregarTudo() {
     setVersaoGrade((v) => v + 1);
-    await carregarAgenda();
+    await Promise.all([carregarAgenda(), carregarSemana()]);
   }
 
   async function executarAcao(id: string, acao: "iniciar" | "cancelar" | "faltou" | "reabrir") {
@@ -121,6 +160,7 @@ export default function PaginaAgenda() {
           [
             ["grade", "Dia (todos)"],
             ["lista", "Por profissional"],
+            ["semana", "Semana"],
           ] as const
         ).map(([valor, rotulo]) => (
           <button
@@ -194,7 +234,18 @@ export default function PaginaAgenda() {
         />
       )}
 
-      <div className={`${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800 ${visao === "grade" ? "hidden" : ""}`}>
+      {visao === "semana" && (
+        <SemanaAgenda
+          semana={semana}
+          aoMudarSemana={(dias) => setData((atual) => somarDias(atual, dias))}
+          aoEscolherDia={(dia) => {
+            setData(dia);
+            setVisao("lista");
+          }}
+        />
+      )}
+
+      <div className={`${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800 ${visao !== "lista" ? "hidden" : ""}`}>
         {agenda?.length === 0 && <p className="px-4 py-6 text-sm text-gray-500 dark:text-neutral-400">Nada agendado neste dia.</p>}
         {agenda?.map((item) => (
           <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -240,6 +291,9 @@ export default function PaginaAgenda() {
                 </button>
                 <button className="text-sm text-red-700 hover:underline dark:text-red-400" onClick={() => executarAcao(item.id, "faltou")}>
                   Faltou
+                </button>
+                <button className="text-sm text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => setAgendamentoParaRemarcar(item)}>
+                  Remarcar
                 </button>
                 <button className="text-sm text-gray-600 hover:underline dark:text-neutral-300" onClick={() => executarAcao(item.id, "cancelar")}>
                   Cancelar
@@ -312,6 +366,14 @@ export default function PaginaAgenda() {
         agendamentoId={agendamentoValores}
         aoFechar={async (mudou) => {
           setAgendamentoValores(null);
+          if (mudou) await recarregarTudo();
+        }}
+      />
+
+      <ModalRemarcar
+        agendamento={agendamentoParaRemarcar}
+        aoFechar={async (mudou) => {
+          setAgendamentoParaRemarcar(null);
           if (mudou) await recarregarTudo();
         }}
       />
@@ -460,7 +522,8 @@ function ModalNovoAgendamento({
   }, [aberto, horarioInicial]);
 
   // O horário escolhido na grade fica na lista mesmo que a API não o devolva como livre para a duração.
-  const opcoesHorario = horarioSelecionado && !horariosLivres.includes(horarioSelecionado) ? [horarioSelecionado, ...horariosLivres] : horariosLivres;
+  const opcoesHorario =
+    horarioSelecionado && !horariosLivres.some((h) => mesmoInstante(h, horarioSelecionado)) ? [horarioSelecionado, ...horariosLivres] : horariosLivres;
 
   const duracaoTotal = useMemo(
     () => servicos.filter((s) => servicoIdsSelecionados.includes(s.id)).reduce((soma, s) => soma + s.duracaoMinutos, 0),
@@ -476,7 +539,11 @@ function ModalNovoAgendamento({
     }
     // Busca disparada pela troca de serviços selecionados (muda a duração total).
     chamarApi<string[]>(`/painel/profissionais/${profissionalId}/horarios-livres?data=${data}&duracaoMinutos=${duracaoTotal}`).then(
-      setHorariosLivres,
+      (livres) => {
+        setHorariosLivres(livres);
+        // O horário clicado na grade passa a usar o mesmo texto da lista, para o select reconhecê-lo.
+        setHorarioSelecionado((atual) => (atual && livres.find((h) => mesmoInstante(h, atual))) || atual);
+      },
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto, profissionalId, data, duracaoTotal]);

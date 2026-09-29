@@ -16,10 +16,13 @@ import { formatarReais } from "@/lib/formatacao";
 export function ModalConcluirAtendimento({
   agendamento,
   aoFechar,
+  caminhoBase = "/painel/agendamentos",
 }: {
   agendamento: AgendamentoResumo | null;
   /** `mudou`: o atendimento foi concluído (e talvez a venda lançada) — recarregar a agenda. */
   aoFechar: (mudou: boolean) => void;
+  /** "/painel/minha-agenda" para o Profissional logado, que conclui os próprios sem "gerenciar agenda". */
+  caminhoBase?: string;
 }) {
   const { chamarApi, temPermissao } = useAutenticacao();
   const podeVender = temPermissao("VenderProdutos");
@@ -56,7 +59,7 @@ export function ModalConcluirAtendimento({
     setEnviando(true);
     try {
       if (!concluido) {
-        await chamarApi(`/painel/agendamentos/${agendamento.id}/concluir`, { metodo: "POST" });
+        await chamarApi(`${caminhoBase}/${agendamento.id}/concluir`, { metodo: "POST" });
         setConcluido(true);
       }
     } catch (excecao) {
