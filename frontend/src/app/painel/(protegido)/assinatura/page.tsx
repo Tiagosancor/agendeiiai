@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import { ErroApi, requisicaoApi } from "@/lib/api";
 import type { DetalheAssinatura, InstrucoesPagamento, Periodicidade, PlanoPublico } from "@/lib/tipos";
@@ -23,6 +23,8 @@ export default function PaginaAssinatura() {
   const [periodicidade, setPeriodicidade] = useState<Periodicidade>("Mensal");
   const [mensagem, setMensagem] = useState<{ tipo: "erro" | "ok"; texto: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [documento, setDocumento] = useState("");
+  const [erroContratar, setErroContratar] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -43,7 +45,51 @@ export default function PaginaAssinatura() {
   }, [carregar]);
 
   async function mostrarInstrucoes() {
-    setInstrucoes(await chamarApi<InstrucoesPagamento>("/painel/assinatura/instrucoes-pagamento"));
+    try {
+      setInstrucoes(await chamarApi<InstrucoesPagamento>("/painel/assinatura/instrucoes-pagamento"));
+    } catch (excecao) {
+      setMensagem({ tipo: "erro", texto: excecao instanceof ErroApi ? excecao.message : "Não foi possível buscar a cobrança." });
+    }
+  }
+
+  /** Cobrança automática (Asaas): cria a assinatura no gateway e mostra o link da fatura — cartão só na página do gateway. */
+  async function contratar(evento: FormEvent) {
+    evento.preventDefault();
+    if (!planoEscolhido) return;
+    setSalvando(true);
+    setErroContratar(null);
+    try {
+      setInstrucoes(
+        await chamarApi<InstrucoesPagamento>("/painel/assinatura/contratar", {
+          metodo: "POST",
+          corpo: { planoId: planoEscolhido, periodicidade, cpfCnpj: documento },
+        }),
+      );
+      setDocumento("");
+      await carregar();
+    } catch (excecao) {
+      setErroContratar(excecao instanceof ErroApi ? excecao.message : "Não foi possível contratar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function cancelar() {
+    if (!detalhe) return;
+    const ate = detalhe.estado === "EmTeste" ? detalhe.fimTeste : detalhe.proximoVencimento;
+    const aviso = ate
+      ? `Cancelar a assinatura? Você continua usando até ${formatarData(ate)} e nenhuma cobrança nova será gerada.`
+      : "Cancelar a assinatura agora? O painel fica bloqueado em seguida (seus dados não são apagados).";
+    if (!confirm(aviso)) return;
+    setMensagem(null);
+    try {
+      await chamarApi("/painel/assinatura/cancelar", { metodo: "POST" });
+      setInstrucoes(null);
+      setMensagem({ tipo: "ok", texto: "Cancelamento registrado." });
+      await carregar();
+    } catch (excecao) {
+      setMensagem({ tipo: "erro", texto: excecao instanceof ErroApi ? excecao.message : "Não foi possível cancelar." });
+    }
   }
 
   async function trocarPlano() {
@@ -75,6 +121,10 @@ export default function PaginaAssinatura() {
         ? { rotulo: "Carência até", data: detalhe.carenciaAte }
         : { rotulo: "Próximo vencimento", data: detalhe.proximoVencimento };
   const mudouAlgo = planoEscolhido !== detalhe.planoId || periodicidade !== detalhe.periodicidade;
+  // Mesma regra do servidor: fim do teste ou do período já pago, se ainda no futuro; senão hoje.
+  const prazoAtual = detalhe.estado === "EmTeste" ? detalhe.fimTeste : detalhe.estado === "Ativa" ? detalhe.proximoVencimento : null;
+  const primeiroVencimento = prazoAtual && new Date(prazoAtual) > new Date() ? prazoAtual : null;
+  const podeContratar = detalhe.pagamentoAutomatico && (!detalhe.contratada || detalhe.cancelamentoAte !== null) && detalhe.estado !== "Cancelada";
 
   return (
     <div className="space-y-6">
@@ -116,11 +166,51 @@ export default function PaginaAssinatura() {
           </div>
         </dl>
 
-        <div className="mt-4">
+        {detalhe.documentoTitular && (
+          <p className="mt-3 text-sm text-gray-600 dark:text-neutral-400">Pagador: {detalhe.documentoTitular}</p>
+        )}
+        {detalhe.cancelamentoAte && (
+          <p role="status" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Cancelamento pedido: você usa até {formatarData(detalhe.cancelamentoAte)}. Nenhuma cobrança nova será gerada.
+            {detalhe.pagamentoAutomatico && " Para continuar, contrate de novo abaixo."}
+          </p>
+        )}
+
+        <div className="mt-4 space-y-3">
+          {podeContratar && !instrucoes && (
+            <form onSubmit={contratar} className="space-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-neutral-900">
+              <p className="text-gray-700 dark:text-neutral-300">
+                Contratar o plano escolhido abaixo. A primeira cobrança vence
+                {primeiroVencimento ? ` em ${formatarData(primeiroVencimento)}` : " hoje"}; você paga por
+                Pix, boleto ou cartão na página segura do Asaas.
+              </p>
+              <label className="block">
+                <span className="mb-1 block text-gray-600 dark:text-neutral-400">CPF ou CNPJ de quem paga</span>
+                <input
+                  required
+                  inputMode="numeric"
+                  value={documento}
+                  onChange={(e) => setDocumento(e.target.value)}
+                  className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-950"
+                />
+              </label>
+              {erroContratar && (
+                <p role="alert" className="text-red-700 dark:text-red-400">
+                  {erroContratar}
+                </p>
+              )}
+              <button type="submit" disabled={salvando || !documento.trim()} className={`${classeBotaoPrimario} dark:bg-marca-acento dark:text-marca-primaria`}>
+                {salvando ? "Contratando..." : "Contratar e gerar cobrança"}
+              </button>
+            </form>
+          )}
           {!instrucoes ? (
-            <button onClick={mostrarInstrucoes} className={`${classeBotaoPrimario} dark:bg-marca-acento dark:text-marca-primaria`}>
-              Assinar agora
-            </button>
+            !podeContratar &&
+            detalhe.estado !== "Cancelada" && (
+              <button onClick={mostrarInstrucoes} className={`${classeBotaoPrimario} dark:bg-marca-acento dark:text-marca-primaria`}>
+                {detalhe.pagamentoAutomatico ? "Ver cobrança em aberto" : "Assinar agora"}
+              </button>
+            )
           ) : (
             <div data-testid="instrucoes-pagamento" className="space-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-neutral-900">
               <p>{instrucoes.texto}</p>
@@ -143,17 +233,25 @@ export default function PaginaAssinatura() {
                 </a>
               )}
               {instrucoes.link && (
-                <a href={instrucoes.link} className="inline-block font-medium underline">
+                <a href={instrucoes.link} target="_blank" rel="noopener noreferrer" className="inline-block font-medium underline">
                   Pagar agora
                 </a>
               )}
             </div>
           )}
+          {detalhe.estado !== "Cancelada" && !detalhe.cancelamentoAte && (
+            <button onClick={cancelar} className="block text-sm text-red-700 hover:underline dark:text-red-400">
+              Cancelar assinatura
+            </button>
+          )}
         </div>
       </section>
 
       <section className="space-y-3">
-        <h2 className="font-semibold text-gray-900 dark:text-neutral-50">Trocar de plano</h2>
+        <h2 className="font-semibold text-gray-900 dark:text-neutral-50">{podeContratar ? "Plano" : "Trocar de plano"}</h2>
+        {detalhe.contratada && !detalhe.cancelamentoAte && (
+          <p className="text-sm text-gray-600 dark:text-neutral-400">A troca vale a partir da próxima cobrança.</p>
+        )}
         <div className="inline-flex rounded-lg border border-gray-300 p-1 dark:border-neutral-700">
           {(["Mensal", "Anual"] as Periodicidade[]).map((p) => (
             <button
@@ -188,9 +286,11 @@ export default function PaginaAssinatura() {
             {mensagem.texto}
           </p>
         )}
-        <button onClick={trocarPlano} disabled={!mudouAlgo || salvando} className={classeBotaoSecundario}>
-          {salvando ? "Salvando..." : "Trocar plano"}
-        </button>
+        {!podeContratar && (
+          <button onClick={trocarPlano} disabled={!mudouAlgo || salvando} className={classeBotaoSecundario}>
+            {salvando ? "Salvando..." : "Trocar plano"}
+          </button>
+        )}
       </section>
 
       <section>
@@ -211,7 +311,10 @@ export default function PaginaAssinatura() {
                 {detalhe.cobrancas.map((c) => (
                   <tr key={`${c.pagoEm}-${c.valor}`} className="border-t border-gray-100 dark:border-neutral-800">
                     <td className={classeTd}>{formatarData(c.pagoEm)}</td>
-                    <td className={classeTd}>{formatarReais(c.valor)}</td>
+                    <td className={classeTd}>
+                      {formatarReais(c.valor)}
+                      {c.estornadaEm && <span className="ml-2 text-xs text-red-700 dark:text-red-400">estornada</span>}
+                    </td>
                     <td className={classeTd}>
                       {formatarData(c.periodoInicio)} a {formatarData(c.periodoFim)}
                     </td>

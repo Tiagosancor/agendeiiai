@@ -43,7 +43,9 @@ public sealed record DetalheNegocioNaPlataforma(
 
 public sealed record HistoricoAssinaturaDto(DateTimeOffset Em, EstadoAssinatura? EstadoAnterior, EstadoAssinatura EstadoNovo, string Autor, string Motivo);
 
+/// <summary><c>EstornadaEm</c>: estornada ou contestada no gateway — o período dela não vale mais.</summary>
 public sealed record CobrancaAssinaturaDto(
-    DateTimeOffset PagoEm, decimal Valor, FormaCobranca Forma, DateTimeOffset PeriodoInicio, DateTimeOffset PeriodoFim, OrigemCobranca Origem);
+    DateTimeOffset PagoEm, decimal Valor, FormaCobranca Forma, DateTimeOffset PeriodoInicio, DateTimeOffset PeriodoFim, OrigemCobranca Origem,
+    DateTimeOffset? EstornadaEm = null);
 
 public sealed record PagamentoManual(decimal Valor, FormaCobranca Forma, DateTimeOffset PagoEm, DateTimeOffset PeriodoInicio, DateTimeOffset PeriodoFim);

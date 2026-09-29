@@ -44,6 +44,9 @@ public sealed class AssinaturaConfiguracao : IEntityTypeConfiguration<Assinatura
         builder.Property(a => a.PrecoMensalTravado).HasColumnType("numeric(10,2)").IsRequired();
         builder.Property(a => a.ProvedorGateway).HasMaxLength(40);
         builder.Property(a => a.IdExternoGateway).HasMaxLength(200);
+        builder.Property(a => a.IdClienteGateway).HasMaxLength(200);
+        builder.Property(a => a.DocumentoTitularMascarado).HasMaxLength(30);
+        builder.Ignore(a => a.CancelamentoAgendado);
 
         // Concorrência otimista pela coluna de sistema xmin do Postgres: job, requisições e
         // administração podem aplicar transições ao mesmo tempo — só uma grava, sem histórico duplicado.
@@ -113,6 +116,7 @@ public sealed class EventoWebhookPagamentoConfiguracao : IEntityTypeConfiguratio
         builder.Property(e => e.Provedor).HasMaxLength(40).IsRequired();
         builder.Property(e => e.IdEvento).HasMaxLength(200).IsRequired();
         builder.Property(e => e.Tipo).HasMaxLength(100).IsRequired();
+        builder.Property(e => e.Resultado).HasMaxLength(200);
 
         // Idempotência do webhook (seção 8.6.6): o banco recusa o mesmo evento duas vezes.
         builder.HasIndex(e => new { e.Provedor, e.IdEvento }).IsUnique();

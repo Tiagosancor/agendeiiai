@@ -670,6 +670,8 @@ export interface CobrancaAssinatura {
   periodoInicio: string;
   periodoFim: string;
   origem: string;
+  /** Estornada ou contestada no gateway: o período dela não vale mais. */
+  estornadaEm: string | null;
 }
 
 export interface DetalheAssinatura {
@@ -685,6 +687,14 @@ export interface DetalheAssinatura {
   profissionaisAtivos: number;
   maximoProfissionais: number;
   cobrancas: CobrancaAssinatura[];
+  /** O gateway configurado cobra sozinho (Asaas): a tela oferece "Contratar" em vez das instruções de PIX. */
+  pagamentoAutomatico: boolean;
+  /** Já tem assinatura no gateway. */
+  contratada: boolean;
+  /** CPF/CNPJ de quem paga, mascarado. */
+  documentoTitular: string | null;
+  /** Cancelamento pedido: usa até essa data. */
+  cancelamentoAte: string | null;
 }
 
 export interface InstrucoesPagamento {

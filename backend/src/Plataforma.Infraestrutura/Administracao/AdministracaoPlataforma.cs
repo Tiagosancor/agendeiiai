@@ -115,7 +115,7 @@ public sealed class AdministracaoPlataforma : IAdministracaoPlataforma
         var cobrancas = await _dbContext.CobrancasAssinatura.IgnoreQueryFilters().AsNoTracking()
             .Where(c => c.NegocioId == negocioId)
             .OrderByDescending(c => c.PagoEm)
-            .Select(c => new CobrancaAssinaturaDto(c.PagoEm, c.Valor, c.Forma, c.PeriodoInicio, c.PeriodoFim, c.Origem))
+            .Select(c => new CobrancaAssinaturaDto(c.PagoEm, c.Valor, c.Forma, c.PeriodoInicio, c.PeriodoFim, c.Origem, c.EstornadaEm))
             .ToListAsync(cancellationToken);
         var profissionaisAtivos = await _dbContext.Profissionais.IgnoreQueryFilters()
             .CountAsync(p => p.NegocioId == negocioId && p.Ativo, cancellationToken);
