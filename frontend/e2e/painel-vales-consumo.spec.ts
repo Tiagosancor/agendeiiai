@@ -3,7 +3,8 @@ import { test, expect } from "@playwright/test";
 /**
  * Vale e consumo interno (seção 7, item 12 d/e): o consumo lançado no Estoque (pelo custo, editável) e o vale lançado em
  * Comissões viram saldo devedor do profissional, com editar/excluir na aba "Vales e consumo". A quitação no fechamento
- * da quinzena é coberta pelos testes de integração do backend.
+ * da quinzena é coberta pelos testes de integração do backend. Vale também para quem vende sem cadastro de profissional
+ * (com acerto por quinzena na comissão de produto do usuário).
  */
 
 const PAINEL_BASE = "http://app.agendeiiai.localhost:3000";
@@ -80,4 +81,53 @@ test("consumo no estoque e vale viram saldo devedor do profissional", async ({ p
   for (const l of saldo.lancamentos) await request.delete(`${API}/painel/saldos/${l.id}`, { headers: auth });
   await request.post(`${API}/painel/profissionais/${profissionalId}/desativar`, { headers: auth });
   await request.post(`${API}/painel/estoque/produtos/${produtoId}/desativar`, { headers: auth });
+});
+
+test("vendedor sem cadastro de profissional com acerto por quinzena recebe vale", async ({ page, request }) => {
+  test.setTimeout(90_000);
+  const login = await request.post(`${API}/painel/auth/login`, { data: { email: "admin@acme.dev", senha: "Admin!123" } });
+  const auth = { Authorization: `Bearer ${(await login.json()).accessToken}` };
+  const sufixo = Date.now().toString().slice(-6);
+  const nome = `Zz Recepcao ${sufixo}`;
+  const criado = await request.post(`${API}/painel/usuarios`, {
+    headers: auth,
+    data: { nome, email: `zz.recepcao.${sufixo}@acme.dev`, senha: "Recepcao!123", perfil: "Recepcionista" },
+  });
+  expect(criado.status(), await criado.text()).toBe(201);
+  const usuarioId: string = await criado.json();
+
+  await page.goto(`${PAINEL_BASE}/painel/login`);
+  await page.getByLabel("E-mail").fill("admin@acme.dev");
+  await page.getByLabel("Senha").fill("Admin!123");
+  await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/painel$/);
+
+  // Acerto por quinzena na comissão de produto do usuário.
+  await page.goto(`${PAINEL_BASE}/painel/usuarios`);
+  await page.getByRole("row", { name: new RegExp(nome) }).getByRole("button", { name: "Comissão de produto" }).click();
+  let modal = page.getByRole("dialog", { name: `Comissão de produto — ${nome}` });
+  await modal.getByLabel("Comissão de produto (%)").fill("5");
+  await modal.getByRole("checkbox", { name: /Acerto por quinzena/ }).check();
+  await modal.getByRole("button", { name: "Salvar" }).click();
+  await expect(modal).toBeHidden();
+
+  // Ele aparece nos saldos e recebe o vale, no grupo dos vendedores.
+  await page.goto(`${PAINEL_BASE}/painel/comissoes`);
+  await page.getByRole("tab", { name: "Vales e consumo" }).click();
+  await page.getByRole("button", { name: "Lançar vale" }).click();
+  modal = page.getByRole("dialog", { name: "Lançar vale" });
+  await modal.getByLabel("Profissional ou vendedor").selectOption({ label: nome });
+  await modal.getByLabel("Valor (R$)").fill("30");
+  await modal.getByRole("button", { name: "Lançar vale" }).click();
+  await expect(modal).toBeHidden();
+
+  const linha = page.getByRole("button", { name: new RegExp(nome) });
+  await expect(linha).toContainText("Vales R$ 30,00");
+  await linha.click();
+  await expect(page.getByRole("listitem").filter({ hasText: "R$ 30,00" })).toBeVisible();
+
+  // Limpa: o vale sai e o usuário é excluído (com o vale no histórico, a exclusão é lógica).
+  const saldo = await (await request.get(`${API}/painel/saldos/usuarios/${usuarioId}`, { headers: auth })).json();
+  for (const l of saldo.lancamentos) await request.delete(`${API}/painel/saldos/${l.id}`, { headers: auth });
+  await request.delete(`${API}/painel/usuarios/${usuarioId}`, { headers: auth });
 });

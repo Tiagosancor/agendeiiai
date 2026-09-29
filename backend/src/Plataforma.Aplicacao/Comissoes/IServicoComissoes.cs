@@ -34,14 +34,22 @@ public interface IServicoComissoes
     /// <summary>Nulo: usuário não encontrado. Usuário vinculado a profissional usa o percentual do profissional.</summary>
     Task<PercentualComissaoProdutoUsuario?> ObterPercentualProdutoDoUsuarioAsync(Guid usuarioId, CancellationToken cancellationToken = default);
 
-    /// <summary>Lança <see cref="ArgumentException"/> para usuário vinculado a profissional (o percentual fica na ficha dele).</summary>
-    Task<bool> DefinirPercentualProdutoDoUsuarioAsync(Guid usuarioId, decimal percentual, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Percentual e, se informado, o acerto por quinzena. Lança <see cref="ArgumentException"/> para usuário vinculado a
+    /// profissional (os dois ficam na ficha dele).
+    /// </summary>
+    Task<bool> DefinirPercentualProdutoDoUsuarioAsync(
+        Guid usuarioId, DefinirPercentualProduto dados, CancellationToken cancellationToken = default);
 }
 
-/// <summary><c>ProfissionalId</c> preenchido: o percentual que vale é o do profissional vinculado, na ficha dele.</summary>
-public sealed record PercentualComissaoProdutoUsuario(decimal Percentual, Guid? ProfissionalId);
+/// <summary>
+/// <c>ProfissionalId</c> preenchido: o percentual e o acerto que valem são os do profissional vinculado, na ficha dele.
+/// <c>AcertoPorQuinzena</c>: entra no fechamento por quinzena (comissão de produto − vale/consumo).
+/// </summary>
+public sealed record PercentualComissaoProdutoUsuario(decimal Percentual, Guid? ProfissionalId, bool AcertoPorQuinzena = false);
 
-public sealed record DefinirPercentualProduto(decimal Percentual);
+/// <summary><c>AcertoPorQuinzena</c> nulo: não muda.</summary>
+public sealed record DefinirPercentualProduto(decimal Percentual, bool? AcertoPorQuinzena = null);
 
 public sealed record TotaisComissaoProduto(decimal TotalComissao, decimal TotalVendido, int QuantidadeVendas)
 {

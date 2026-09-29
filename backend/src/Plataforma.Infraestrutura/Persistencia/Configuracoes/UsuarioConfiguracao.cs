@@ -19,6 +19,7 @@ public sealed class UsuarioConfiguracao : IEntityTypeConfiguration<Usuario>
         builder.Property(u => u.Perfil).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(u => u.Ativo).IsRequired();
         builder.Property(u => u.PercentualComissaoProdutoVenda).HasColumnType("numeric(5,2)").HasDefaultValue(0m).IsRequired();
+        builder.Property(u => u.AcertoPorQuinzena).HasDefaultValue(false).IsRequired();
         builder.ToTable(t => t.HasCheckConstraint(
             "ck_usuarios_percentual_comissao_produto_venda", "percentual_comissao_produto_venda >= 0 AND percentual_comissao_produto_venda <= 100"));
 

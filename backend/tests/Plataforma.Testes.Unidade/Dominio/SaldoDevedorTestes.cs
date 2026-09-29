@@ -42,23 +42,23 @@ public class SaldoDevedorTestes
         produto.RegistrarEntrada(4, 8m, null, null, null, DateTimeOffset.UtcNow);
 
         var (consumo, movimento) = LancamentoSaldoDevedor.CriarConsumo(
-            Guid.NewGuid(), produto, 3, 7.5m, new DateOnly(2026, 9, 1), "uso", null, DateTimeOffset.UtcNow);
+            PessoaComissao.Profissional(Guid.NewGuid()), produto, 3, 7.5m, new DateOnly(2026, 9, 1), "uso", null, DateTimeOffset.UtcNow);
 
         consumo.Valor.Should().Be(22.5m);
         (movimento.Tipo, movimento.Quantidade, movimento.QuantidadeDepois).Should().Be((TipoMovimentoEstoque.ConsumoInterno, -3, 1));
         consumo.MovimentoEstoqueId.Should().Be(movimento.Id);
 
-        var mais = () => LancamentoSaldoDevedor.CriarConsumo(Guid.NewGuid(), produto, 2, 8m, new DateOnly(2026, 9, 1), null, null, DateTimeOffset.UtcNow);
+        var mais = () => LancamentoSaldoDevedor.CriarConsumo(PessoaComissao.Profissional(Guid.NewGuid()), produto, 2, 8m, new DateOnly(2026, 9, 1), null, null, DateTimeOffset.UtcNow);
         mais.Should().Throw<EstoqueInsuficienteException>().Which.Disponivel.Should().Be(1);
     }
 
     [Fact]
     public void Vale_exige_valor_positivo_e_fechamento_estornado_devolve_ao_liquido()
     {
-        var zero = () => LancamentoSaldoDevedor.CriarVale(Negocio, Guid.NewGuid(), 0m, new DateOnly(2026, 9, 1), null, null);
+        var zero = () => LancamentoSaldoDevedor.CriarVale(Negocio, PessoaComissao.Profissional(Guid.NewGuid()), 0m, new DateOnly(2026, 9, 1), null, null);
         zero.Should().Throw<ArgumentException>();
 
-        var fechamento = FechamentoComissao.Criar(Negocio, Guid.NewGuid(), Guid.NewGuid(), 100m, 10m, 2, null, DateTimeOffset.UtcNow);
+        var fechamento = FechamentoComissao.Criar(Negocio, Guid.NewGuid(), PessoaComissao.Profissional(Guid.NewGuid()), 100m, 10m, 2, null, DateTimeOffset.UtcNow);
         fechamento.RegistrarProdutosEDescontos(comissaoProdutos: 5m, vales: 12m, consumo: 3m, saldoRestante: 7m);
         fechamento.Liquido.Should().Be(0m);
 

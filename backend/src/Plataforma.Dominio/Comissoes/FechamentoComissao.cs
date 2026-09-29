@@ -3,7 +3,7 @@ using Plataforma.Dominio.Comum;
 namespace Plataforma.Dominio.Comissoes;
 
 /// <summary>
-/// Retrato do acerto de um profissional numa quinzena fechada (seção 7). Gravado ao fechar e
+/// Retrato do acerto de um profissional (ou de um usuário que vende sem cadastro de profissional) numa quinzena fechada (seção 7). Gravado ao fechar e
 /// nunca alterado depois; reabrir a quinzena apaga os fechamentos dela, e fechar de novo gera
 /// outros. Guarda também a comissão de produto e o vale/consumo descontados (item 12); "marcar como pago" ainda não.
 /// </summary>
@@ -13,7 +13,13 @@ public class FechamentoComissao : EntidadeBase, IEntidadeDoNegocio
 
     public Guid PeriodoComissaoId { get; private set; }
 
-    public Guid ProfissionalId { get; private set; }
+    /// <summary>Exatamente um de <see cref="ProfissionalId"/> e <see cref="UsuarioId"/> (<see cref="PessoaComissao"/>).</summary>
+    public Guid? ProfissionalId { get; private set; }
+
+    /// <summary>Quem vende sem cadastro de profissional: só comissão de produto e vale/consumo.</summary>
+    public Guid? UsuarioId { get; private set; }
+
+    public PessoaComissao Pessoa => PessoaComissao.Criar(ProfissionalId, UsuarioId);
 
     public decimal TotalCobrado { get; private set; }
 
@@ -44,17 +50,18 @@ public class FechamentoComissao : EntidadeBase, IEntidadeDoNegocio
     {
     }
 
-    private FechamentoComissao(Guid negocioId, Guid periodoId, Guid profissionalId)
+    private FechamentoComissao(Guid negocioId, Guid periodoId, PessoaComissao pessoa)
     {
         NegocioId = negocioId;
         PeriodoComissaoId = periodoId;
-        ProfissionalId = profissionalId;
+        ProfissionalId = pessoa.ProfissionalId;
+        UsuarioId = pessoa.UsuarioId;
     }
 
     public static FechamentoComissao Criar(
-        Guid negocioId, Guid periodoId, Guid profissionalId, decimal totalCobrado, decimal totalComissao, int quantidadeServicos,
+        Guid negocioId, Guid periodoId, PessoaComissao pessoa, decimal totalCobrado, decimal totalComissao, int quantidadeServicos,
         Guid? fechadoPorUsuarioId, DateTimeOffset fechadoEm) =>
-        new(negocioId, periodoId, profissionalId)
+        new(negocioId, periodoId, pessoa)
         {
             TotalCobrado = totalCobrado,
             TotalComissao = totalComissao,

@@ -161,7 +161,7 @@ function ListaComissoes({ periodo, caminho, caminhoSaldo }: { periodo: Periodo; 
 
   useEffect(() => {
     if (!caminhoSaldo) return;
-    // Saldo devedor (vales e consumo em aberto); sem vínculo com profissional a API responde vazio.
+    // Saldo devedor (vales e consumo em aberto); sem vínculo com profissional, só vem para quem tem acerto por quinzena ou lançamento.
     chamarApi<SaldoDevedor | undefined>(caminhoSaldo)
       .then((r) => setSaldo(r ?? null))
       .catch(() => setSaldo(null));
@@ -205,6 +205,7 @@ function ListaComissoes({ periodo, caminho, caminhoSaldo }: { periodo: Periodo; 
           Seu acesso não está ligado a um cadastro de profissional, então não há comissão de serviço — só a de produtos que você vende.
         </p>
         <SecaoComissaoProdutos produtos={dados.produtos} />
+        {saldo && saldo.lancamentos.length > 0 && <SecaoSaldoDevedor saldo={saldo} comissaoDoPeriodo={dados.totalGeral} />}
       </div>
     );
   }

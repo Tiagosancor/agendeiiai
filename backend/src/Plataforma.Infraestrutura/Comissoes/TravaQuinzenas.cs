@@ -33,14 +33,20 @@ public sealed class TravaQuinzenas
         _dbContext.Database.ExecuteSqlInterpolatedAsync(
             $"SELECT pg_advisory_xact_lock(hashtextextended({"quinzenas:" + _contextoNegocio.NegocioId}, 0))", cancellationToken);
 
-    public async Task<bool> AtendimentoTravadoAsync(Guid profissionalId, DateTimeOffset inicioUtc, CancellationToken cancellationToken)
+    public Task<bool> AtendimentoTravadoAsync(Guid profissionalId, DateTimeOffset inicioUtc, CancellationToken cancellationToken) =>
+        PessoaTravadaAsync(PessoaComissao.Profissional(profissionalId), inicioUtc, cancellationToken);
+
+    /// <summary>A pessoa (profissional ou usuário vendedor) tem fechamento numa quinzena fechada que contém o dia do instante.</summary>
+    public async Task<bool> PessoaTravadaAsync(PessoaComissao pessoa, DateTimeOffset instanteUtc, CancellationToken cancellationToken)
     {
-        var dia = await DiaLocalAsync(inicioUtc, cancellationToken);
+        var dia = await DiaLocalAsync(instanteUtc, cancellationToken);
+        var (profissionalId, usuarioId) = (pessoa.ProfissionalId, pessoa.UsuarioId);
 
         return await (
             from f in _dbContext.FechamentosComissao
             join p in _dbContext.PeriodosComissao on f.PeriodoComissaoId equals p.Id
-            where p.Estado == EstadoPeriodoComissao.Fechada && f.ProfissionalId == profissionalId && p.Inicio <= dia && p.Fim >= dia
+            where p.Estado == EstadoPeriodoComissao.Fechada && p.Inicio <= dia && p.Fim >= dia
+                && (profissionalId != null ? f.ProfissionalId == profissionalId : f.UsuarioId == usuarioId)
             select f.Id).AnyAsync(cancellationToken);
     }
 
