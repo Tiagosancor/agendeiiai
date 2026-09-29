@@ -44,6 +44,9 @@ public class CobrancaAssinatura : EntidadeBase, IEntidadeDoNegocio
 
     public string Autor { get; private set; } = string.Empty;
 
+    /// <summary>Estornada ou contestada (chargeback) no gateway: o período dela deixou de valer.</summary>
+    public DateTimeOffset? EstornadaEm { get; private set; }
+
     protected CobrancaAssinatura()
     {
     }
@@ -63,4 +66,6 @@ public class CobrancaAssinatura : EntidadeBase, IEntidadeDoNegocio
         IdExterno = idExterno;
         Autor = autor;
     }
+
+    internal void MarcarEstornada(DateTimeOffset em) => EstornadaEm = em;
 }

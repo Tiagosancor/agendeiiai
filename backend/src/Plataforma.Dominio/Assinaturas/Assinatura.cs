@@ -42,6 +42,20 @@ public class Assinatura : EntidadeBase, IEntidadeDoNegocio
 
     public string? IdExternoGateway { get; private set; }
 
+    /// <summary>Cliente (pagador) no gateway — criado ao contratar, reaproveitado ao contratar de novo.</summary>
+    public string? IdClienteGateway { get; private set; }
+
+    /// <summary>CPF/CNPJ de quem paga, só mascarado: o completo vai direto ao gateway e não fica aqui (decisão do dono).</summary>
+    public string? DocumentoTitularMascarado { get; private set; }
+
+    /// <summary>
+    /// O negócio pediu para cancelar: nenhuma cobrança nova, mas usa até o fim do período já pago (ou do teste) — aí vira
+    /// <c>Cancelada</c> em vez de entrar em carência (decisão do dono).
+    /// </summary>
+    public DateTimeOffset? CancelamentoPedidoEm { get; private set; }
+
+    public bool CancelamentoAgendado => CancelamentoPedidoEm is not null && Estado != EstadoAssinatura.Cancelada;
+
     public IReadOnlyCollection<HistoricoAssinatura> Historico => _historico.AsReadOnly();
 
     protected Assinatura()
@@ -135,4 +149,12 @@ public class Assinatura : EntidadeBase, IEntidadeDoNegocio
         ProvedorGateway = provedor;
         IdExternoGateway = idExterno;
     }
+
+    internal void VincularClienteGateway(string idCliente, string documentoMascarado)
+    {
+        IdClienteGateway = idCliente;
+        DocumentoTitularMascarado = documentoMascarado;
+    }
+
+    internal void DefinirCancelamentoPedido(DateTimeOffset? em) => CancelamentoPedidoEm = em;
 }
