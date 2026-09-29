@@ -35,4 +35,8 @@ public static class AcoesAuditoria
     public const string AjusteEstoque = "AjusteEstoque";
     public const string VendaProduto = "VendaProduto";
     public const string AlterarComissaoProduto = "AlterarComissaoProduto";
+    public const string LancarVale = "LancarVale";
+    public const string LancarConsumoInterno = "LancarConsumoInterno";
+    public const string EditarLancamentoSaldo = "EditarLancamentoSaldo";
+    public const string ExcluirLancamentoSaldo = "ExcluirLancamentoSaldo";
 }

@@ -2,7 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Cadastros;
+using Plataforma.Aplicacao.Comissoes;
 using Plataforma.Aplicacao.Estoque;
+using Plataforma.Dominio.Estoque;
 using Plataforma.Dominio.Usuarios;
 
 namespace Plataforma.Api.Controllers.Painel;
@@ -17,8 +19,13 @@ namespace Plataforma.Api.Controllers.Painel;
 public sealed class EstoqueController : ControllerBase
 {
     private readonly IGerenciadorEstoque _estoque;
+    private readonly IServicoSaldoDevedor _saldos;
 
-    public EstoqueController(IGerenciadorEstoque estoque) => _estoque = estoque;
+    public EstoqueController(IGerenciadorEstoque estoque, IServicoSaldoDevedor saldos)
+    {
+        _estoque = estoque;
+        _saldos = saldos;
+    }
 
     [HttpGet("produtos")]
     public async Task<ActionResult<IReadOnlyList<ProdutoResumo>>> Listar(CancellationToken cancellationToken) =>
@@ -52,6 +59,13 @@ public sealed class EstoqueController : ControllerBase
     public Task<IActionResult> Ajuste(Guid id, RegistrarAjuste dados, CancellationToken cancellationToken) =>
         TraduzirAsync(async () => await _estoque.RegistrarAjusteAsync(id, dados, cancellationToken) is { } produto ? Ok(produto) : NotFound());
 
+    /// <summary>Consumo interno (seção 7): baixa o estoque e vira saldo devedor do profissional, pelo custo (editável).</summary>
+    [HttpPost("produtos/{id:guid}/consumos")]
+    public Task<IActionResult> Consumo(Guid id, LancarConsumo dados, CancellationToken cancellationToken) =>
+        TraduzirAsync(async () => await _saldos.LancarConsumoAsync(id, dados, cancellationToken) is { } lancamentoId
+            ? StatusCode(StatusCodes.Status201Created, lancamentoId)
+            : NotFound());
+
     [HttpGet("produtos/{id:guid}/movimentos")]
     public async Task<ActionResult<IReadOnlyList<MovimentoEstoqueResumo>>> Movimentos(Guid id, CancellationToken cancellationToken) =>
         await _estoque.ListarMovimentosAsync(id, cancellationToken) is { } movimentos ? Ok(movimentos) : NotFound();
@@ -65,6 +79,10 @@ public sealed class EstoqueController : ControllerBase
         catch (OperacaoCadastroBloqueadaException excecao)
         {
             return RespostasCadastro.Bloqueado(this, excecao.Message);
+        }
+        catch (EstoqueInsuficienteException excecao)
+        {
+            return Conflict(new { title = excecao.Message, codigo = "estoque_insuficiente", disponivel = excecao.Disponivel });
         }
         catch (ArgumentException excecao)
         {

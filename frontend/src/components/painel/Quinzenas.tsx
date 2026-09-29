@@ -53,8 +53,20 @@ export function MinhasQuinzenas() {
               <div className="text-xs text-gray-500 dark:text-neutral-400">
                 {q.parcial ? "Valor parcial, ainda pode mudar" : "Valor final, a receber"} · {q.totais.quantidadeServicos} serviço(s)
               </div>
+              <div className="text-xs text-gray-500 dark:text-neutral-400">
+                Serviços {formatarReais(q.totais.totalComissao)}
+                {q.comissaoProdutos > 0 && ` + produtos ${formatarReais(q.comissaoProdutos)}`}
+                {q.vales + q.consumo > 0 && ` − vale/consumo ${formatarReais(q.vales + q.consumo)}`}
+              </div>
+              {q.saldoRestante > 0 && (
+                <div className="text-xs text-amber-700 dark:text-amber-400">
+                  Restam {formatarReais(q.saldoRestante)} de vale/consumo para a próxima quinzena.
+                </div>
+              )}
             </div>
-            <span className="text-lg font-semibold text-gray-900 dark:text-neutral-50">{formatarReais(q.totais.totalComissao)}</span>
+            <span className="text-lg font-semibold text-gray-900 dark:text-neutral-50" aria-label="A receber">
+              {formatarReais(q.liquido)}
+            </span>
           </li>
         ))}
       </ul>
@@ -256,7 +268,7 @@ function DetalheDaQuinzena({ id, podeGerenciar, aoVoltar }: { id: string; podeGe
 
   const { quinzena } = detalhe;
   const aberta = quinzena.estado === "Aberta";
-  const totalComissao = detalhe.linhas.reduce((soma, l) => soma + l.totais.totalComissao, 0);
+  const soma = (valor: (l: DetalheQuinzena["linhas"][number]) => number) => detalhe.linhas.reduce((total, l) => total + valor(l), 0);
 
   return (
     <div className="space-y-4">
@@ -294,6 +306,9 @@ function DetalheDaQuinzena({ id, podeGerenciar, aoVoltar }: { id: string; podeGe
                 <th className={`${classeTh} text-right`}>Serviços</th>
                 <th className={`${classeTh} hidden text-right sm:table-cell`}>Atendido</th>
                 <th className={`${classeTh} text-right`}>Comissão</th>
+                <th className={`${classeTh} hidden text-right sm:table-cell`}>Produtos</th>
+                <th className={`${classeTh} hidden text-right sm:table-cell`}>Vale/consumo</th>
+                <th className={`${classeTh} text-right`}>A receber</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
@@ -302,7 +317,19 @@ function DetalheDaQuinzena({ id, podeGerenciar, aoVoltar }: { id: string; podeGe
                   <td className={classeTd}>{l.nome}</td>
                   <td className={`${classeTd} text-right`}>{l.totais.quantidadeServicos}</td>
                   <td className={`${classeTd} hidden text-right sm:table-cell`}>{formatarReais(l.totais.totalAtendido)}</td>
-                  <td className={`${classeTd} text-right font-medium`}>{formatarReais(l.totais.totalComissao)}</td>
+                  <td className={`${classeTd} text-right`}>{formatarReais(l.totais.totalComissao)}</td>
+                  <td className={`${classeTd} hidden text-right sm:table-cell`}>{formatarReais(l.comissaoProdutos)}</td>
+                  <td className={`${classeTd} hidden text-right sm:table-cell`}>
+                    {l.vales + l.consumo > 0 ? `− ${formatarReais(l.vales + l.consumo)}` : "—"}
+                  </td>
+                  <td className={`${classeTd} text-right font-medium`}>
+                    {formatarReais(l.liquido)}
+                    {l.saldoRestante > 0 && (
+                      <span className="block text-xs font-normal text-amber-700 dark:text-amber-400">
+                        restam {formatarReais(l.saldoRestante)} para a próxima
+                      </span>
+                    )}
+                  </td>
                 </tr>
               ))}
               <tr>
@@ -310,7 +337,10 @@ function DetalheDaQuinzena({ id, podeGerenciar, aoVoltar }: { id: string; podeGe
                   Total
                 </td>
                 <td className={`${classeTd} hidden sm:table-cell`} />
-                <td className={`${classeTd} text-right font-semibold`}>{formatarReais(totalComissao)}</td>
+                <td className={`${classeTd} text-right font-semibold`}>{formatarReais(soma((l) => l.totais.totalComissao))}</td>
+                <td className={`${classeTd} hidden text-right font-semibold sm:table-cell`}>{formatarReais(soma((l) => l.comissaoProdutos))}</td>
+                <td className={`${classeTd} hidden text-right font-semibold sm:table-cell`}>{formatarReais(soma((l) => l.vales + l.consumo))}</td>
+                <td className={`${classeTd} text-right font-semibold`}>{formatarReais(soma((l) => l.liquido))}</td>
               </tr>
             </tbody>
           </table>

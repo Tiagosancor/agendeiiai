@@ -28,7 +28,8 @@ export type Permissao =
   | "LancarAtendimentoSemAgendamento"
   | "ForcarAgendamento"
   | "VenderProdutos"
-  | "GerenciarEstoque";
+  | "GerenciarEstoque"
+  | "LancarVales";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -49,7 +50,8 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "LancarAtendimentoSemAgendamento", rotulo: "Lançar atendimento sem agendamento (encaixe)" },
   { valor: "ForcarAgendamento", rotulo: "Forçar agendamento (passar por cima das regras de horário)" },
   { valor: "VenderProdutos", rotulo: "Vender produtos" },
-  { valor: "GerenciarEstoque", rotulo: "Gerenciar estoque (produtos, entradas, ajustes, preço de custo)" },
+  { valor: "GerenciarEstoque", rotulo: "Gerenciar estoque (produtos, entradas, ajustes, consumo interno, preço de custo)" },
+  { valor: "LancarVales", rotulo: "Lançar vales (adiantamento em dinheiro aos profissionais)" },
 ];
 
 /** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
@@ -762,10 +764,16 @@ export interface QuinzenaResumo {
   diasSemPeriodoAntes: number;
 }
 
+/** `totais` = comissão de serviço; `liquido` = serviço + produto − vale − consumo descontados (nunca negativo). */
 export interface LinhaQuinzena {
   profissionalId: string;
   nome: string;
   totais: TotaisComissao;
+  comissaoProdutos: number;
+  vales: number;
+  consumo: number;
+  liquido: number;
+  saldoRestante: number;
 }
 
 export interface AtendimentoPendente {
@@ -789,6 +797,45 @@ export interface QuinzenaDoProfissional {
   estado: EstadoQuinzena;
   parcial: boolean;
   totais: TotaisComissao;
+  comissaoProdutos: number;
+  vales: number;
+  consumo: number;
+  liquido: number;
+  saldoRestante: number;
+}
+
+/** Saldo devedor (seção 7) — espelha `IServicoSaldoDevedor`. `aberto` = valor menos o já descontado em fechamentos. */
+export type TipoLancamentoSaldo = "Vale" | "ConsumoInterno";
+
+export interface LancamentoSaldoResumo {
+  id: string;
+  tipo: TipoLancamentoSaldo;
+  data: string;
+  valor: number;
+  aberto: number;
+  descricao: string | null;
+  produto: string | null;
+  quantidade: number | null;
+  valorUnitario: number | null;
+  lancadoPor: string | null;
+}
+
+export interface SaldoDevedor {
+  profissionalId: string;
+  nome: string;
+  valesEmAberto: number;
+  consumoEmAberto: number;
+  totalEmAberto: number;
+  lancamentos: LancamentoSaldoResumo[];
+}
+
+export interface SaldoDoProfissional {
+  profissionalId: string;
+  nome: string;
+  ativo: boolean;
+  valesEmAberto: number;
+  consumoEmAberto: number;
+  totalEmAberto: number;
 }
 
 export interface QuinzenasDoProfissional {
