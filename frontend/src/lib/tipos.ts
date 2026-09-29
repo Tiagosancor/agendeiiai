@@ -127,6 +127,56 @@ export interface ProfissionalDetalhe {
   cpfMascarado: string | null;
   funcao: string | null;
   endereco: Endereco | null;
+  /** Usuário vinculado (quem faz login como este profissional); nulo = só um nome na agenda (seção 7). */
+  acesso: AcessoVinculado | null;
+}
+
+export interface AcessoVinculado {
+  usuarioId: string;
+  email: string;
+  ativo: boolean;
+}
+
+/** Login do profissional: senha definida agora ou convite por e-mail (a senha é ignorada). */
+export interface AcessoProfissional {
+  email: string;
+  senha: string | null;
+  enviarConvite: boolean;
+}
+
+/** Visão "Dia" da agenda (seção 7): horários de 15 min nas linhas, um profissional ativo por coluna. */
+export interface GradeAgenda {
+  data: string;
+  horarios: string[];
+  profissionais: ColunaGrade[];
+}
+
+export interface ColunaGrade {
+  profissionalId: string;
+  nome: string;
+  deFolga: boolean;
+  celulas: CelulaGrade[];
+  agendamentos: AgendamentoNaGrade[];
+}
+
+export type EstadoCelulaGrade = "Livre" | "Ocupado" | "Almoco" | "Folga" | "Bloqueio" | "ForaDoExpediente";
+
+export interface CelulaGrade {
+  hora: string;
+  inicio: string;
+  estado: EstadoCelulaGrade;
+  agendamentoId: string | null;
+  descricao: string | null;
+}
+
+export interface AgendamentoNaGrade {
+  id: string;
+  clienteNome: string;
+  servicos: string[];
+  status: string;
+  forcado: boolean;
+  inicio: string;
+  fim: string;
 }
 
 export interface CategoriaResumo {

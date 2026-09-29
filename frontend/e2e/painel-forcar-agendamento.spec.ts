@@ -37,6 +37,8 @@ test("administrador força um agendamento fora do expediente e a agenda marca co
   await expect(page).toHaveURL(/\/painel$/);
 
   await page.goto(`${PAINEL_BASE}/painel/agenda`);
+
+  await page.getByRole("tab", { name: "Por profissional" }).click();
   await page.getByLabel("Profissional").selectOption(profissional.id);
   await page.getByLabel("Data").fill(data);
   await page.getByRole("button", { name: "Novo agendamento" }).click();

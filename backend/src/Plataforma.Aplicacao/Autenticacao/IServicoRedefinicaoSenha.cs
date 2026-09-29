@@ -12,6 +12,12 @@ public interface IServicoRedefinicaoSenha
     /// </summary>
     Task SolicitarAsync(string email, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Convite de acesso (seção 7, "enviar convite por e-mail"): link para o usuário recém-criado definir a
+    /// própria senha — o mesmo mecanismo da redefinição, com validade maior e outro texto.
+    /// </summary>
+    Task EnviarConviteAsync(Guid usuarioId, CancellationToken cancellationToken = default);
+
     Task<ResultadoRedefinicaoSenha> RedefinirAsync(string token, string novaSenha, CancellationToken cancellationToken = default);
 }
 

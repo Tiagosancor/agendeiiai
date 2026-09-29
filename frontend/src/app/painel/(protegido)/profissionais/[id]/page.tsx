@@ -5,10 +5,13 @@ import Link from "next/link";
 import { useAutenticacao } from "@/lib/auth-context";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import { formatarReais } from "@/lib/formatacao";
+import { ErroApi } from "@/lib/api";
+import { ACESSO_INICIAL, CamposAcesso, acessoParaApi, type EstadoAcesso } from "@/components/painel/CamposAcesso";
 import {
   NOMES_DIAS_SEMANA,
   type BloqueioResumo,
   type IntervaloTrabalho,
+  type ProfissionalDetalhe,
   type ProfissionalServicoResumo,
   type ServicoResumo,
 } from "@/lib/tipos";
@@ -24,11 +27,100 @@ export default function PaginaDetalheProfissional({ params }: { params: Promise<
         ← Voltar para profissionais
       </Link>
 
+      <SecaoAcesso profissionalId={id} />
       <SecaoHorariosTrabalho profissionalId={id} />
       <SecaoBloqueios profissionalId={id} />
       <SecaoServicosVinculados profissionalId={id} />
       {podeVerComissao && <SecaoComissao profissionalId={id} podeAlterar={temPermissao("GerenciarComissoes")} />}
     </div>
+  );
+}
+
+/**
+ * Nome do profissional e o acesso dele ao sistema (seção 7): sem usuário vinculado ele é só um nome na
+ * agenda; "Dar acesso ao sistema" cria o login (senha agora ou convite por e-mail) a qualquer momento.
+ */
+function SecaoAcesso({ profissionalId }: { profissionalId: string }) {
+  const { chamarApi, temPermissao } = useAutenticacao();
+  const podeDarAcesso = temPermissao("GerenciarUsuarios");
+  const [profissional, setProfissional] = useState<ProfissionalDetalhe | null>(null);
+  const [formularioAberto, setFormularioAberto] = useState(false);
+  const [acesso, setAcesso] = useState<EstadoAcesso>({ ...ACESSO_INICIAL, darAcesso: true });
+  const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    setProfissional(await chamarApi<ProfissionalDetalhe>(`/painel/profissionais/${profissionalId}`));
+  }, [chamarApi, profissionalId]);
+
+  useEffect(() => {
+    // Busca disparada pela montagem.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    carregar().catch(() => setErro("Não foi possível carregar o profissional."));
+  }, [carregar]);
+
+  function abrir() {
+    setAcesso({ ...ACESSO_INICIAL, darAcesso: true, email: profissional?.email ?? "" });
+    setErro(null);
+    setFormularioAberto(true);
+  }
+
+  async function darAcesso(evento: FormEvent) {
+    evento.preventDefault();
+    setErro(null);
+    setEnviando(true);
+    try {
+      await chamarApi(`/painel/profissionais/${profissionalId}/acesso`, { metodo: "POST", corpo: acessoParaApi(acesso) });
+      setFormularioAberto(false);
+      setAviso(acesso.enviarConvite ? `Convite enviado para ${acesso.email.trim()}.` : "Acesso criado.");
+      await carregar();
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível dar acesso.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!profissional) return erro ? <p className="text-sm text-red-600">{erro}</p> : null;
+
+  return (
+    <section className="space-y-3">
+      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">{profissional.nome}</h1>
+      <div className={`${classeCartao} space-y-3 p-4 text-sm`}>
+        <h2 className="font-semibold text-gray-900 dark:text-neutral-50">Acesso ao sistema</h2>
+        {profissional.acesso ? (
+          <p className="text-gray-700 dark:text-neutral-300">
+            Entra com <strong>{profissional.acesso.email}</strong>
+            {!profissional.acesso.ativo && " (acesso desativado)"}.
+          </p>
+        ) : (
+          <p className="text-gray-700 dark:text-neutral-300">Sem acesso: aparece na agenda, mas não entra no sistema.</p>
+        )}
+        {aviso && <p className="text-green-700 dark:text-green-400">{aviso}</p>}
+
+        {!profissional.acesso && podeDarAcesso && !formularioAberto && (
+          <button type="button" className={classeBotaoSecundario} onClick={abrir}>
+            Dar acesso ao sistema
+          </button>
+        )}
+
+        {formularioAberto && (
+          <form onSubmit={darAcesso} className="space-y-3">
+            <CamposAcesso valor={acesso} aoMudar={setAcesso} perguntar={false} />
+            {erro && <p className="text-red-600">{erro}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" className={classeBotaoSecundario} onClick={() => setFormularioAberto(false)}>
+                Cancelar
+              </button>
+              <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
+                {enviando ? "Criando..." : "Criar acesso"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </section>
   );
 }
 

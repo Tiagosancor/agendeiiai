@@ -26,6 +26,11 @@ public sealed class UsuarioConfiguracao : IEntityTypeConfiguration<Usuario>
         // usado, e os excluídos com histórico ficam todos com e-mail vazio.
         builder.HasIndex(u => u.Email).IsUnique().HasFilter("excluido = false");
 
+        // Vínculo com o profissional da agenda (seção 7): um profissional tem no máximo um usuário, e um
+        // usuário no máximo um profissional (é uma coluna só). O excluído já perde o vínculo.
+        builder.HasIndex(u => u.ProfissionalId).IsUnique().HasFilter("profissional_id IS NOT NULL")
+            .HasDatabaseName(Profissionais.GerenciadorProfissionais.IndiceUsuarioPorProfissional);
+
         builder.OwnsOne(u => u.Endereco, endereco =>
         {
             endereco.Property(e => e.Bairro).HasColumnName("endereco_bairro").HasMaxLength(120);

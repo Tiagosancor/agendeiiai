@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Aplicacao.Cadastros;
 using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Aplicacao.Usuarios;
 using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Usuarios;
 
@@ -36,6 +38,11 @@ public sealed class ProfissionaisController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Guid>> Criar(CriarProfissional dados, CancellationToken cancellationToken)
     {
+        // Criar ou vincular um login é mexer em usuários (seção 7): exige também "gerenciar usuários".
+        if ((dados.Acesso is not null || dados.UsuarioId is not null)
+            && !User.HasClaim(ClaimsPlataforma.Permissao, nameof(Permissao.GerenciarUsuarios)))
+            return Forbid();
+
         try
         {
             var id = await _gerenciador.CriarAsync(dados, cancellationToken);
@@ -45,7 +52,35 @@ public sealed class ProfissionaisController : ControllerBase
         {
             return LimiteAtingido(excecao);
         }
+        catch (Exception excecao) when (TraduzirErroDeAcesso(excecao) is { } resposta)
+        {
+            return resposta;
+        }
     }
+
+    /// <summary>"Dar acesso ao sistema" a um profissional que só existia na agenda (seção 7).</summary>
+    [HttpPost("{id:guid}/acesso")]
+    [Authorize(Policy = nameof(Permissao.GerenciarUsuarios))]
+    public async Task<IActionResult> DarAcesso(Guid id, AcessoProfissional dados, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var usuarioId = await _gerenciador.DarAcessoAsync(id, dados, cancellationToken);
+            return usuarioId is null ? NotFound() : StatusCode(StatusCodes.Status201Created, usuarioId);
+        }
+        catch (Exception excecao) when (TraduzirErroDeAcesso(excecao) is { } resposta)
+        {
+            return resposta;
+        }
+    }
+
+    private ObjectResult? TraduzirErroDeAcesso(Exception excecao) => excecao switch
+    {
+        EmailJaCadastradoException => Conflict(new ProblemDetails { Title = "E-mail já cadastrado.", Detail = excecao.Message }),
+        OperacaoCadastroBloqueadaException => RespostasCadastro.Bloqueado(this, excecao.Message),
+        ArgumentException => BadRequest(new ProblemDetails { Title = excecao.Message }),
+        _ => null,
+    };
 
     /// <summary>Corrigir a ficha exige também <see cref="Permissao.EditarCadastros"/> (seção 7).</summary>
     [HttpPut("{id:guid}")]

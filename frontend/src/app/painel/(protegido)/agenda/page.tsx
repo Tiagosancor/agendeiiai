@@ -6,6 +6,7 @@ import { Modal } from "@/components/Modal";
 import { ModalAjusteValor } from "@/components/painel/ModalAjusteValor";
 import { ModalEncaixe } from "@/components/painel/ModalEncaixe";
 import { AvisoForcar } from "@/components/painel/AvisoForcar";
+import { GradeDoDia } from "@/components/painel/GradeDoDia";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import type {
   AgendamentoResumo,
@@ -52,6 +53,10 @@ export default function PaginaAgenda() {
   const [agendamentoValores, setAgendamentoValores] = useState<string | null>(null);
   const podeAjustarValor = temPermissao("AjustarValorAtendimento");
   const [encaixeAberto, setEncaixeAberto] = useState(false);
+  // Visão "Dia" em grade é a padrão (seção 7); a lista de um profissional guarda as ações de cada atendimento.
+  const [visao, setVisao] = useState<"grade" | "lista">("grade");
+  const [versaoGrade, setVersaoGrade] = useState(0);
+  const [horarioInicialNovo, setHorarioInicialNovo] = useState<string | null>(null);
 
   useEffect(() => {
     // Busca disparada pela montagem, não estado derivado de props.
@@ -84,6 +89,12 @@ export default function PaginaAgenda() {
     carregarAgenda();
   }, [carregarAgenda]);
 
+  /** Depois de qualquer mudança: a grade do dia e a lista do profissional. */
+  async function recarregarTudo() {
+    setVersaoGrade((v) => v + 1);
+    await carregarAgenda();
+  }
+
   async function executarAcao(id: string, acao: "iniciar" | "cancelar" | "concluir" | "faltou" | "reabrir") {
     try {
       setErro(null);
@@ -91,7 +102,7 @@ export default function PaginaAgenda() {
     } catch (excecao) {
       setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível concluir a ação.");
     }
-    await carregarAgenda();
+    await recarregarTudo();
   }
 
   function reabrir(item: AgendamentoResumo) {
@@ -103,9 +114,33 @@ export default function PaginaAgenda() {
 
   return (
     <div>
+      <div className="mb-3 flex gap-1 border-b border-gray-200 dark:border-neutral-800" role="tablist" aria-label="Visão da agenda">
+        {(
+          [
+            ["grade", "Dia (todos)"],
+            ["lista", "Por profissional"],
+          ] as const
+        ).map(([valor, rotulo]) => (
+          <button
+            key={valor}
+            type="button"
+            role="tab"
+            aria-selected={visao === valor}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+              visao === valor
+                ? "border-marca-primaria text-marca-primaria dark:border-marca-acento dark:text-marca-acento"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+            }`}
+            onClick={() => setVisao(valor)}
+          >
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap gap-3">
-          <label>
+          <label className={visao === "grade" ? "hidden" : undefined}>
             <span className={classeLabel}>Profissional</span>
             <select className={classeInput} value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)}>
               {profissionais.map((p) => (
@@ -126,7 +161,14 @@ export default function PaginaAgenda() {
               Atendimento sem agendamento
             </button>
           )}
-          <button className={classeBotaoPrimario} disabled={!profissionalId} onClick={() => setModalAberto(true)}>
+          <button
+            className={classeBotaoPrimario}
+            disabled={!profissionalId}
+            onClick={() => {
+              setHorarioInicialNovo(null);
+              setModalAberto(true);
+            }}
+          >
             Novo agendamento
           </button>
         </div>
@@ -134,7 +176,23 @@ export default function PaginaAgenda() {
 
       {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
 
-      <div className={`${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800`}>
+      {visao === "grade" && (
+        <GradeDoDia
+          data={data}
+          versao={versaoGrade}
+          aoEscolherLivre={(idProfissional, inicio) => {
+            setProfissionalId(idProfissional);
+            setHorarioInicialNovo(inicio);
+            setModalAberto(true);
+          }}
+          aoAbrirAgendamento={(idProfissional) => {
+            setProfissionalId(idProfissional);
+            setVisao("lista");
+          }}
+        />
+      )}
+
+      <div className={`${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800 ${visao === "grade" ? "hidden" : ""}`}>
         {agenda?.length === 0 && <p className="px-4 py-6 text-sm text-gray-500 dark:text-neutral-400">Nada agendado neste dia.</p>}
         {agenda?.map((item) => (
           <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -229,10 +287,12 @@ export default function PaginaAgenda() {
         aberto={modalAberto}
         aoFechar={() => setModalAberto(false)}
         profissionalId={profissionalId}
+        nomeProfissional={profissionais.find((p) => p.id === profissionalId)?.nome ?? ""}
         data={data}
+        horarioInicial={horarioInicialNovo}
         aoCriar={async () => {
           setModalAberto(false);
-          await carregarAgenda();
+          await recarregarTudo();
         }}
       />
 
@@ -242,7 +302,7 @@ export default function PaginaAgenda() {
         aoFechar={() => setEncaixeAberto(false)}
         aoLancar={async () => {
           setEncaixeAberto(false);
-          await carregarAgenda();
+          await recarregarTudo();
         }}
       />
 
@@ -250,7 +310,7 @@ export default function PaginaAgenda() {
         agendamentoId={agendamentoValores}
         aoFechar={async (mudou) => {
           setAgendamentoValores(null);
-          if (mudou) await carregarAgenda();
+          if (mudou) await recarregarTudo();
         }}
       />
 
@@ -259,7 +319,7 @@ export default function PaginaAgenda() {
         aoFechar={() => setAgendamentoParaPagar(null)}
         aoRegistrar={async () => {
           setAgendamentoParaPagar(null);
-          await carregarAgenda();
+          await recarregarTudo();
         }}
       />
     </div>
@@ -341,13 +401,18 @@ function ModalNovoAgendamento({
   aberto,
   aoFechar,
   profissionalId,
+  nomeProfissional,
   data,
+  horarioInicial,
   aoCriar,
 }: {
   aberto: boolean;
   aoFechar: () => void;
   profissionalId: string;
+  nomeProfissional: string;
   data: string;
+  /** Horário clicado na grade do dia (já vem escolhido). */
+  horarioInicial: string | null;
   aoCriar: () => Promise<void>;
 }) {
   const { chamarApi, temPermissao } = useAutenticacao();
@@ -368,6 +433,11 @@ function ModalNovoAgendamento({
 
   useEffect(() => {
     if (!aberto) return;
+    // Horário clicado na grade: já vem escolhido (a lista de livres depende dos serviços, que ainda não foram marcados).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setHorarioSelecionado(horarioInicial ?? "");
+    setOutroHorario("");
+    setConsultaForcar(null);
     // Busca disparada pela abertura do modal.
     Promise.all([
       chamarApi<ServicoResumo[]>("/painel/agenda/servicos"),
@@ -377,7 +447,10 @@ function ModalNovoAgendamento({
       setClientes(listaClientes);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aberto]);
+  }, [aberto, horarioInicial]);
+
+  // O horário escolhido na grade fica na lista mesmo que a API não o devolva como livre para a duração.
+  const opcoesHorario = horarioSelecionado && !horariosLivres.includes(horarioSelecionado) ? [horarioSelecionado, ...horariosLivres] : horariosLivres;
 
   const duracaoTotal = useMemo(
     () => servicos.filter((s) => servicoIdsSelecionados.includes(s.id)).reduce((soma, s) => soma + s.duracaoMinutos, 0),
@@ -455,6 +528,11 @@ function ModalNovoAgendamento({
   return (
     <Modal titulo="Novo agendamento" aberto={aberto} aoFechar={aoFechar}>
       <form onSubmit={aoEnviar} className="space-y-3">
+        {nomeProfissional && (
+          <p className="text-sm text-gray-600 dark:text-neutral-400">
+            Com <strong className="text-gray-900 dark:text-neutral-50">{nomeProfissional}</strong>
+          </p>
+        )}
         <div>
           <span className={classeLabel}>Serviços</span>
           <div className="max-h-32 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-neutral-700">
@@ -494,7 +572,7 @@ function ModalNovoAgendamento({
             disabled={duracaoTotal === 0}
           >
             <option value="">Selecione...</option>
-            {horariosLivres.map((h) => (
+            {opcoesHorario.map((h) => (
               <option key={h} value={h}>
                 {formatarHora(h)}
               </option>

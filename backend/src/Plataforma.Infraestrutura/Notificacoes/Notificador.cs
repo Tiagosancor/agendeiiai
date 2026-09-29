@@ -296,6 +296,19 @@ public sealed class Notificador : INotificador
             _email.EnviarAsync(email, $"Redefinir sua senha — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/redefinir-senha");
     }
 
+    public async Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default)
+    {
+        var negocio = await ObterNegocioAsync(cancellationToken);
+        var nome = System.Net.WebUtility.HtmlEncode(nomeUsuario);
+        var corpo = Envelope(negocio.NomeExibido, $"""
+            <p>Olá, {nome}! {System.Net.WebUtility.HtmlEncode(negocio.NomeExibido)} criou um acesso para você ver a sua agenda e as suas comissões.</p>
+            <p><a href="{link}">Criar minha senha</a></p>
+            <p>O link vale por {validadeHoras} horas e só pode ser usado uma vez. Depois, entre com este e-mail e a senha que você criar.</p>
+            """);
+        await ExecutarSemFalharAsync(() =>
+            _email.EnviarAsync(email, $"Seu acesso — {negocio.NomeExibido}", corpo, cancellationToken), "E-mail/convite");
+    }
+
     /// <summary>
     /// Envolve o conteúdo (que fala sempre do NEGÓCIO — seção 5) com o cabeçalho e o rodapé
     /// da marca do PRODUTO (seção 5.1) — o único lugar em que o nome do produto aparece

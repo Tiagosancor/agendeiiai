@@ -43,6 +43,8 @@ test("recepção encaixa um cliente sem telefone num horário livre", async ({ p
   await expect(page).toHaveURL(/\/painel$/);
 
   await page.goto(`${PAINEL_BASE}/painel/agenda`);
+
+  await page.getByRole("tab", { name: "Por profissional" }).click();
   await page.getByRole("button", { name: "Atendimento sem agendamento" }).click();
   const modal = page.getByRole("dialog");
   await modal.getByRole("button", { name: "+ Cadastrar cliente novo" }).click();

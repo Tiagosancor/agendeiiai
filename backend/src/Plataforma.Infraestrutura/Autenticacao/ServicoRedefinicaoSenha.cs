@@ -23,6 +23,9 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
 {
     public const int ValidadeMinutos = 60;
 
+    /// <summary>O convite de acesso (seção 7) vale mais que o link de "esqueci a senha": quem recebe pode demorar a abrir.</summary>
+    public const int ValidadeConviteHoras = 72;
+
     /// <summary>Pedidos por usuário por hora — além disso, nada é enviado (a resposta não muda).</summary>
     public const int MaximoPedidosPorHora = 3;
 
@@ -83,6 +86,28 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
 
         var link = ConstrutorUrlPublica.ConstruirPainel(_opcoesMarca, $"/painel/redefinir-senha?token={tokenBruto}");
         await _notificador.EnviarRedefinicaoSenhaAsync(usuario.Email, usuario.Nome, link, ValidadeMinutos, cancellationToken);
+    }
+
+    public async Task EnviarConviteAsync(Guid usuarioId, CancellationToken cancellationToken = default)
+    {
+        var usuario = await _dbContext.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && !u.Excluido && u.Ativo, cancellationToken);
+        if (usuario is null)
+            return;
+
+        var agora = DateTimeOffset.UtcNow;
+        var anteriores = await _dbContext.RedefinicoesSenha
+            .Where(r => r.UsuarioId == usuario.Id && r.UsadaEm == null && r.InvalidadaEm == null && r.ExpiraEm > agora)
+            .ToListAsync(cancellationToken);
+        foreach (var anterior in anteriores)
+            anterior.Invalidar(agora);
+
+        var tokenBruto = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
+        _dbContext.RedefinicoesSenha.Add(
+            RedefinicaoSenha.Criar(usuario.NegocioId, usuario.Id, HashDoToken(tokenBruto), agora.AddHours(ValidadeConviteHoras)));
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        var link = ConstrutorUrlPublica.ConstruirPainel(_opcoesMarca, $"/painel/redefinir-senha?token={tokenBruto}");
+        await _notificador.EnviarConviteAcessoAsync(usuario.Email, usuario.Nome, link, ValidadeConviteHoras, cancellationToken);
     }
 
     public async Task<ResultadoRedefinicaoSenha> RedefinirAsync(string token, string novaSenha, CancellationToken cancellationToken = default)

@@ -27,4 +27,5 @@ public static class AcoesAuditoria
     public const string AjustarValorAtendimento = "AjustarValorAtendimento";
     public const string CorrigirValorAtendimento = "CorrigirValorAtendimento";
     public const string ForcarAgendamento = "ForcarAgendamento";
+    public const string DarAcessoProfissional = "DarAcessoProfissional";
 }

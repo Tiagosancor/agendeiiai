@@ -105,6 +105,12 @@ public sealed class AgendamentosController : ControllerBase
         }
     }
 
+    /// <summary>Visão "Dia" (seção 7): todos os profissionais ativos em colunas, horários de 15 min nas linhas.</summary>
+    [HttpGet("~/painel/agenda/grade")]
+    public async Task<ActionResult<GradeAgenda>> Grade(
+        [FromQuery] DateOnly data, [FromServices] IConsultaGradeAgenda consulta, CancellationToken cancellationToken) =>
+        Ok(await consulta.ObterAsync(data, cancellationToken));
+
     [HttpGet("~/painel/agenda")]
     public async Task<ActionResult<IReadOnlyList<AgendamentoResumo>>> ListarAgendaDoDia(
         [FromQuery] Guid profissionalId, [FromQuery] DateOnly data, CancellationToken cancellationToken) =>
