@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
+import { ModalCriarProfissional, type ProfissionalPreenchido } from "@/components/painel/ModalCriarProfissional";
 import { ErroApi } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 import { ModalExclusao } from "@/components/painel/ModalExclusao";
@@ -21,6 +23,8 @@ export default function PaginaUsuarios() {
   const [erro, setErro] = useState<string | null>(null);
   const [modalCriarAberto, setModalCriarAberto] = useState(false);
   const [usuarioPermissoes, setUsuarioPermissoes] = useState<UsuarioDetalhe | null>(null);
+  const [profissionalDoUsuario, setProfissionalDoUsuario] = useState<ProfissionalPreenchido | null>(null);
+  const router = useRouter();
 
   const carregar = useCallback(async () => {
     try {
@@ -133,9 +137,21 @@ export default function PaginaUsuarios() {
       <ModalCriarUsuario
         aberto={modalCriarAberto}
         aoFechar={() => setModalCriarAberto(false)}
-        aoCriar={async () => {
+        aoCriar={async (criado) => {
           setModalCriarAberto(false);
           await carregar();
+          // Perfil Profissional (seção 7): segue direto para o cadastro de profissional, já vinculado a ele.
+          if (criado.perfil === "Profissional" && temPermissao("GerenciarProfissionais")) setProfissionalDoUsuario(criado);
+        }}
+      />
+
+      <ModalCriarProfissional
+        aberto={profissionalDoUsuario !== null}
+        preenchido={profissionalDoUsuario}
+        aoFechar={() => setProfissionalDoUsuario(null)}
+        aoCriar={async (id) => {
+          setProfissionalDoUsuario(null);
+          router.push(`/painel/profissionais/${id}`);
         }}
       />
 
@@ -193,7 +209,7 @@ function ModalCriarUsuario({
 }: {
   aberto: boolean;
   aoFechar: () => void;
-  aoCriar: () => Promise<void>;
+  aoCriar: (criado: ProfissionalPreenchido & { perfil: Perfil }) => Promise<void>;
 }) {
   const { chamarApi } = useAutenticacao();
   const [nome, setNome] = useState("");
@@ -210,16 +226,17 @@ function ModalCriarUsuario({
     setErro(null);
     setEnviando(true);
     try {
-      await chamarApi("/painel/usuarios", {
+      const usuarioId = await chamarApi<string>("/painel/usuarios", {
         metodo: "POST",
         corpo: { nome, email, senha, perfil, telefone: telefone || null, cpf: cpf || null },
       });
+      const criado = { usuarioId, nome, email, telefone, perfil };
       setNome("");
       setEmail("");
       setSenha("");
       setTelefone("");
       setCpf("");
-      await aoCriar();
+      await aoCriar(criado);
     } catch {
       setErro("Não foi possível criar o usuário. Confira se o e-mail já não está cadastrado.");
     } finally {

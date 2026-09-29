@@ -1,8 +1,13 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Auditoria;
+using Plataforma.Aplicacao.Autenticacao;
 using Plataforma.Aplicacao.Cadastros;
 using Plataforma.Aplicacao.Profissionais;
+using Plataforma.Aplicacao.Usuarios;
+using Plataforma.Dominio.Usuarios;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Comum;
@@ -14,19 +19,28 @@ namespace Plataforma.Infraestrutura.Profissionais;
 
 public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
 {
+    /// <summary>Nome do índice único de <c>usuarios.profissional_id</c> — um profissional tem no máximo um usuário (seção 7).</summary>
+    public const string IndiceUsuarioPorProfissional = "ix_usuarios_profissional_id";
+
+    private const int TamanhoMinimoSenha = 8;
+
     private readonly PlataformaDbContext _dbContext;
     private readonly ICriptografiaCpf _criptografiaCpf;
     private readonly IContextoNegocio _contextoNegocio;
     private readonly IRegistroAuditoria _auditoria;
+    private readonly ISenhaHasher _senhaHasher;
+    private readonly IServicoRedefinicaoSenha _redefinicaoSenha;
 
     public GerenciadorProfissionais(
         PlataformaDbContext dbContext, ICriptografiaCpf criptografiaCpf, IContextoNegocio contextoNegocio,
-        IRegistroAuditoria auditoria)
+        IRegistroAuditoria auditoria, ISenhaHasher senhaHasher, IServicoRedefinicaoSenha redefinicaoSenha)
     {
         _dbContext = dbContext;
         _criptografiaCpf = criptografiaCpf;
         _contextoNegocio = contextoNegocio;
         _auditoria = auditoria;
+        _senhaHasher = senhaHasher;
+        _redefinicaoSenha = redefinicaoSenha;
     }
 
     public async Task<IReadOnlyList<ProfissionalResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
@@ -39,7 +53,15 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     public async Task<ProfissionalDetalhe?> ObterAsync(Guid profissionalId, CancellationToken cancellationToken = default)
     {
         var profissional = await BuscarAsync(profissionalId, cancellationToken);
-        return profissional is null ? null : Mapear(profissional);
+        if (profissional is null)
+            return null;
+
+        var acesso = await _dbContext.Usuarios.AsNoTracking()
+            .Where(u => u.ProfissionalId == profissionalId && !u.Excluido)
+            .Select(u => new AcessoVinculado(u.Id, u.Email, u.Ativo))
+            .FirstOrDefaultAsync(cancellationToken);
+
+        return Mapear(profissional) with { Acesso = acesso };
     }
 
     public async Task<Guid> CriarAsync(CriarProfissional dados, CancellationToken cancellationToken = default)
@@ -48,16 +70,106 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
             ? null
             : _criptografiaCpf.Proteger(Cpf.Criar(dados.Cpf));
 
+        var negocioId = _contextoNegocio.NegocioId!.Value;
         var profissional = Profissional.Criar(
-            _contextoNegocio.NegocioId!.Value, dados.Nome, dados.Telefone, dados.Email, cpf: cpfProtegido, funcao: dados.Funcao);
+            negocioId, dados.Nome, dados.Telefone, dados.Email, cpf: cpfProtegido, funcao: dados.Funcao);
+
+        // Os dois caminhos da seção 7 levam ao mesmo par vinculado: login novo criado aqui, ou um usuário que
+        // acabou de ser cadastrado em "Usuários" com perfil Profissional.
+        var novoUsuario = dados.Acesso is null
+            ? null
+            : await NovoUsuarioDeAcessoAsync(negocioId, dados.Nome, dados.Telefone, dados.Acesso, cancellationToken);
+
+        Usuario? usuarioExistente = null;
+        if (dados.UsuarioId is { } usuarioId)
+        {
+            usuarioExistente = await _dbContext.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && !u.Excluido, cancellationToken)
+                ?? throw new OperacaoCadastroBloqueadaException("Usuário não encontrado.");
+            if (usuarioExistente.ProfissionalId is not null)
+                throw new OperacaoCadastroBloqueadaException("Este usuário já está vinculado a outro profissional.");
+        }
 
         await DentroDoLimiteDoPlanoAsync(async () =>
         {
             _dbContext.Profissionais.Add(profissional);
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            if (novoUsuario is not null)
+            {
+                novoUsuario.VincularProfissional(profissional.Id);
+                _dbContext.Usuarios.Add(novoUsuario);
+            }
+
+            usuarioExistente?.VincularProfissional(profissional.Id);
+            await SalvarComVinculoAsync(novoUsuario?.Email, cancellationToken);
         }, cancellationToken);
 
+        if (novoUsuario is not null && dados.Acesso!.EnviarConvite)
+            await _redefinicaoSenha.EnviarConviteAsync(novoUsuario.Id, cancellationToken);
+
         return profissional.Id;
+    }
+
+    public async Task<Guid?> DarAcessoAsync(Guid profissionalId, AcessoProfissional dados, CancellationToken cancellationToken = default)
+    {
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
+        if (profissional is null)
+            return null;
+
+        if (await _dbContext.Usuarios.AnyAsync(u => u.ProfissionalId == profissionalId && !u.Excluido, cancellationToken))
+            throw new OperacaoCadastroBloqueadaException("Este profissional já tem acesso ao sistema.");
+
+        var usuario = await NovoUsuarioDeAcessoAsync(profissional.NegocioId, profissional.Nome, profissional.Telefone, dados, cancellationToken);
+        usuario.VincularProfissional(profissional.Id);
+        _dbContext.Usuarios.Add(usuario);
+        _auditoria.Registrar(AcoesAuditoria.DarAcessoProfissional, nameof(Profissional), profissional.Id,
+            dados.EnviarConvite ? "Acesso criado com convite por e-mail" : "Acesso criado com senha definida");
+
+        await SalvarComVinculoAsync(usuario.Email, cancellationToken);
+
+        if (dados.EnviarConvite)
+            await _redefinicaoSenha.EnviarConviteAsync(usuario.Id, cancellationToken);
+
+        return usuario.Id;
+    }
+
+    /// <summary>
+    /// Login do profissional (seção 7): perfil Profissional, e-mail único na plataforma. Com convite, a senha
+    /// é aleatória e ninguém a conhece — a pessoa cria a dela pelo link.
+    /// </summary>
+    private async Task<Usuario> NovoUsuarioDeAcessoAsync(
+        Guid negocioId, string nome, string? telefone, AcessoProfissional acesso, CancellationToken cancellationToken)
+    {
+        var email = (acesso.Email ?? string.Empty).Trim().ToLowerInvariant();
+        if (email.Length == 0 || !email.Contains('@'))
+            throw new ArgumentException("Informe o e-mail de acesso do profissional.");
+
+        string senha;
+        if (acesso.EnviarConvite)
+            senha = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        else if (string.IsNullOrEmpty(acesso.Senha) || acesso.Senha.Length < TamanhoMinimoSenha)
+            throw new ArgumentException($"A senha precisa ter pelo menos {TamanhoMinimoSenha} caracteres.");
+        else
+            senha = acesso.Senha;
+
+        // E-mail é único na plataforma inteira, só entre os não excluídos (mesma regra de "Usuários").
+        if (await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email && !u.Excluido, cancellationToken))
+            throw new EmailJaCadastradoException(email);
+
+        return Usuario.Criar(negocioId, nome, email, Perfil.Profissional, _senhaHasher.Hash(senha), telefone);
+    }
+
+    /// <summary>Os índices únicos decidem as corridas: e-mail repetido, ou o profissional ganhando dois usuários.</summary>
+    private async Task SalvarComVinculoAsync(string? emailNovo, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            if ((excecao.InnerException as PostgresException)?.ConstraintName == IndiceUsuarioPorProfissional)
+                throw new OperacaoCadastroBloqueadaException("Este profissional já tem acesso ao sistema.");
+            throw new EmailJaCadastradoException(emailNovo ?? string.Empty);
+        }
     }
 
     public async Task<bool> AtualizarDadosAsync(
@@ -224,10 +336,16 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
 
         var temHistorico = await TemHistoricoAsync(profissionalId, cancellationToken);
 
-        // Usuário do painel ligado a este profissional deixa de estar ligado a ele.
+        // Usuário do painel ligado a este profissional deixa de estar ligado a ele — e, se só entrava como ele
+        // (perfil Profissional), perde o acesso (seção 7). Excluir o usuário junto é outra ação, explícita, em
+        // "Usuários"; o Administrador dono que também atende continua entrando normalmente.
         var usuariosVinculados = await _dbContext.Usuarios.Where(u => u.ProfissionalId == profissionalId).ToListAsync(cancellationToken);
         foreach (var usuario in usuariosVinculados)
+        {
             usuario.DesvincularProfissional();
+            if (usuario.Perfil == Perfil.Profissional)
+                usuario.Desativar();
+        }
 
         // Configuração que só existe por causa dele: sai junto nos dois casos — tira o
         // profissional da oferta pública e das opções de transferência na hora.

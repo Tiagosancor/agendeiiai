@@ -54,6 +54,9 @@ public interface INotificador
 
     /// <summary>Link de "esqueci minha senha" do painel.</summary>
     Task EnviarRedefinicaoSenhaAsync(string email, string nomeUsuario, string link, int validadeMinutos, CancellationToken cancellationToken = default);
+
+    /// <summary>Convite para o profissional criar a senha do próprio acesso (seção 7).</summary>
+    Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default);
 }
 
 public sealed record DadosBoasVindas(

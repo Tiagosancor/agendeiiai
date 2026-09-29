@@ -61,6 +61,7 @@ test("administrador inicia o atendimento e ajusta o valor; recepcionista n√£o v√
 
   await entrar(page, "admin@acme.dev", "Admin!123");
   await page.goto(`${PAINEL_BASE}/painel/agenda`);
+  await page.getByRole("tab", { name: "Por profissional" }).click();
   await page.getByLabel("Profissional").selectOption(profissional.id);
   await page.getByLabel("Data").fill(data);
   const linha = page.locator("div.flex-wrap", { hasText: `Cliente Ajuste ${sufixo}` }).first();
@@ -87,6 +88,7 @@ test("administrador inicia o atendimento e ajusta o valor; recepcionista n√£o v√
   const outra = await contexto.newPage();
   await entrar(outra, emailRecepcao, "SenhaRecepcao1");
   await outra.goto(`${PAINEL_BASE}/painel/agenda`);
+  await outra.getByRole("tab", { name: "Por profissional" }).click();
   await outra.getByLabel("Profissional").selectOption(profissional.id);
   await outra.getByLabel("Data").fill(data);
   const linhaRecepcao = outra.locator("div.flex-wrap", { hasText: `Cliente Ajuste ${sufixo}` }).first();

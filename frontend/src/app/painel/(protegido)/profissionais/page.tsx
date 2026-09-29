@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { ModalExclusao } from "@/components/painel/ModalExclusao";
 import { CamposEndereco } from "@/components/painel/CamposEndereco";
+import { AvisoLimitePlano, ModalCriarProfissional } from "@/components/painel/ModalCriarProfissional";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { ENDERECO_VAZIO, type Endereco, type ProfissionalDetalhe, type ProfissionalResumo } from "@/lib/tipos";
 import { ErroApi } from "@/lib/api";
@@ -20,6 +22,7 @@ export default function PaginaProfissionais() {
   const [erro, setErro] = useState<string | null>(null);
   const [limiteAtingido, setLimiteAtingido] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
+  const router = useRouter();
 
   const carregar = useCallback(async () => {
     try {
@@ -133,106 +136,12 @@ export default function PaginaProfissionais() {
       <ModalCriarProfissional
         aberto={modalAberto}
         aoFechar={() => setModalAberto(false)}
-        aoCriar={async () => {
+        aoCriar={async (id) => {
           setModalAberto(false);
-          await carregar();
+          // Horários, serviços e comissão ficam na ficha — segue direto para ela.
+          router.push(`/painel/profissionais/${id}`);
         }}
       />
-    </div>
-  );
-}
-
-function ModalCriarProfissional({
-  aberto,
-  aoFechar,
-  aoCriar,
-}: {
-  aberto: boolean;
-  aoFechar: () => void;
-  aoCriar: () => Promise<void>;
-}) {
-  const { chamarApi } = useAutenticacao();
-  const [nome, setNome] = useState("");
-  const [funcao, setFuncao] = useState("");
-  const [telefone, setTelefone] = useState("");
-  const [email, setEmail] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
-  const [limiteDoPlano, setLimiteDoPlano] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-
-  async function aoEnviar(evento: FormEvent) {
-    evento.preventDefault();
-    setErro(null);
-    setEnviando(true);
-    try {
-      await chamarApi("/painel/profissionais", {
-        metodo: "POST",
-        corpo: { nome, telefone: telefone || null, email: email || null, cpf: cpf || null, funcao: funcao || null },
-      });
-      setNome("");
-      setFuncao("");
-      setTelefone("");
-      setEmail("");
-      setCpf("");
-      await aoCriar();
-    } catch (excecao) {
-      setErro(
-        excecao instanceof ErroApi && excecao.codigo === "limite_profissionais" ? excecao.message : "Não foi possível criar o profissional.",
-      );
-      setLimiteDoPlano(excecao instanceof ErroApi && excecao.codigo === "limite_profissionais");
-    } finally {
-      setEnviando(false);
-    }
-  }
-
-  return (
-    <Modal titulo="Novo profissional" aberto={aberto} aoFechar={aoFechar}>
-      <form onSubmit={aoEnviar} className="space-y-3">
-        <label>
-          <span className={classeLabel}>Nome</span>
-          <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
-        </label>
-        <label>
-          <span className={classeLabel}>Função (opcional, aparece na página pública)</span>
-          <input className={classeInput} value={funcao} onChange={(e) => setFuncao(e.target.value)} placeholder="Barbeiro" />
-        </label>
-        <label>
-          <span className={classeLabel}>Telefone (opcional)</span>
-          <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} type="tel" placeholder="(71) 98888-7777" />
-        </label>
-        <label>
-          <span className={classeLabel}>E-mail (opcional)</span>
-          <input type="email" className={classeInput} value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <label>
-          <span className={classeLabel}>CPF (opcional)</span>
-          <input className={classeInput} value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" />
-        </label>
-
-        {erro && (limiteDoPlano ? <AvisoLimitePlano mensagem={erro} /> : <p className="text-sm text-red-600">{erro}</p>)}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
-            Cancelar
-          </button>
-          <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
-            {enviando ? "Criando..." : "Criar"}
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
-/** Limite de profissionais do plano (seção 7): mensagem clara e o caminho para mudar de plano. */
-function AvisoLimitePlano({ mensagem }: { mensagem: string }) {
-  return (
-    <div role="alert" className="mb-4 rounded-lg border border-marca-acento/40 bg-marca-acento/10 px-3 py-2 text-sm text-gray-800 dark:text-neutral-200">
-      {mensagem}{" "}
-      <Link href="/painel/assinatura" className="font-semibold underline">
-        Mudar de plano
-      </Link>
     </div>
   );
 }
