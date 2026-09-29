@@ -11,6 +11,7 @@ using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Contato;
 using Plataforma.Dominio.Cupons;
+using Plataforma.Dominio.Estoque;
 using Plataforma.Dominio.Fidelidade;
 using Plataforma.Dominio.Financeiro;
 using Plataforma.Dominio.Negocios;
@@ -80,6 +81,10 @@ public class PlataformaDbContext : DbContext
     public DbSet<MensagemContato> MensagensContato => Set<MensagemContato>();
 
     public DbSet<Pagamento> Pagamentos => Set<Pagamento>();
+
+    public DbSet<Produto> Produtos => Set<Produto>();
+
+    public DbSet<MovimentoEstoque> MovimentosEstoque => Set<MovimentoEstoque>();
 
     public DbSet<ProgramaFidelidade> ProgramasFidelidade => Set<ProgramaFidelidade>();
 

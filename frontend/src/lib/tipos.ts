@@ -26,7 +26,9 @@ export type Permissao =
   | "VerComissoesDeTodos"
   | "AjustarValorAtendimento"
   | "LancarAtendimentoSemAgendamento"
-  | "ForcarAgendamento";
+  | "ForcarAgendamento"
+  | "VenderProdutos"
+  | "GerenciarEstoque";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -46,6 +48,8 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "AjustarValorAtendimento", rotulo: "Ajustar valor do atendimento (desconto/acréscimo)" },
   { valor: "LancarAtendimentoSemAgendamento", rotulo: "Lançar atendimento sem agendamento (encaixe)" },
   { valor: "ForcarAgendamento", rotulo: "Forçar agendamento (passar por cima das regras de horário)" },
+  { valor: "VenderProdutos", rotulo: "Vender produtos" },
+  { valor: "GerenciarEstoque", rotulo: "Gerenciar estoque (produtos, entradas, ajustes, preço de custo)" },
 ];
 
 /** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
@@ -177,6 +181,44 @@ export interface AgendamentoNaGrade {
   forcado: boolean;
   inicio: string;
   fim: string;
+}
+
+/** Produto do estoque (seção 7). `situacao`: Normal, EstoqueBaixo, Esgotado ou Inativo. */
+export interface ProdutoResumo {
+  id: string;
+  nome: string;
+  categoria: string | null;
+  precoCusto: number;
+  precoVenda: number;
+  quantidadeEstoque: number;
+  quantidadeMinima: number;
+  ativo: boolean;
+  situacao: "Normal" | "EstoqueBaixo" | "Esgotado" | "Inativo";
+}
+
+export interface MovimentoEstoqueResumo {
+  id: string;
+  tipo: "Entrada" | "Venda" | "ConsumoInterno" | "Ajuste";
+  quantidade: number;
+  valorUnitario: number | null;
+  quantidadeAntes: number;
+  quantidadeDepois: number;
+  data: string;
+  usuario: string | null;
+  observacao: string | null;
+  fornecedor: string | null;
+}
+
+export interface ProdutoEmAlerta {
+  id: string;
+  nome: string;
+  quantidadeEstoque: number;
+  quantidadeMinima: number;
+}
+
+export interface AlertasEstoque {
+  estoqueBaixo: ProdutoEmAlerta[];
+  esgotados: ProdutoEmAlerta[];
 }
 
 export interface CategoriaResumo {

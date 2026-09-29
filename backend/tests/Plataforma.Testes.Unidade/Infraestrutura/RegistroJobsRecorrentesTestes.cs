@@ -36,7 +36,7 @@ public class RegistroJobsRecorrentesTestes
     }
 
     [Fact]
-    public async Task Registra_os_tres_jobs_de_primeira_quando_nada_falha()
+    public async Task Registra_todos_os_jobs_de_primeira_quando_nada_falha()
     {
         var gerenciador = new GerenciadorQueFalha(falhasAntesDeFuncionar: 0);
 
@@ -44,7 +44,7 @@ public class RegistroJobsRecorrentesTestes
         await servico.StartAsync(CancellationToken.None);
         await servico.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
 
-        gerenciador.Registrados.Should().BeEquivalentTo("expirar-reservas", "enviar-lembretes", "atualizar-assinaturas");
+        gerenciador.Registrados.Should().BeEquivalentTo("expirar-reservas", "enviar-lembretes", "atualizar-assinaturas", "alerta-estoque");
     }
 
     [Fact]

@@ -175,6 +175,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IServicoVerificacao, ServicoVerificacao>();
         servicos.AddScoped<INotificador, Notificador>();
         servicos.AddScoped<IGerenciadorCupons, GerenciadorCupons>();
+        servicos.AddScoped<Aplicacao.Estoque.IGerenciadorEstoque, Estoque.GerenciadorEstoque>();
         servicos.AddScoped<IServicoContato, ServicoContato>();
         servicos.AddScoped<IConsultaCatalogoPublico, ConsultaCatalogoPublico>();
 
@@ -195,6 +196,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGatewayPagamento, GatewayPagamentoManual>();
         servicos.AddScoped<IProcessadorWebhookPagamento, ProcessadorWebhookPagamento>();
         servicos.AddScoped<JobAtualizarAssinaturas>();
+        servicos.AddScoped<Estoque.JobAlertaEstoque>();
         servicos.AddScoped<IConsultaSituacaoAssinatura, ConsultaSituacaoAssinatura>();
 
         // Cadastro de negócio novo e checklist do primeiro acesso (seção 6.5).
