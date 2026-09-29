@@ -198,6 +198,21 @@ public static class InfraestruturaServiceCollectionExtensions
         // IGatewayPagamento registrado aqui — o webhook descobre o provedor pela rota.
         servicos.AddOptions<OpcoesCobranca>().Bind(configuracao.GetSection(OpcoesCobranca.Secao));
         servicos.AddScoped<IGatewayPagamento, GatewayPagamentoManual>();
+        // Asaas: sempre registrado (o webhook responde 404 sem chave/token), usado nas contratações com Cobranca__Provedor=Asaas.
+        servicos.AddOptions<OpcoesAsaas>()
+            .Bind(configuracao.GetSection(OpcoesAsaas.Secao))
+            .Validate<IOptions<OpcoesCobranca>>(
+                (asaas, cobranca) => cobranca.Value.Provedor != ProvedorCobranca.Asaas || asaas.Configurado,
+                "Cobranca__Provedor=Asaas exige Asaas__ChaveApi e Asaas__TokenWebhook.")
+            .Validate(asaas => Uri.TryCreate(asaas.UrlBase, UriKind.Absolute, out _) && asaas.TimeoutSegundos > 0, "Asaas__UrlBase ou Asaas__TimeoutSegundos inválido.")
+            .ValidateOnStart();
+        servicos.AddHttpClient<GatewayPagamentoAsaas>((sp, http) =>
+        {
+            // Barra no fim: os recursos são relativos ("customers"), então o /v3 da UrlBase é mantido.
+            http.BaseAddress = new Uri(sp.GetRequiredService<IOptions<OpcoesAsaas>>().Value.UrlBase.TrimEnd('/') + "/");
+            http.Timeout = Timeout.InfiniteTimeSpan; // o limite é por tentativa, dentro do gateway
+        });
+        servicos.AddScoped<IGatewayPagamento>(sp => sp.GetRequiredService<GatewayPagamentoAsaas>());
         servicos.AddScoped<IProcessadorWebhookPagamento, ProcessadorWebhookPagamento>();
         servicos.AddScoped<JobAtualizarAssinaturas>();
         servicos.AddScoped<Estoque.JobAlertaEstoque>();
