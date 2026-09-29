@@ -39,8 +39,72 @@ public sealed class AssinaturaController : ControllerBase
 
     [HttpGet("instrucoes-pagamento")]
     [Authorize(Policy = ClaimsPlataforma.PoliticaSomenteAdministradorNegocio)]
-    public async Task<ActionResult<InstrucoesPagamento>> ObterInstrucoes(CancellationToken cancellationToken) =>
-        Ok(await _servico.ObterInstrucoesPagamentoAsync(cancellationToken));
+    public async Task<ActionResult<InstrucoesPagamento>> ObterInstrucoes(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _servico.ObterInstrucoesPagamentoAsync(cancellationToken));
+        }
+        catch (FalhaGatewayPagamentoException excecao)
+        {
+            return FalhaGateway(excecao);
+        }
+    }
+
+    /// <summary>
+    /// Contrata pelo gateway automático (Asaas): CPF/CNPJ do titular vai direto ao gateway (aqui fica só o mascarado). Devolve o
+    /// link da cobrança — Pix, boleto ou cartão na página do gateway; nenhum dado de cartão passa por aqui.
+    /// </summary>
+    public sealed record ContratarRequisicao(Guid PlanoId, Periodicidade Periodicidade, string CpfCnpj);
+
+    [HttpPost("contratar")]
+    [Authorize(Policy = ClaimsPlataforma.PoliticaSomenteAdministradorNegocio)]
+    public async Task<ActionResult<InstrucoesPagamento>> Contratar(ContratarRequisicao requisicao, CancellationToken cancellationToken)
+    {
+        var email = Email();
+        if (email is null)
+            return BadRequest(new ProblemDetails { Title = "Não foi possível identificar o e-mail do titular." });
+
+        try
+        {
+            return Ok(await _servico.ContratarAsync($"painel:{email}", email, requisicao.PlanoId, requisicao.Periodicidade, requisicao.CpfCnpj, cancellationToken));
+        }
+        catch (LimiteProfissionaisExcedidoException excecao)
+        {
+            return LimiteExcedido(excecao);
+        }
+        catch (RegraAssinaturaException excecao)
+        {
+            return BadRequest(new ProblemDetails { Title = excecao.Message });
+        }
+        catch (ArgumentException excecao)
+        {
+            return BadRequest(new ProblemDetails { Title = excecao.Message.Split(" (Parameter")[0] });
+        }
+        catch (FalhaGatewayPagamentoException excecao)
+        {
+            return FalhaGateway(excecao);
+        }
+    }
+
+    /// <summary>Usa até o fim do período pago (ou do teste); nenhuma cobrança nova. <c>imediato</c>: já não havia período pela frente.</summary>
+    [HttpPost("cancelar")]
+    [Authorize(Policy = ClaimsPlataforma.PoliticaSomenteAdministradorNegocio)]
+    public async Task<IActionResult> Cancelar(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(new { imediato = await _servico.CancelarAsync($"painel:{Email()}", cancellationToken) });
+        }
+        catch (RegraAssinaturaException excecao)
+        {
+            return BadRequest(new ProblemDetails { Title = excecao.Message });
+        }
+        catch (FalhaGatewayPagamentoException excecao)
+        {
+            return FalhaGateway(excecao);
+        }
+    }
 
     public sealed record TrocarPlanoRequisicao(Guid PlanoId, Periodicidade Periodicidade);
 
@@ -50,23 +114,36 @@ public sealed class AssinaturaController : ControllerBase
     {
         try
         {
-            var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? User.FindFirst("email")?.Value;
-            var autor = $"painel:{email}";
+            var autor = $"painel:{Email()}";
             await _servico.TrocarPlanoAsync(autor, requisicao.PlanoId, requisicao.Periodicidade, cancellationToken);
             return NoContent();
         }
         catch (LimiteProfissionaisExcedidoException excecao)
         {
-            return Conflict(new ProblemDetails
-            {
-                Title = "Mais profissionais ativos do que o plano permite.",
-                Detail = excecao.Message,
-                Extensions = { ["codigo"] = "limite_profissionais", ["excedente"] = excecao.Excedente },
-            });
+            return LimiteExcedido(excecao);
         }
         catch (RegraAssinaturaException excecao)
         {
             return BadRequest(new ProblemDetails { Title = excecao.Message });
         }
+        catch (FalhaGatewayPagamentoException excecao)
+        {
+            return FalhaGateway(excecao);
+        }
     }
+
+    private string? Email() =>
+        User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? User.FindFirst("email")?.Value;
+
+    private ConflictObjectResult LimiteExcedido(LimiteProfissionaisExcedidoException excecao) => Conflict(new ProblemDetails
+    {
+        Title = "Mais profissionais ativos do que o plano permite.",
+        Detail = excecao.Message,
+        Extensions = { ["codigo"] = "limite_profissionais", ["excedente"] = excecao.Excedente },
+    });
+
+    /// <summary>Recusa do gateway (ex.: CPF inválido para ele) → 400 com o texto dele; fora do ar → 502 com texto genérico.</summary>
+    private ObjectResult FalhaGateway(FalhaGatewayPagamentoException excecao) => excecao.Recusado
+        ? BadRequest(new ProblemDetails { Title = excecao.Message, Extensions = { ["codigo"] = "gateway_recusou" } })
+        : StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails { Title = excecao.Message, Extensions = { ["codigo"] = "gateway_indisponivel" } });
 }
