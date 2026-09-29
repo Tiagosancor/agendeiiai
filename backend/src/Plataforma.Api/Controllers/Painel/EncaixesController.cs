@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Aplicacao.Clientes;
 using Plataforma.Aplicacao.Profissionais;
@@ -50,6 +51,10 @@ public sealed class EncaixesController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Lancar(LancarEncaixe dados, CancellationToken cancellationToken)
     {
+        // Passar por cima das regras de horário é da permissão de forçar (seção 7), não da de encaixe.
+        if (dados.MotivoForcar is not null && !User.HasClaim(ClaimsPlataforma.Permissao, nameof(Permissao.ForcarAgendamento)))
+            return Forbid();
+
         var (resultado, clienteId) = await _servicoAgendamentos.LancarEncaixeAsync(dados, cancellationToken);
 
         if (resultado.Sucesso)

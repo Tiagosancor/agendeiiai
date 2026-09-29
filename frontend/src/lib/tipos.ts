@@ -25,7 +25,8 @@ export type Permissao =
   | "GerenciarComissoes"
   | "VerComissoesDeTodos"
   | "AjustarValorAtendimento"
-  | "LancarAtendimentoSemAgendamento";
+  | "LancarAtendimentoSemAgendamento"
+  | "ForcarAgendamento";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -44,6 +45,7 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "VerComissoesDeTodos", rotulo: "Ver comissões de todos os profissionais" },
   { valor: "AjustarValorAtendimento", rotulo: "Ajustar valor do atendimento (desconto/acréscimo)" },
   { valor: "LancarAtendimentoSemAgendamento", rotulo: "Lançar atendimento sem agendamento (encaixe)" },
+  { valor: "ForcarAgendamento", rotulo: "Forçar agendamento (passar por cima das regras de horário)" },
 ];
 
 /** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
@@ -252,6 +254,25 @@ export interface AgendamentoResumo {
   observacoes: string | null;
   servicos: string[];
   total: number;
+  /** Criado ou movido por cima das regras de horário (seção 7, "Forçar agendamento"). */
+  forcado: boolean;
+  forcadoMotivo: string | null;
+  forcadoPor: string | null;
+  forcadoRegras: string[] | null;
+}
+
+/** O que se quer forçar: horário novo (serviços) ou mover um existente. `inicio` nulo = agora. */
+export interface ConsultaForcar {
+  profissionalId: string | null;
+  servicoIds: string[] | null;
+  inicio: string | null;
+  agendamentoId?: string | null;
+}
+
+/** O aviso antes do "Forçar mesmo assim": regras que serão quebradas, ou o que impede forçar. */
+export interface PreviaForcar {
+  regras: string[];
+  impedimento: string | null;
 }
 
 export interface CriarAgendamento {

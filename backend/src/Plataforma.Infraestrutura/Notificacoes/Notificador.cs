@@ -148,6 +148,7 @@ public sealed class Notificador : INotificador
             <p><strong>Quando:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
             <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
             {(string.IsNullOrWhiteSpace(dados.Observacoes) ? "" : $"<p><strong>Observações:</strong> {dados.Observacoes}</p>")}
+            {(dados.Forcado ? "<p><em>Agendamento forçado pelo negócio, fora das regras de horário.</em></p>" : "")}
             """);
 
         // E-mail sempre (é a rede de segurança se a instância de WhatsApp cair); WhatsApp só com
@@ -161,7 +162,7 @@ public sealed class Notificador : INotificador
         Task<ResultadoEnvioWhatsApp>? envioWhatsApp = null;
         if (negocio.WhatsAppAvisoProfissional && TelefoneE164.TentarCriar(dados.TelefoneProfissional ?? "", out var telefone))
         {
-            var mensagem = $"{titulo} em {negocio.NomeExibido}: {dados.NomeCliente}, {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)} — {string.Join(", ", dados.Servicos)}.";
+            var mensagem = $"{titulo} em {negocio.NomeExibido}: {dados.NomeCliente}, {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)} — {string.Join(", ", dados.Servicos)}{(dados.Forcado ? " (agendamento forçado, fora das regras de horário)" : "")}.";
             envioWhatsApp = EnviarWhatsAppSemFalharAsync(telefone!, mensagem, "WhatsApp/profissional", cancellationToken);
         }
 
