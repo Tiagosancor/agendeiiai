@@ -310,7 +310,8 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
 
         var (inicioUtc, fimUtc) = ConsultaLinhasComissao.IntervaloUtc(periodo.Inicio, periodo.Fim, fuso);
         var produtos = await _dbContext.VendasProduto.AsNoTracking()
-            .Where(v => v.VendedorProfissionalId != null && ids.Contains(v.VendedorProfissionalId.Value) && v.Data >= inicioUtc && v.Data < fimUtc)
+            .Where(v => v.VendedorProfissionalId != null && ids.Contains(v.VendedorProfissionalId.Value) && v.EstornadaEm == null
+                && v.Data >= inicioUtc && v.Data < fimUtc)
             .GroupBy(v => v.VendedorProfissionalId!.Value)
             .Select(g => new { ProfissionalId = g.Key, Comissao = g.Sum(v => v.ValorComissao) })
             .ToDictionaryAsync(g => g.ProfissionalId, g => g.Comissao, cancellationToken);

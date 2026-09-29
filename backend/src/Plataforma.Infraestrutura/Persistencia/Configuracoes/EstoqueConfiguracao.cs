@@ -52,6 +52,10 @@ public sealed class VendaProdutoConfiguracao : IEntityTypeConfiguration<VendaPro
         builder.Property(v => v.Total).HasColumnType("numeric(10,2)");
         builder.Property(v => v.PercentualComissao).HasColumnType("numeric(5,2)");
         builder.Property(v => v.ValorComissao).HasColumnType("numeric(10,2)");
+        builder.Property(v => v.MotivoEstorno).HasMaxLength(VendaProduto.TamanhoMaximoMotivoEstorno);
+        builder.Ignore(v => v.Estornada);
+        // xmin: dois estornos da mesma venda ao mesmo tempo — só o primeiro grava.
+        builder.Property<uint>("Versao").IsRowVersion();
         builder.HasMany(v => v.Itens).WithOne().HasForeignKey(i => i.VendaId).OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(v => v.Itens).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.HasIndex(v => new { v.NegocioId, v.Data });

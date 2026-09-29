@@ -67,6 +67,17 @@ test("venda avulsa no balcão com vendedor escolhido e desconto pontual", async 
   const produtos = await (await request.get(`${API}/painel/estoque/produtos`, { headers: auth })).json();
   expect(produtos.find((p: { id: string }) => p.id === produtoId).quantidadeEstoque).toBe(8);
 
+  // Estorno: a venda fica na lista, marcada, e os produtos voltam ao estoque.
+  await venda.getByRole("button", { name: "Estornar" }).click();
+  const estorno = page.getByRole("dialog", { name: "Estornar venda" });
+  await estorno.getByLabel("Motivo (obrigatório)").fill("Cliente desistiu");
+  await estorno.getByRole("button", { name: "Estornar" }).click();
+  await expect(estorno).toBeHidden();
+  await expect(venda).toContainText("Estornada: Cliente desistiu");
+  await expect(venda.getByRole("button", { name: "Estornar" })).toHaveCount(0);
+  const depois = await (await request.get(`${API}/painel/estoque/produtos`, { headers: auth })).json();
+  expect(depois.find((p: { id: string }) => p.id === produtoId).quantidadeEstoque).toBe(10);
+
   await request.post(`${API}/painel/estoque/produtos/${produtoId}/desativar`, { headers: auth });
 });
 

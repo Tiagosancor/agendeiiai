@@ -38,6 +38,18 @@ public class VendaProduto : EntidadeBase, IEntidadeDoNegocio
 
     public Guid? LancadaPorUsuarioId { get; private set; }
 
+    /// <summary>
+    /// Estorno (venda desfeita): os produtos voltam ao estoque e a venda sai do faturamento e da comissão, mas a linha
+    /// fica para o histórico, com quem estornou, quando e por quê.
+    /// </summary>
+    public DateTimeOffset? EstornadaEm { get; private set; }
+
+    public Guid? EstornadaPorUsuarioId { get; private set; }
+
+    public string? MotivoEstorno { get; private set; }
+
+    public bool Estornada => EstornadaEm is not null;
+
     public IReadOnlyCollection<ItemVendaProduto> Itens => _itens.AsReadOnly();
 
     protected VendaProduto()
@@ -64,6 +76,31 @@ public class VendaProduto : EntidadeBase, IEntidadeDoNegocio
             PercentualComissao = vendedor.PercentualComissao,
             LancadaPorUsuarioId = lancadaPorUsuarioId,
         };
+    }
+
+    public const int TamanhoMaximoMotivoEstorno = 500;
+
+    /// <summary>
+    /// Desfaz a venda: cada item volta ao estoque por um movimento de entrada ("Estorno de venda") nos produtos já
+    /// travados pelo chamador. Motivo obrigatório; estornar duas vezes é recusado.
+    /// </summary>
+    public IReadOnlyList<MovimentoEstoque> Estornar(
+        IReadOnlyDictionary<Guid, Produto> produtos, string motivo, Guid? usuarioId, DateTimeOffset agora)
+    {
+        if (Estornada)
+            throw new InvalidOperationException("Esta venda já foi estornada.");
+        if (string.IsNullOrWhiteSpace(motivo))
+            throw new ArgumentException("Informe o motivo do estorno.", nameof(motivo));
+
+        var limpo = motivo.Trim();
+        MotivoEstorno = limpo.Length > TamanhoMaximoMotivoEstorno ? limpo[..TamanhoMaximoMotivoEstorno] : limpo;
+        EstornadaEm = agora;
+        EstornadaPorUsuarioId = usuarioId;
+
+        return _itens
+            .Select(item => produtos[item.ProdutoId].RegistrarEntrada(
+                item.Quantidade, produtos[item.ProdutoId].PrecoCusto, null, "Estorno de venda", usuarioId, agora))
+            .ToList();
     }
 
     /// <summary>Baixa o estoque do produto (já travado pelo chamador) e acrescenta a linha; recalcula total e comissão.</summary>

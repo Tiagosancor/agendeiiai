@@ -226,6 +226,66 @@ public sealed class VendasTestes : IAsyncLifetime
         lista!.Should().ContainSingle(v => v.AgendamentoId == agendamentoId && v.Vendedor == "Edu" && v.Cliente == "Cliente Sobrenome");
     }
 
+    [Fact]
+    public async Task Estorno_devolve_ao_estoque_tira_do_faturamento_e_da_comissao_e_so_quem_gerencia_estoque_estorna()
+    {
+        var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var produtoId = await CriarProdutoAsync(admin, "Pomada", 40m, quantidade: 5);
+        var profissionalId = await _fabrica.CriarProfissionalAsync(negocioId, "Fábio");
+        await admin.PutAsJsonAsync($"/painel/profissionais/{profissionalId}/comissao", new ConfiguracaoComissao(0m, false, 10m));
+        using var profissional = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Profissional, profissionalId);
+
+        var lancada = await (await admin.PostAsJsonAsync(Vendas, new LancarVenda([new ItemLancarVenda(produtoId, 2, 40m)], profissionalId, null)))
+            .Content.ReadFromJsonAsync<VendaLancada>();
+        var vendaId = lancada!.VendaId;
+
+        using var recepcao = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Recepcionista,
+            permissoesExtras: Usuario.PermissoesPadrao(Perfil.Recepcionista).ToArray());
+        (await recepcao.PostAsJsonAsync($"{Vendas}/{vendaId}/estornar", new EstornarVenda("Engano"))).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await admin.PostAsJsonAsync($"{Vendas}/{vendaId}/estornar", new EstornarVenda(" "))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        (await admin.PostAsJsonAsync($"{Vendas}/{vendaId}/estornar", new EstornarVenda("Cliente devolveu")))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await admin.PostAsJsonAsync($"{Vendas}/{vendaId}/estornar", new EstornarVenda("De novo"))).StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        (await _fabrica.NoBancoAsync(db => db.Produtos.IgnoreQueryFilters().SingleAsync(p => p.Id == produtoId))).QuantidadeEstoque.Should().Be(5);
+        var movimentos = await _fabrica.NoBancoAsync(db => db.MovimentosEstoque.IgnoreQueryFilters().Where(m => m.ProdutoId == produtoId).ToListAsync());
+        movimentos.Should().ContainSingle(m => m.Observacao == "Estorno de venda" && m.Quantidade == 2);
+        movimentos.Sum(m => m.Quantidade).Should().Be(5);
+
+        var resumo = (await admin.GetFromJsonAsync<ResumoFinanceiro>($"/painel/financeiro/resumo?inicio={Hoje}&fim={Hoje}"))!;
+        (resumo.TotalProdutos, resumo.QuantidadeVendas).Should().Be((0m, 0));
+        (await profissional.GetFromJsonAsync<ComissoesDoProfissional>($"/painel/comissoes/minhas?de={Hoje}&ate={Hoje}"))!
+            .Produtos.Totais.Should().Be(TotaisComissaoProduto.Zero);
+
+        var lista = await admin.GetFromJsonAsync<List<VendaResumo>>($"{Vendas}?de={Hoje}&ate={Hoje}");
+        lista!.Should().ContainSingle(v => v.Id == vendaId && v.Estornada && v.MotivoEstorno == "Cliente devolveu");
+        (await _fabrica.NoBancoAsync(db => db.LogsAuditoriaNegocio.IgnoreQueryFilters().CountAsync(l => l.Acao == "EstornarVenda"))).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Venda_cuja_comissao_entrou_em_quinzena_fechada_nao_e_estornada()
+    {
+        var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var produtoId = await CriarProdutoAsync(admin, "Cera", 30m, quantidade: 3);
+        var profissionalId = await _fabrica.CriarProfissionalAsync(negocioId, "Gil");
+        await admin.PutAsJsonAsync($"/painel/profissionais/{profissionalId}/comissao", new ConfiguracaoComissao(10m, true, 10m));
+
+        var vendaId = (await (await admin.PostAsJsonAsync(Vendas, new LancarVenda([new ItemLancarVenda(produtoId, 1, 30m)], profissionalId, null)))
+            .Content.ReadFromJsonAsync<VendaLancada>())!.VendaId;
+
+        var quinzena = (await (await admin.PostAsJsonAsync("/painel/quinzenas",
+                new Plataforma.Api.Controllers.Painel.DatasQuinzenaRequisicao(SemeadorDeComissoes.Dia(-1), SemeadorDeComissoes.Dia(1))))
+            .Content.ReadFromJsonAsync<Plataforma.Api.Controllers.Painel.QuinzenaSalvaResposta>())!.Id;
+        (await admin.PostAsJsonAsync($"/painel/quinzenas/{quinzena}/fechar", new Plataforma.Api.Controllers.Painel.FecharQuinzenaRequisicao(false)))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var estorno = await admin.PostAsJsonAsync($"{Vendas}/{vendaId}/estornar", new EstornarVenda("Engano"));
+        estorno.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await estorno.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codigo").GetString().Should().Be("quinzena_fechada");
+        (await _fabrica.NoBancoAsync(db => db.Produtos.IgnoreQueryFilters().SingleAsync(p => p.Id == produtoId))).QuantidadeEstoque.Should().Be(2);
+    }
+
     private static async Task<Guid> CriarProdutoAsync(HttpClient admin, string nome, decimal precoVenda, int quantidade)
     {
         var resposta = await admin.PostAsJsonAsync(Produtos, new CriarProduto(nome, null, precoVenda / 2, precoVenda, quantidade));

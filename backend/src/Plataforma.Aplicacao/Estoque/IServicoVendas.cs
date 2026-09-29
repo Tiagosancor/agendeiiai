@@ -19,7 +19,17 @@ public interface IServicoVendas
     Task<VendaLancada> LancarAsync(LancarVenda dados, CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<VendaResumo>> ListarAsync(DateOnly de, DateOnly ate, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Desfaz a venda (seção 7, decisão do dono: quem gerencia o estoque): os produtos voltam ao estoque e ela sai do
+    /// faturamento e da comissão. Falso: não encontrada. Lança <see cref="ArgumentException"/> sem motivo,
+    /// <see cref="InvalidOperationException"/> se já estornada e <c>QuinzenaFechadaException</c> se a comissão do vendedor
+    /// já entrou numa quinzena fechada.
+    /// </summary>
+    Task<bool> EstornarAsync(Guid vendaId, string? motivo, CancellationToken cancellationToken = default);
 }
+
+public sealed record EstornarVenda(string? Motivo);
 
 public sealed record ProdutoAVenda(Guid Id, string Nome, string? Categoria, decimal PrecoVenda, int QuantidadeEstoque);
 
@@ -44,5 +54,7 @@ public sealed record VendaLancada(Guid VendaId, decimal Total);
 
 public sealed record ItemVendaResumo(Guid ProdutoId, string Produto, int Quantidade, decimal ValorUnitario, decimal Total);
 
+/// <summary><c>Estornada</c>: desfeita — fica na lista para o histórico, mas fora dos totais.</summary>
 public sealed record VendaResumo(
-    Guid Id, DateTimeOffset Data, string? Cliente, Guid? AgendamentoId, string Vendedor, decimal Total, IReadOnlyList<ItemVendaResumo> Itens);
+    Guid Id, DateTimeOffset Data, string? Cliente, Guid? AgendamentoId, string Vendedor, decimal Total, IReadOnlyList<ItemVendaResumo> Itens,
+    bool Estornada = false, string? MotivoEstorno = null);
