@@ -55,12 +55,20 @@ public interface INotificador
     /// <summary>Link de "esqueci minha senha" do painel.</summary>
     Task EnviarRedefinicaoSenhaAsync(string email, string nomeUsuario, string link, int validadeMinutos, CancellationToken cancellationToken = default);
 
+    /// <summary>Resumo diário de estoque baixo e esgotado aos Administradores (seção 7) — um e-mail por negócio, nunca um por produto.</summary>
+    Task EnviarAlertaEstoqueAsync(DadosAlertaEstoque dados, CancellationToken cancellationToken = default);
+
     /// <summary>Convite para o profissional criar a senha do próprio acesso (seção 7).</summary>
     Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default);
 }
 
 public sealed record DadosBoasVindas(
     string Email, string NomeUsuario, string NomeNegocio, string Fuso, string LinkPainel, string LinkPublico, DateTimeOffset FimTeste);
+
+/// <summary>Só nome e quantidades — o preço de custo nunca vai para e-mail (seção 7).</summary>
+public sealed record DadosAlertaEstoque(
+    IReadOnlyList<string> EmailsAdministradores, string NomeNegocio,
+    IReadOnlyList<(string Nome, int Quantidade, int Minima)> EstoqueBaixo, IReadOnlyList<string> Esgotados, string LinkEstoque);
 
 public sealed record DadosAvisoAssinatura(
     IReadOnlyList<string> EmailsAdministradores, string NomeNegocio, string Fuso, bool EmTeste, int DiasRestantes,

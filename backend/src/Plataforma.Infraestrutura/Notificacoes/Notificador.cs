@@ -296,6 +296,31 @@ public sealed class Notificador : INotificador
             _email.EnviarAsync(email, $"Redefinir sua senha — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/redefinir-senha");
     }
 
+    public async Task EnviarAlertaEstoqueAsync(DadosAlertaEstoque dados, CancellationToken cancellationToken = default)
+    {
+        static string Html(string texto) => System.Net.WebUtility.HtmlEncode(texto);
+
+        var esgotados = dados.Esgotados.Count == 0
+            ? ""
+            : $"<p><strong>Esgotados:</strong></p><ul>{string.Concat(dados.Esgotados.Select(n => $"<li>{Html(n)}</li>"))}</ul>";
+        var baixos = dados.EstoqueBaixo.Count == 0
+            ? ""
+            : $"<p><strong>Estoque baixo:</strong></p><ul>{string.Concat(dados.EstoqueBaixo.Select(p => $"<li>{Html(p.Nome)}: {p.Quantidade} (mínimo {p.Minima})</li>"))}</ul>";
+
+        var corpo = Envelope(dados.NomeNegocio, $"""
+            <p>Produtos de <strong>{Html(dados.NomeNegocio)}</strong> que precisam de reposição:</p>
+            {esgotados}
+            {baixos}
+            <p><a href="{dados.LinkEstoque}">Ver o estoque</a></p>
+            """);
+
+        var assunto = dados.Esgotados.Count > 0
+            ? $"Produtos esgotados — {dados.NomeNegocio}"
+            : $"Produtos com estoque baixo — {dados.NomeNegocio}";
+        await Task.WhenAll(dados.EmailsAdministradores.Select(email =>
+            ExecutarSemFalharAsync(() => _email.EnviarAsync(email, assunto, corpo, cancellationToken), "E-mail/alerta-estoque")));
+    }
+
     public async Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default)
     {
         var negocio = await ObterNegocioAsync(cancellationToken);

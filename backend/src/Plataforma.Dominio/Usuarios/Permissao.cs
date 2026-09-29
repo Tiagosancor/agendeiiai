@@ -45,4 +45,13 @@ public enum Permissao
     /// todos os perfis; só o Administrador a tem de origem e concede por usuário.
     /// </summary>
     ForcarAgendamento = 17,
+
+    /// <summary>Lançar venda de produto a cliente (seção 7, "Estoque"). Administrador e Recepcionista, por padrão.</summary>
+    VenderProdutos = 18,
+
+    /// <summary>
+    /// Cadastrar e editar produto, lançar entrada, ajuste, vale e consumo interno (seção 7, "Estoque"). Só o
+    /// Administrador, por padrão; também é quem vê o preço de custo.
+    /// </summary>
+    GerenciarEstoque = 19,
 }

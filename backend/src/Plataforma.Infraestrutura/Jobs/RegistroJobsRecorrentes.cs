@@ -40,6 +40,10 @@ public sealed class RegistroJobsRecorrentes(
         // se a API hibernar no horário do job.
         gerenciador.AddOrUpdate<JobAtualizarAssinaturas>(
             "atualizar-assinaturas", job => job.ExecutarAsync(CancellationToken.None), "0 * * * *");
+
+        // Resumo diário de estoque baixo/esgotado aos Administradores (seção 7): 11:00 UTC = 08:00 em Brasília.
+        gerenciador.AddOrUpdate<Estoque.JobAlertaEstoque>(
+            "alerta-estoque", job => job.ExecutarAsync(CancellationToken.None), "0 11 * * *");
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancelamento)

@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
-import type { PrimeirosPassos } from "@/lib/tipos";
+import type { AlertasEstoque, PrimeirosPassos } from "@/lib/tipos";
 
 export default function PaginaInicioPainel() {
   return (
     <div className="space-y-6">
+      <IndicadorEstoque />
       <ChecklistPrimeirosPassos />
       <div>
         <h1 className="mb-2 text-lg font-semibold text-gray-900 dark:text-neutral-50">Bem-vindo</h1>
@@ -15,6 +16,52 @@ export default function PaginaInicioPainel() {
           Use o menu acima para gerenciar usuários, profissionais, serviços, clientes e o perfil do seu negócio.
         </p>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Indicador de reposição (seção 7): quantos produtos estão esgotados e em estoque baixo, já na tela inicial.
+ * Só para quem gerencia o estoque ou vende produtos, e só quando há algo a repor.
+ */
+function IndicadorEstoque() {
+  const { chamarApi, temPermissao } = useAutenticacao();
+  const podeVer = temPermissao("GerenciarEstoque") || temPermissao("VenderProdutos");
+  const [alertas, setAlertas] = useState<AlertasEstoque | null>(null);
+
+  useEffect(() => {
+    if (!podeVer) return;
+    chamarApi<AlertasEstoque>("/painel/estoque/alertas").then(setAlertas).catch(() => setAlertas(null));
+  }, [chamarApi, podeVer]);
+
+  if (!alertas || (alertas.esgotados.length === 0 && alertas.estoqueBaixo.length === 0)) return null;
+
+  const conteudo = (
+    <>
+      <span className="font-semibold">Estoque:</span>{" "}
+      {alertas.esgotados.length > 0 && (
+        <span className="text-red-700 dark:text-red-400">
+          {alertas.esgotados.length} {alertas.esgotados.length === 1 ? "produto esgotado" : "produtos esgotados"}
+        </span>
+      )}
+      {alertas.esgotados.length > 0 && alertas.estoqueBaixo.length > 0 && " · "}
+      {alertas.estoqueBaixo.length > 0 && (
+        <span className="text-amber-700 dark:text-amber-400">
+          {alertas.estoqueBaixo.length} com estoque baixo
+        </span>
+      )}
+    </>
+  );
+
+  return (
+    <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-gray-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-neutral-200">
+      {temPermissao("GerenciarEstoque") ? (
+        <Link href="/painel/estoque" className="hover:underline">
+          {conteudo}
+        </Link>
+      ) : (
+        conteudo
+      )}
     </div>
   );
 }

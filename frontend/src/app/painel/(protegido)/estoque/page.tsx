@@ -1,0 +1,423 @@
+"use client";
+
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useAutenticacao } from "@/lib/auth-context";
+import { ErroApi } from "@/lib/api";
+import { Modal } from "@/components/Modal";
+import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
+import { formatarReais } from "@/lib/formatacao";
+import type { MovimentoEstoqueResumo, ProdutoResumo } from "@/lib/tipos";
+
+const ROTULO_SITUACAO: Record<ProdutoResumo["situacao"], { texto: string; classe: string }> = {
+  Normal: { texto: "Em estoque", classe: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" },
+  EstoqueBaixo: { texto: "Estoque baixo", classe: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300" },
+  Esgotado: { texto: "Esgotado", classe: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300" },
+  Inativo: { texto: "Inativo", classe: "bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-neutral-400" },
+};
+
+const ROTULO_MOVIMENTO: Record<MovimentoEstoqueResumo["tipo"], string> = {
+  Entrada: "Entrada",
+  Venda: "Venda",
+  ConsumoInterno: "Consumo interno",
+  Ajuste: "Ajuste",
+};
+
+type Acao = { tipo: "editar" | "entrada" | "ajuste" | "historico"; produto: ProdutoResumo } | null;
+
+/**
+ * Estoque (seção 7): a quantidade nunca é digitada direto — muda por entrada (reposição), ajuste (contagem,
+ * com motivo) e, depois, venda e consumo interno. "Esgotado" e "Estoque baixo" ficam em destaque no topo.
+ */
+export default function PaginaEstoque() {
+  const { chamarApi, temPermissao } = useAutenticacao();
+  const [produtos, setProdutos] = useState<ProdutoResumo[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [novoAberto, setNovoAberto] = useState(false);
+  const [acao, setAcao] = useState<Acao>(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      setProdutos(await chamarApi<ProdutoResumo[]>("/painel/estoque/produtos"));
+    } catch {
+      setErro("Não foi possível carregar o estoque.");
+    }
+  }, [chamarApi]);
+
+  useEffect(() => {
+    // Busca disparada pela montagem.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    carregar();
+  }, [carregar]);
+
+  if (!temPermissao("GerenciarEstoque")) return <p className="text-sm text-gray-500 dark:text-neutral-400">Sem permissão para gerenciar o estoque.</p>;
+
+  async function alternarAtivo(produto: ProdutoResumo) {
+    await chamarApi(`/painel/estoque/produtos/${produto.id}/${produto.ativo ? "desativar" : "ativar"}`, { metodo: "POST" });
+    await carregar();
+  }
+
+  async function excluir(produto: ProdutoResumo) {
+    if (!confirm(`Excluir ${produto.nome}? O histórico de entradas e ajustes dele também some.`)) return;
+    try {
+      await chamarApi(`/painel/estoque/produtos/${produto.id}`, { metodo: "DELETE" });
+      await carregar();
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível excluir o produto.");
+    }
+  }
+
+  const esgotados = produtos?.filter((p) => p.situacao === "Esgotado") ?? [];
+  const baixos = produtos?.filter((p) => p.situacao === "EstoqueBaixo") ?? [];
+  const fechar = async (mudou: boolean) => {
+    setAcao(null);
+    if (mudou) await carregar();
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Estoque</h1>
+        <button className={classeBotaoPrimario} onClick={() => setNovoAberto(true)}>
+          Novo produto
+        </button>
+      </div>
+
+      {erro && <p className="text-sm text-red-600">{erro}</p>}
+
+      {esgotados.length > 0 && (
+        <section aria-label="Esgotado" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm dark:border-red-800 dark:bg-red-950/40">
+          <h2 className="font-semibold text-red-800 dark:text-red-300">Esgotado</h2>
+          <p className="text-red-800 dark:text-red-200">{esgotados.map((p) => p.nome).join(", ")}</p>
+        </section>
+      )}
+      {baixos.length > 0 && (
+        <section aria-label="Estoque baixo" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950/40">
+          <h2 className="font-semibold text-amber-900 dark:text-amber-300">Estoque baixo</h2>
+          <p className="text-amber-900 dark:text-amber-100">
+            {baixos.map((p) => `${p.nome} (${p.quantidadeEstoque}, mínimo ${p.quantidadeMinima})`).join(", ")}
+          </p>
+        </section>
+      )}
+
+      <div className={classeCartao}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-175">
+            <thead className="border-b border-gray-200 dark:border-neutral-800">
+              <tr>
+                <th className={classeTh}>Produto</th>
+                <th className={classeTh}>Em estoque</th>
+                <th className={classeTh}>Custo</th>
+                <th className={classeTh}>Venda</th>
+                <th className={classeTh}>Situação</th>
+                <th className={classeTh}>Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+              {produtos?.map((produto) => (
+                <tr key={produto.id}>
+                  <td className={classeTd}>
+                    {produto.nome}
+                    {produto.categoria && <span className="block text-xs text-gray-500 dark:text-neutral-400">{produto.categoria}</span>}
+                  </td>
+                  <td className={classeTd}>
+                    {produto.quantidadeEstoque}
+                    <span className="block text-xs text-gray-500 dark:text-neutral-400">mínimo {produto.quantidadeMinima}</span>
+                  </td>
+                  <td className={classeTd}>{formatarReais(produto.precoCusto)}</td>
+                  <td className={classeTd}>{formatarReais(produto.precoVenda)}</td>
+                  <td className={classeTd}>
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${ROTULO_SITUACAO[produto.situacao].classe}`}>
+                      {ROTULO_SITUACAO[produto.situacao].texto}
+                    </span>
+                  </td>
+                  <td className={`${classeTd} space-x-3 whitespace-nowrap`}>
+                    <BotaoLink onClick={() => setAcao({ tipo: "entrada", produto })}>Entrada</BotaoLink>
+                    <BotaoLink onClick={() => setAcao({ tipo: "ajuste", produto })}>Ajuste</BotaoLink>
+                    <BotaoLink onClick={() => setAcao({ tipo: "historico", produto })}>Histórico</BotaoLink>
+                    <BotaoLink onClick={() => setAcao({ tipo: "editar", produto })}>Editar</BotaoLink>
+                    <BotaoLink cinza onClick={() => alternarAtivo(produto)}>
+                      {produto.ativo ? "Desativar" : "Ativar"}
+                    </BotaoLink>
+                    <BotaoLink vermelho onClick={() => excluir(produto)}>
+                      Excluir
+                    </BotaoLink>
+                  </td>
+                </tr>
+              ))}
+              {produtos?.length === 0 && (
+                <tr>
+                  <td className={classeTd} colSpan={6}>
+                    Nenhum produto cadastrado ainda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <ModalProduto
+        aberto={novoAberto}
+        produto={null}
+        aoFechar={async (mudou) => {
+          setNovoAberto(false);
+          if (mudou) await carregar();
+        }}
+      />
+      {acao?.tipo === "editar" && <ModalProduto aberto produto={acao.produto} aoFechar={fechar} />}
+      {acao?.tipo === "entrada" && <ModalEntrada produto={acao.produto} aoFechar={fechar} />}
+      {acao?.tipo === "ajuste" && <ModalAjuste produto={acao.produto} aoFechar={fechar} />}
+      {acao?.tipo === "historico" && <ModalHistorico produto={acao.produto} aoFechar={() => setAcao(null)} />}
+    </div>
+  );
+}
+
+function BotaoLink({ children, onClick, cinza, vermelho }: { children: React.ReactNode; onClick: () => void; cinza?: boolean; vermelho?: boolean }) {
+  const cor = vermelho
+    ? "text-red-600 dark:text-red-400"
+    : cinza
+      ? "text-gray-600 dark:text-neutral-300"
+      : "text-marca-primaria dark:text-marca-acento";
+  return (
+    <button type="button" className={`${cor} hover:underline`} onClick={onClick}>
+      {children}
+    </button>
+  );
+}
+
+/** Formulário com envio, erro e "salvando" — o mesmo esqueleto dos quatro modais. */
+function useEnvio(aoFechar: (mudou: boolean) => void) {
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  async function enviar(evento: FormEvent, acao: () => Promise<unknown>) {
+    evento.preventDefault();
+    setErro(null);
+    setEnviando(true);
+    try {
+      await acao();
+      aoFechar(true);
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível salvar.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return { erro, enviando, enviar };
+}
+
+function Rodape({ enviando, aoFechar, rotulo }: { enviando: boolean; aoFechar: () => void; rotulo: string }) {
+  return (
+    <div className="flex justify-end gap-2 pt-2">
+      <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
+        Cancelar
+      </button>
+      <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
+        {enviando ? "Salvando..." : rotulo}
+      </button>
+    </div>
+  );
+}
+
+function ModalProduto({ aberto, produto, aoFechar }: { aberto: boolean; produto: ProdutoResumo | null; aoFechar: (mudou: boolean) => void }) {
+  const { chamarApi } = useAutenticacao();
+  const { erro, enviando, enviar } = useEnvio(aoFechar);
+  const [nome, setNome] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [precoCusto, setPrecoCusto] = useState("");
+  const [precoVenda, setPrecoVenda] = useState("");
+  const [quantidadeInicial, setQuantidadeInicial] = useState("0");
+  const [quantidadeMinima, setQuantidadeMinima] = useState("3");
+
+  useEffect(() => {
+    if (!aberto) return;
+    // Recomeça a cada abertura, com os dados do produto quando é edição.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setNome(produto?.nome ?? "");
+    setCategoria(produto?.categoria ?? "");
+    setPrecoCusto(produto ? String(produto.precoCusto) : "");
+    setPrecoVenda(produto ? String(produto.precoVenda) : "");
+    setQuantidadeInicial("0");
+    setQuantidadeMinima(String(produto?.quantidadeMinima ?? 3));
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [aberto, produto]);
+
+  const corpo = {
+    nome,
+    categoria: categoria || null,
+    precoCusto: Number(precoCusto),
+    precoVenda: Number(precoVenda),
+    quantidadeMinima: Number(quantidadeMinima),
+  };
+
+  return (
+    <Modal titulo={produto ? `Editar ${produto.nome}` : "Novo produto"} aberto={aberto} aoFechar={() => aoFechar(false)}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) =>
+          enviar(e, () =>
+            produto
+              ? chamarApi(`/painel/estoque/produtos/${produto.id}`, { metodo: "PUT", corpo })
+              : chamarApi("/painel/estoque/produtos", { metodo: "POST", corpo: { ...corpo, quantidadeInicial: Number(quantidadeInicial) } }),
+          )
+        }
+      >
+        <label className="block">
+          <span className={classeLabel}>Nome</span>
+          <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className={classeLabel}>Categoria (opcional)</span>
+          <input className={classeInput} value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="Cabelo" />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className={classeLabel}>Preço de custo (R$)</span>
+            <input required type="number" min={0} step="0.01" className={classeInput} value={precoCusto} onChange={(e) => setPrecoCusto(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className={classeLabel}>Preço de venda (R$)</span>
+            <input required type="number" min={0} step="0.01" className={classeInput} value={precoVenda} onChange={(e) => setPrecoVenda(e.target.value)} />
+          </label>
+          {!produto && (
+            <label className="block">
+              <span className={classeLabel}>Quantidade inicial</span>
+              <input required type="number" min={0} step={1} className={classeInput} value={quantidadeInicial} onChange={(e) => setQuantidadeInicial(e.target.value)} />
+            </label>
+          )}
+          <label className="block">
+            <span className={classeLabel}>Alerta com (quantidade mínima)</span>
+            <input required type="number" min={0} step={1} className={classeInput} value={quantidadeMinima} onChange={(e) => setQuantidadeMinima(e.target.value)} />
+          </label>
+        </div>
+        {produto && (
+          <p className="text-xs text-gray-500 dark:text-neutral-400">A quantidade em estoque muda só por entrada ou ajuste, para o histórico ficar completo.</p>
+        )}
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <Rodape enviando={enviando} aoFechar={() => aoFechar(false)} rotulo={produto ? "Salvar" : "Criar"} />
+      </form>
+    </Modal>
+  );
+}
+
+function ModalEntrada({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar: (mudou: boolean) => void }) {
+  const { chamarApi } = useAutenticacao();
+  const { erro, enviando, enviar } = useEnvio(aoFechar);
+  const [quantidade, setQuantidade] = useState("");
+  const [custo, setCusto] = useState(String(produto.precoCusto));
+  const [fornecedor, setFornecedor] = useState("");
+  const [observacao, setObservacao] = useState("");
+
+  return (
+    <Modal titulo={`Entrada — ${produto.nome}`} aberto aoFechar={() => aoFechar(false)}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) =>
+          enviar(e, () =>
+            chamarApi(`/painel/estoque/produtos/${produto.id}/entradas`, {
+              metodo: "POST",
+              corpo: { quantidade: Number(quantidade), custoUnitario: Number(custo), fornecedor: fornecedor || null, observacao: observacao || null },
+            }),
+          )
+        }
+      >
+        <p className="text-sm text-gray-600 dark:text-neutral-400">Em estoque agora: {produto.quantidadeEstoque}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className={classeLabel}>Quantidade</span>
+            <input required autoFocus type="number" min={1} step={1} className={classeInput} value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className={classeLabel}>Custo unitário (R$)</span>
+            <input required type="number" min={0} step="0.01" className={classeInput} value={custo} onChange={(e) => setCusto(e.target.value)} />
+          </label>
+        </div>
+        <label className="block">
+          <span className={classeLabel}>Fornecedor (opcional)</span>
+          <input className={classeInput} value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className={classeLabel}>Observação (opcional)</span>
+          <input className={classeInput} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
+        </label>
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <Rodape enviando={enviando} aoFechar={() => aoFechar(false)} rotulo="Lançar entrada" />
+      </form>
+    </Modal>
+  );
+}
+
+function ModalAjuste({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar: (mudou: boolean) => void }) {
+  const { chamarApi } = useAutenticacao();
+  const { erro, enviando, enviar } = useEnvio(aoFechar);
+  const [contada, setContada] = useState(String(produto.quantidadeEstoque));
+  const [motivo, setMotivo] = useState("");
+
+  return (
+    <Modal titulo={`Ajuste — ${produto.nome}`} aberto aoFechar={() => aoFechar(false)}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) =>
+          enviar(e, () =>
+            chamarApi(`/painel/estoque/produtos/${produto.id}/ajustes`, {
+              metodo: "POST",
+              corpo: { quantidadeContada: Number(contada), motivo },
+            }),
+          )
+        }
+      >
+        <p className="text-sm text-gray-600 dark:text-neutral-400">
+          No sistema: {produto.quantidadeEstoque}. Informe quanto há de fato (perda, quebra, balanço).
+        </p>
+        <label className="block">
+          <span className={classeLabel}>Quantidade contada</span>
+          <input required autoFocus type="number" min={0} step={1} className={classeInput} value={contada} onChange={(e) => setContada(e.target.value)} />
+        </label>
+        <label className="block">
+          <span className={classeLabel}>Motivo (obrigatório)</span>
+          <input required className={classeInput} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+        </label>
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <Rodape enviando={enviando} aoFechar={() => aoFechar(false)} rotulo="Ajustar" />
+      </form>
+    </Modal>
+  );
+}
+
+function ModalHistorico({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar: () => void }) {
+  const { chamarApi } = useAutenticacao();
+  const [movimentos, setMovimentos] = useState<MovimentoEstoqueResumo[] | null>(null);
+
+  useEffect(() => {
+    chamarApi<MovimentoEstoqueResumo[]>(`/painel/estoque/produtos/${produto.id}/movimentos`).then(setMovimentos);
+  }, [chamarApi, produto.id]);
+
+  return (
+    <Modal titulo={`Histórico — ${produto.nome}`} aberto aoFechar={aoFechar}>
+      {!movimentos ? (
+        <p className="text-sm text-gray-500 dark:text-neutral-400">Carregando...</p>
+      ) : (
+        <ul className="divide-y divide-gray-100 text-sm dark:divide-neutral-800">
+          {movimentos.map((m) => (
+            <li key={m.id} className="py-2">
+              <div className="flex justify-between gap-2">
+                <span className="font-medium text-gray-900 dark:text-neutral-50">
+                  {ROTULO_MOVIMENTO[m.tipo]} {m.quantidade > 0 ? `+${m.quantidade}` : m.quantidade}
+                </span>
+                <span className="text-gray-500 dark:text-neutral-400">{new Date(m.data).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-neutral-400">
+                {m.quantidadeAntes} → {m.quantidadeDepois}
+                {m.valorUnitario !== null && ` · ${formatarReais(m.valorUnitario)} cada`}
+                {m.fornecedor && ` · ${m.fornecedor}`}
+                {m.usuario && ` · por ${m.usuario}`}
+              </p>
+              {m.observacao && <p className="text-xs text-gray-600 dark:text-neutral-300">{m.observacao}</p>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
