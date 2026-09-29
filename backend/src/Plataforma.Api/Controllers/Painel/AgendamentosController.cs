@@ -111,6 +111,13 @@ public sealed class AgendamentosController : ControllerBase
         [FromQuery] DateOnly data, [FromServices] IConsultaGradeAgenda consulta, CancellationToken cancellationToken) =>
         Ok(await consulta.ObterAsync(data, cancellationToken));
 
+    /// <summary>Visão "Semana" (seção 7): um profissional por vez, os 7 dias a partir de <paramref name="inicio"/>.</summary>
+    [HttpGet("~/painel/agenda/semana")]
+    public async Task<ActionResult<AgendaSemana>> Semana(
+        [FromQuery] Guid profissionalId, [FromQuery] DateOnly inicio, [FromServices] IConsultaAgendaSemana consulta,
+        CancellationToken cancellationToken) =>
+        await consulta.ObterAsync(profissionalId, inicio, cancellationToken) is { } semana ? Ok(semana) : NotFound();
+
     [HttpGet("~/painel/agenda")]
     public async Task<ActionResult<IReadOnlyList<AgendamentoResumo>>> ListarAgendaDoDia(
         [FromQuery] Guid profissionalId, [FromQuery] DateOnly data, CancellationToken cancellationToken) =>

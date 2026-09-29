@@ -166,6 +166,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGerenciadorProfissionalServicos, GerenciadorProfissionalServicos>();
         servicos.AddScoped<IConsultaDisponibilidade, ConsultaDisponibilidade>();
         servicos.AddScoped<IConsultaGradeAgenda, ConsultaGradeAgenda>();
+        servicos.AddScoped<IConsultaAgendaSemana, ConsultaAgendaSemana>();
+        servicos.AddScoped<IAgendaDoProfissionalLogado, AgendaDoProfissionalLogado>();
         servicos.AddScoped<IServicoAgendamentos, ServicoAgendamentos>();
         servicos.AddScoped<JobExpirarReservas>();
 
