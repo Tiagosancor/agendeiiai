@@ -105,11 +105,17 @@ test("cliente agenda um serviço do início ao fim pelo assistente público", as
   const assistente = page.getByTestId("assistente-agendamento");
   await expect(assistente).toBeVisible();
 
-  // Etapa 1 — Serviços
+  // Etapa 1 — Profissional (seção 6.2: vem antes dos serviços)
+  await expect(assistente.getByRole("button", { name: "Selecione um profissional" })).toBeDisabled();
+  await assistente.getByRole("button", { name: new RegExp(`Profissional Playwright ${sufixo}`) }).click();
+  await assistente.getByRole("button", { name: "Continuar" }).click();
+
+  // Etapa 2 — Serviços (só os dele)
+  await expect(assistente.getByText(`Com Profissional Playwright ${sufixo}`)).toBeVisible();
   await assistente.getByRole("button", { name: new RegExp(nomeServico) }).click();
   await assistente.getByRole("button", { name: "Continuar" }).click();
 
-  // Etapa 2 — Data e horário. Escolhe amanhã explicitamente (não confia no padrão
+  // Etapa 3 — Data e horário. Escolhe amanhã explicitamente (não confia no padrão
   // "hoje", que pode não ter mais horário livre dependendo da hora em que o teste roda).
   await assistente.locator(".overflow-x-auto button").nth(1).click();
   const primeiroHorario = assistente.locator(".grid.grid-cols-3 button").first();
@@ -117,7 +123,7 @@ test("cliente agenda um serviço do início ao fim pelo assistente público", as
   await primeiroHorario.click();
   await assistente.getByRole("button", { name: "Continuar" }).click();
 
-  // Etapa 3 — Seus dados + código de confirmação (seção 8.1)
+  // Etapa 4 — Seus dados + código de confirmação (seção 8.1)
   await assistente.getByPlaceholder("Nome completo").fill("Cliente Playwright");
   // Como as pessoas digitam: só DDD + número, sem o +55 (a API completa).
   await assistente.getByLabel("WhatsApp com DDD").fill(`(${telefone.slice(3, 5)}) ${telefone.slice(5)}`);
@@ -130,8 +136,9 @@ test("cliente agenda um serviço do início ao fim pelo assistente público", as
   await assistente.getByPlaceholder("000000").fill(codigo);
   await assistente.getByRole("button", { name: "Confirmar código" }).click();
 
-  // Etapa 4 — Resumo
+  // Etapa 5 — Resumo
   await expect(assistente.getByText(nomeServico)).toBeVisible();
+  await expect(assistente.getByText(`com Profissional Playwright ${sufixo}`)).toBeVisible();
   await assistente.getByRole("button", { name: "Confirmar Agendamento" }).click();
 
   // Sucesso (seção 6.3)
@@ -175,6 +182,8 @@ test("com 'Qualquer profissional', cada horário aparece uma vez só", async ({ 
   await page.goto("/");
   await page.getByRole("button", { name: "Agendar", exact: true }).click();
   const assistente = page.getByTestId("assistente-agendamento");
+  await assistente.getByRole("button", { name: /^★\s*Qualquer profissional/ }).click();
+  await assistente.getByRole("button", { name: "Continuar" }).click();
   await assistente.getByRole("button", { name: new RegExp(nomeServico) }).click();
   await assistente.getByRole("button", { name: "Continuar" }).click();
 
@@ -199,6 +208,8 @@ test("à noite (depois das 21h no Brasil), o dia pedido à API é o mesmo dia mo
   await page.goto("/");
   await page.getByRole("button", { name: "Agendar", exact: true }).click();
   const assistente = page.getByTestId("assistente-agendamento");
+  await assistente.getByRole("button", { name: /^★\s*Qualquer profissional/ }).click();
+  await assistente.getByRole("button", { name: "Continuar" }).click();
   await assistente.locator("button[aria-pressed]").first().click();
   const pedido = page.waitForRequest((r) => r.url().includes("/horarios-livres"));
   await assistente.getByRole("button", { name: "Continuar" }).click();
@@ -206,4 +217,89 @@ test("à noite (depois das 21h no Brasil), o dia pedido à API é o mesmo dia mo
   expect(new URL((await pedido).url()).searchParams.get("data")).toBe(dia);
   await expect(assistente.locator(".overflow-x-auto button").first()).toContainText(String(Number(dia.slice(8))));
   await contexto.close();
+});
+
+test("Agendar num serviço da vitrine leva ao profissional que o executa, e serviço fora da vitrine continua agendável", async ({ page, request }) => {
+  const sufixo = Date.now().toString().slice(-8);
+  const token = await loginAdmin(request);
+  const cabecalhos = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+  const categoriaId = await (
+    await request.post(`${API_BASE}/painel/categorias`, { headers: cabecalhos, data: { nome: `Categoria E2E ${sufixo}` } })
+  ).json();
+  const criarServico = async (nome: string, exibirNaPaginaInicial: boolean) =>
+    (await (
+      await request.post(`${API_BASE}/painel/servicos`, {
+        headers: cabecalhos,
+        data: { categoriaId, nome, preco: 40, duracaoMinutos: 30, popular: true, exibirNaPaginaInicial },
+      })
+    ).json()) as string;
+  const naVitrine = `Vitrine ${sufixo}`;
+  const foraDaVitrine = `Escondido ${sufixo}`;
+  const naVitrineId = await criarServico(naVitrine, true);
+  const foraDaVitrineId = await criarServico(foraDaVitrine, false);
+
+  // Quem faz o da vitrine (e o escondido) e quem só faz o escondido.
+  const criarProfissional = async (nome: string, servicos: string[]) => {
+    const id: string = await (await request.post(`${API_BASE}/painel/profissionais`, { headers: cabecalhos, data: { nome } })).json();
+    profissionaisCriados.push(id);
+    for (const servicoId of servicos) {
+      await request.post(`${API_BASE}/painel/profissionais/${id}/servicos`, { headers: cabecalhos, data: { servicoId } });
+    }
+    return id;
+  };
+  const quemFaz = `Zz Faz ${sufixo}`;
+  const quemNaoFaz = `Zz Nao Faz ${sufixo}`;
+  await criarProfissional(quemFaz, [naVitrineId, foraDaVitrineId]);
+  await criarProfissional(quemNaoFaz, [foraDaVitrineId]);
+
+  await page.goto("/");
+  // Vitrine: o escondido não aparece na página.
+  // Aparece em "Mais procurados" (é popular) e, se a categoria estiver aberta, nela também.
+  await expect(page.getByRole("button", { name: new RegExp(naVitrine) }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(foraDaVitrine) })).toHaveCount(0);
+
+  await page.getByRole("button", { name: new RegExp(naVitrine) }).first().click();
+  const assistente = page.getByTestId("assistente-agendamento");
+  await expect(assistente.getByRole("heading", { name: "Escolha o profissional" })).toBeVisible();
+  await expect(assistente.getByRole("button", { name: /Qualquer profissional entre eles/ })).toBeVisible();
+  await expect(assistente.getByRole("button", { name: new RegExp(quemFaz) })).toBeVisible();
+  await expect(assistente.getByRole("button", { name: new RegExp(quemNaoFaz) })).toHaveCount(0);
+
+  // Passo Serviços: só os dele, com o da vitrine já marcado; o escondido é agendável.
+  await assistente.getByRole("button", { name: new RegExp(quemFaz) }).click();
+  await assistente.getByRole("button", { name: "Continuar" }).click();
+  const servicos = assistente.locator("button[aria-pressed]");
+  await expect(servicos).toHaveCount(2);
+  await expect(assistente.getByRole("button", { name: new RegExp(naVitrine) })).toHaveAttribute("aria-pressed", "true");
+  await assistente.getByRole("button", { name: new RegExp(foraDaVitrine) }).click();
+  await expect(assistente.getByRole("button", { name: new RegExp(foraDaVitrine) })).toHaveAttribute("aria-pressed", "true");
+  await expect(assistente.getByText("2 serviço(s) · 60 min")).toBeVisible();
+
+  // Voltando e escolhendo "qualquer um entre eles", o passo Serviços mostra o catálogo completo.
+  await assistente.getByRole("button", { name: "← Voltar" }).click();
+  await assistente.getByRole("button", { name: /Qualquer profissional entre eles/ }).click();
+  await assistente.getByRole("button", { name: "Continuar" }).click();
+  expect(await servicos.count()).toBeGreaterThan(2);
+});
+
+test("com um único profissional ativo, o assistente pula o passo Profissional", async ({ page, request }) => {
+  // Negócio com um profissional só: a lista pública é reduzida a um (a acme de dev tem vários).
+  const lista = (await (
+    await request.get(`${API_BASE}/publico/profissionais`, { headers: { "X-Slug-Negocio": "acme" } })
+  ).json()) as { servicoIds: string[] }[];
+  const unico = lista.find((p) => p.servicoIds.length > 0) ?? lista[0];
+  await page.route("**/api/publico/profissionais", (rota) => rota.fulfill({ json: [unico] }));
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Agendar", exact: true }).click();
+  const assistente = page.getByTestId("assistente-agendamento");
+  await expect(assistente.getByRole("heading", { name: "Escolha os serviços" })).toBeVisible();
+  await expect(assistente.getByRole("heading", { name: "Escolha o profissional" })).toHaveCount(0);
+  await expect(assistente.getByRole("button", { name: "← Voltar" })).toHaveCount(0);
+
+  await assistente.locator("button[aria-pressed]").first().click();
+  const pedido = page.waitForRequest((r) => r.url().includes("/horarios-livres"));
+  await assistente.getByRole("button", { name: "Continuar" }).click();
+  expect(new URL((await pedido).url()).searchParams.get("profissionalId")).toBeTruthy();
 });

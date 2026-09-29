@@ -21,6 +21,12 @@ public class Servico : EntidadeBase, IEntidadeDoNegocio
 
     public bool Popular { get; private set; }
 
+    /// <summary>
+    /// Aparece na vitrine da página do negócio (seção 6.1). Desligado, o serviço some só da vitrine: continua no assistente
+    /// de agendamento para quem o executa.
+    /// </summary>
+    public bool ExibirNaPaginaInicial { get; private set; } = true;
+
     public bool Ativo { get; private set; } = true;
 
     /// <summary>
@@ -45,7 +51,8 @@ public class Servico : EntidadeBase, IEntidadeDoNegocio
     }
 
     public static Servico Criar(
-        Guid negocioId, Guid categoriaId, string nome, decimal preco, int duracaoMinutos, bool popular = false)
+        Guid negocioId, Guid categoriaId, string nome, decimal preco, int duracaoMinutos, bool popular = false,
+        bool exibirNaPaginaInicial = true)
     {
         if (string.IsNullOrWhiteSpace(nome))
             throw new ArgumentException("O nome do serviço é obrigatório.", nameof(nome));
@@ -56,7 +63,11 @@ public class Servico : EntidadeBase, IEntidadeDoNegocio
         if (duracaoMinutos <= 0)
             throw new ArgumentException("A duração precisa ser maior que zero.", nameof(duracaoMinutos));
 
-        return new Servico(negocioId, categoriaId, nome.Trim(), preco, duracaoMinutos) { Popular = popular };
+        return new Servico(negocioId, categoriaId, nome.Trim(), preco, duracaoMinutos)
+        {
+            Popular = popular,
+            ExibirNaPaginaInicial = exibirNaPaginaInicial,
+        };
     }
 
     public void AtualizarDados(Guid categoriaId, string nome, decimal preco, int duracaoMinutos, bool popular)
@@ -76,6 +87,8 @@ public class Servico : EntidadeBase, IEntidadeDoNegocio
         DuracaoMinutos = duracaoMinutos;
         Popular = popular;
     }
+
+    public void DefinirExibicaoNaPaginaInicial(bool exibir) => ExibirNaPaginaInicial = exibir;
 
     public void Desativar() => Ativo = false;
 

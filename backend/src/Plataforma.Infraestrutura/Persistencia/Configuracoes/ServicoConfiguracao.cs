@@ -16,6 +16,9 @@ public sealed class ServicoConfiguracao : IEntityTypeConfiguration<Servico>
         builder.Property(s => s.Preco).HasColumnType("numeric(10,2)").IsRequired();
         builder.Property(s => s.DuracaoMinutos).IsRequired();
         builder.Property(s => s.Popular).IsRequired();
+        // Sem HasDefaultValue: o EF deixaria de mandar "false" (valor padrão do bool) e o banco gravaria true. O default
+        // true para os serviços que já existem fica só na migration.
+        builder.Property(s => s.ExibirNaPaginaInicial).IsRequired();
         builder.Property(s => s.Ativo).IsRequired();
 
         builder.HasOne<Categoria>()

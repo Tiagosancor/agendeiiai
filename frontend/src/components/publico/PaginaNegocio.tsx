@@ -61,7 +61,11 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
     });
   }
 
-  const populares = (categorias ?? []).flatMap((c) => c.servicos.filter((s) => s.popular));
+  // Vitrine (seção 6.1): só o que o Administrador marcou para a página; o assistente recebe o catálogo inteiro.
+  const vitrine = (categorias ?? [])
+    .map((c) => ({ ...c, servicos: c.servicos.filter((s) => s.exibirNaPaginaInicial) }))
+    .filter((c) => c.servicos.length > 0);
+  const populares = vitrine.flatMap((c) => c.servicos.filter((s) => s.popular));
   // Falso com a assinatura suspensa (seção 7): a página continua no ar, só sem agendar online.
   const aceitaAgendamento = negocio.aceitaAgendamentoOnline;
 
@@ -166,7 +170,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           )}
 
           <div className="space-y-2">
-            {categorias?.map((categoria) => {
+            {vitrine.map((categoria) => {
               const aberta = categoriasAbertas.has(categoria.categoriaId);
               return (
                 <div key={categoria.categoriaId} className="rounded-lg border border-gray-200 dark:border-neutral-800">

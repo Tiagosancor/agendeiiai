@@ -27,13 +27,14 @@ public sealed class GerenciadorServicos : IGerenciadorServicos
         await _dbContext.Servicos
             .Where(s => !s.Excluido)
             .OrderBy(s => s.Nome)
-            .Select(s => new ServicoResumo(s.Id, s.CategoriaId, s.Nome, s.Preco, s.DuracaoMinutos, s.Popular, s.Ativo))
+            .Select(s => new ServicoResumo(s.Id, s.CategoriaId, s.Nome, s.Preco, s.DuracaoMinutos, s.Popular, s.Ativo, s.ExibirNaPaginaInicial))
             .ToListAsync(cancellationToken);
 
     public async Task<Guid> CriarAsync(CriarServico dados, CancellationToken cancellationToken = default)
     {
         var servico = Servico.Criar(
-            _contextoNegocio.NegocioId!.Value, dados.CategoriaId, dados.Nome, dados.Preco, dados.DuracaoMinutos, dados.Popular);
+            _contextoNegocio.NegocioId!.Value, dados.CategoriaId, dados.Nome, dados.Preco, dados.DuracaoMinutos, dados.Popular,
+            dados.ExibirNaPaginaInicial);
 
         _dbContext.Servicos.Add(servico);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -57,8 +58,12 @@ public sealed class GerenciadorServicos : IGerenciadorServicos
         if (servico.DuracaoMinutos != dados.DuracaoMinutos) alteracoes.Add($"duração: {servico.DuracaoMinutos} → {dados.DuracaoMinutos} min");
         if (servico.CategoriaId != dados.CategoriaId) alteracoes.Add("categoria");
         if (servico.Popular != dados.Popular) alteracoes.Add($"popular: {(dados.Popular ? "sim" : "não")}");
+        if (dados.ExibirNaPaginaInicial is { } exibir && servico.ExibirNaPaginaInicial != exibir)
+            alteracoes.Add($"na página do negócio: {(exibir ? "sim" : "não")}");
 
         servico.AtualizarDados(dados.CategoriaId, dados.Nome, dados.Preco, dados.DuracaoMinutos, dados.Popular);
+        if (dados.ExibirNaPaginaInicial is { } exibicao)
+            servico.DefinirExibicaoNaPaginaInicial(exibicao);
 
         if (alteracoes.Count > 0)
             _auditoria.Registrar(AcoesAuditoria.Editar, nameof(Servico), servico.Id, string.Join("; ", alteracoes));

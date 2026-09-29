@@ -19,6 +19,17 @@ public sealed class ServicoTestes
     }
 
     [Fact]
+    public void Aparece_na_pagina_por_padrao_e_pode_sair_da_vitrine_sem_desativar()
+    {
+        var servico = Servico.Criar(Guid.NewGuid(), Guid.NewGuid(), "Corte", 50m, 30);
+        servico.ExibirNaPaginaInicial.Should().BeTrue();
+
+        servico.DefinirExibicaoNaPaginaInicial(false);
+
+        (servico.ExibirNaPaginaInicial, servico.Ativo).Should().Be((false, true));
+    }
+
+    [Fact]
     public void Criar_com_preco_negativo_lanca_excecao()
     {
         var acao = () => Servico.Criar(Guid.NewGuid(), Guid.NewGuid(), "Corte", -1m, 30);
