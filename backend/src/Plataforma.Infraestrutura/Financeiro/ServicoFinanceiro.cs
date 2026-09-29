@@ -74,6 +74,30 @@ public sealed class ServicoFinanceiro : IServicoFinanceiro
             .OrderByDescending(f => f.Total)
             .ToList();
 
-        return new ResumoFinanceiro(total, quantidade, porProfissional, porServico);
+        // Vendas de produto entram na data da venda, separadas dos serviços (seção 7).
+        var totalProdutos = 0m;
+        var quantidadeVendas = 0;
+        List<FaturamentoPorProduto> porProduto = [];
+        if (filtro.ServicoId is null)
+        {
+            var vendas = _dbContext.VendasProduto.AsNoTracking().Where(v => v.Data >= inicioUtc && v.Data < fimUtc);
+            if (filtro.ProfissionalId is not null)
+                vendas = vendas.Where(v => v.VendedorProfissionalId == filtro.ProfissionalId);
+
+            var itens = await vendas.SelectMany(v => v.Itens)
+                .Select(i => new { i.VendaId, i.ProdutoId, i.NomeProduto, i.Total, i.Quantidade })
+                .ToListAsync(cancellationToken);
+
+            totalProdutos = itens.Sum(i => i.Total);
+            quantidadeVendas = itens.Select(i => i.VendaId).Distinct().Count();
+            porProduto = itens
+                .GroupBy(i => i.ProdutoId)
+                .Select(g => new FaturamentoPorProduto(g.Key, g.First().NomeProduto, g.Sum(i => i.Total), g.Sum(i => i.Quantidade)))
+                .OrderByDescending(f => f.Total)
+                .ToList();
+        }
+
+        return new ResumoFinanceiro(
+            total + totalProdutos, quantidade, porProfissional, porServico, total, totalProdutos, quantidadeVendas, porProduto);
     }
 }

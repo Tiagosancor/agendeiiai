@@ -18,6 +18,9 @@ public sealed class UsuarioConfiguracao : IEntityTypeConfiguration<Usuario>
         builder.Property(u => u.SenhaHash).HasMaxLength(200).IsRequired();
         builder.Property(u => u.Perfil).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(u => u.Ativo).IsRequired();
+        builder.Property(u => u.PercentualComissaoProdutoVenda).HasColumnType("numeric(5,2)").HasDefaultValue(0m).IsRequired();
+        builder.ToTable(t => t.HasCheckConstraint(
+            "ck_usuarios_percentual_comissao_produto_venda", "percentual_comissao_produto_venda >= 0 AND percentual_comissao_produto_venda <= 100"));
 
         // Único GLOBAL (não por negócio): o login acontece num único domínio compartilhado
         // (app.{dominio} — seção 5), então o e-mail sozinho precisa apontar pro usuário

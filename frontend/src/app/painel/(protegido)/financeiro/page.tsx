@@ -100,14 +100,25 @@ export default function PaginaFinanceiro() {
 
       {resumo && (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+          {/* Serviços e produtos sempre separados, além do total (seção 7). */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className={`${classeCartao} p-4`}>
               <p className="text-xs text-gray-500 dark:text-neutral-400">Faturamento no período</p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50">{formatarReais(resumo.total)}</p>
+              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50" aria-label="Faturamento total">
+                {formatarReais(resumo.total)}
+              </p>
             </div>
             <div className={`${classeCartao} p-4`}>
-              <p className="text-xs text-gray-500 dark:text-neutral-400">Atendimentos pagos</p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50">{resumo.quantidadeAtendimentos}</p>
+              <p className="text-xs text-gray-500 dark:text-neutral-400">Serviços · {resumo.quantidadeAtendimentos} atendimento(s) pago(s)</p>
+              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50" aria-label="Faturamento de serviços">
+                {formatarReais(resumo.totalServicos)}
+              </p>
+            </div>
+            <div className={`${classeCartao} p-4`}>
+              <p className="text-xs text-gray-500 dark:text-neutral-400">Produtos · {resumo.quantidadeVendas} venda(s)</p>
+              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50" aria-label="Faturamento de produtos">
+                {formatarReais(resumo.totalProdutos)}
+              </p>
             </div>
           </div>
 
@@ -175,6 +186,32 @@ export default function PaginaFinanceiro() {
                 </table>
               </div>
             </section>
+
+            {resumo.porProduto.length > 0 && (
+              <section>
+                <h2 className="mb-2 text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Por produto</h2>
+                <div className={classeCartao}>
+                  <table className="w-full">
+                    <thead className="border-b border-gray-200 dark:border-neutral-800">
+                      <tr>
+                        <th className={classeTh}>Produto</th>
+                        <th className={classeTh}>Qtd.</th>
+                        <th className={classeTh}>Total</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+                      {resumo.porProduto.map((linha) => (
+                        <tr key={linha.produtoId}>
+                          <td className={classeTd}>{linha.nomeProduto}</td>
+                          <td className={classeTd}>{linha.quantidade}</td>
+                          <td className={classeTd}>{formatarReais(linha.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
           </div>
         </>
       )}

@@ -154,18 +154,8 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
         });
     }
 
-    /// <summary>Carrega o produto já travado; os dados vêm do banco depois da trava (nunca de uma leitura anterior).</summary>
-    internal async Task<Produto?> TravarProdutoAsync(Guid produtoId, CancellationToken cancellationToken)
-    {
-        var negocioId = _contextoNegocio.NegocioId!.Value;
-        await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM produtos WHERE id = {produtoId} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
-
-        var produto = await _dbContext.Produtos.FirstOrDefaultAsync(p => p.Id == produtoId, cancellationToken);
-        if (produto is not null)
-            await _dbContext.Entry(produto).ReloadAsync(cancellationToken);
-        return produto;
-    }
+    private Task<Produto?> TravarProdutoAsync(Guid produtoId, CancellationToken cancellationToken) =>
+        TravaProduto.TravarAsync(_dbContext, _contextoNegocio.NegocioId!.Value, produtoId, cancellationToken);
 
     public async Task<IReadOnlyList<MovimentoEstoqueResumo>?> ListarMovimentosAsync(Guid produtoId, CancellationToken cancellationToken = default)
     {

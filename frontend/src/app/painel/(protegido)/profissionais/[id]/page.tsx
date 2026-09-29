@@ -318,6 +318,7 @@ function SecaoHorariosTrabalho({ profissionalId }: { profissionalId: string }) {
 function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string; podeAlterar: boolean }) {
   const { chamarApi } = useAutenticacao();
   const [percentual, setPercentual] = useState("");
+  const [percentualProduto, setPercentualProduto] = useState("");
   const [acertoPorQuinzena, setAcertoPorQuinzena] = useState(false);
   // O formulário só aparece carregado: senão a resposta, chegando depois, apagaria o que já foi digitado.
   const [carregado, setCarregado] = useState(false);
@@ -326,9 +327,12 @@ function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string
 
   useEffect(() => {
     // Busca disparada pela montagem, não estado derivado de props.
-    chamarApi<{ percentual: number; acertoPorQuinzena: boolean }>(`/painel/profissionais/${profissionalId}/comissao`)
+    chamarApi<{ percentual: number; acertoPorQuinzena: boolean; percentualProdutoVenda: number | null }>(
+      `/painel/profissionais/${profissionalId}/comissao`,
+    )
       .then((r) => {
         setPercentual(String(r.percentual).replace(".", ","));
+        setPercentualProduto(String(r.percentualProdutoVenda ?? 0).replace(".", ","));
         setAcertoPorQuinzena(r.acertoPorQuinzena);
         setCarregado(true);
       })
@@ -339,15 +343,19 @@ function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string
     evento.preventDefault();
     setMensagem(null);
     const valor = Number(percentual.trim().replace(",", "."));
-    if (percentual.trim() === "" || Number.isNaN(valor)) {
+    const valorProduto = Number(percentualProduto.trim().replace(",", "."));
+    if (percentual.trim() === "" || Number.isNaN(valor) || percentualProduto.trim() === "" || Number.isNaN(valorProduto)) {
       setMensagem({ tipo: "erro", texto: "Informe um número de 0 a 100." });
       return;
     }
 
     setSalvando(true);
     try {
-      await chamarApi(`/painel/profissionais/${profissionalId}/comissao`, { metodo: "PUT", corpo: { percentual: valor, acertoPorQuinzena } });
-      setMensagem({ tipo: "ok", texto: "Comissão salva. Vale para os atendimentos concluídos a partir de agora." });
+      await chamarApi(`/painel/profissionais/${profissionalId}/comissao`, {
+        metodo: "PUT",
+        corpo: { percentual: valor, acertoPorQuinzena, percentualProdutoVenda: valorProduto },
+      });
+      setMensagem({ tipo: "ok", texto: "Comissão salva. Vale para os atendimentos concluídos e as vendas feitas a partir de agora." });
     } catch (excecao) {
       setMensagem({ tipo: "erro", texto: excecao instanceof Error ? excecao.message : "Não foi possível salvar." });
     } finally {
@@ -377,6 +385,17 @@ function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string
                 aria-describedby="ajuda-comissao"
               />
             </label>
+            <label>
+              <span className={classeLabel}>Comissão de produto (%)</span>
+              <input
+                inputMode="decimal"
+                className={`${classeInput} w-32`}
+                value={percentualProduto}
+                onChange={(e) => setPercentualProduto(e.target.value)}
+                disabled={!podeAlterar}
+                aria-describedby="ajuda-comissao"
+              />
+            </label>
             {podeAlterar && (
               <button type="submit" disabled={salvando} className={classeBotaoPrimario}>
                 {salvando ? "Salvando..." : "Salvar comissão"}
@@ -384,7 +403,7 @@ function SecaoComissao({ profissionalId, podeAlterar }: { profissionalId: string
             )}
           </form>
           <p id="ajuda-comissao" className="mt-1 text-xs text-gray-500 dark:text-neutral-400">
-            De 0 a 100, com até duas casas decimais (ex.: 40 ou 12,5).
+            De 0 a 100, com até duas casas decimais (ex.: 40 ou 12,5). A de produto vale para as vendas em que ele for o vendedor.
           </p>
           <label className="mt-3 flex items-start gap-2 text-sm text-gray-700 dark:text-neutral-300">
             <input

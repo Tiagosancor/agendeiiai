@@ -8,10 +8,19 @@ public interface IServicoFinanceiro
 
 public sealed record FiltroFinanceiro(DateOnly Inicio, DateOnly Fim, Guid? ProfissionalId = null, Guid? ServicoId = null);
 
+/// <summary>
+/// <c>Total</c> = serviços concluídos pagos + vendas de produtos (seção 7), sempre com as duas parcelas também separadas
+/// (<c>TotalServicos</c>, <c>TotalProdutos</c>). Com filtro de serviço, não há produtos; com filtro de profissional, as
+/// vendas em que ele foi o vendedor.
+/// </summary>
 public sealed record ResumoFinanceiro(
     decimal Total, int QuantidadeAtendimentos,
     IReadOnlyList<FaturamentoPorProfissional> PorProfissional,
-    IReadOnlyList<FaturamentoPorServico> PorServico);
+    IReadOnlyList<FaturamentoPorServico> PorServico,
+    decimal TotalServicos, decimal TotalProdutos, int QuantidadeVendas,
+    IReadOnlyList<FaturamentoPorProduto> PorProduto);
+
+public sealed record FaturamentoPorProduto(Guid ProdutoId, string NomeProduto, decimal Total, int Quantidade);
 
 public sealed record FaturamentoPorProfissional(Guid ProfissionalId, string NomeProfissional, decimal Total, int Quantidade);
 

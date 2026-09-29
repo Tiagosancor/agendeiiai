@@ -3,7 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import { classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
-import type { ComissoesDoProfissional, ResumoComissaoProfissional, TotaisComissao } from "@/lib/tipos";
+import type {
+  ComissoesDoProfissional,
+  ComissoesProduto,
+  ResumoComissaoProfissional,
+  ResumoComissaoVendedor,
+  TotaisComissao,
+} from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import { MinhasQuinzenas, VisaoQuinzenas } from "@/components/painel/Quinzenas";
 
@@ -173,11 +179,18 @@ function ListaComissoes({ periodo, caminho }: { periodo: Periodo; caminho: strin
   if (erro) return <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>;
   if (!dados) return <p className="text-sm text-gray-500 dark:text-neutral-400">Carregando...</p>;
 
+  // Comissão de produto: de quem vende sem ser profissional, sempre; do profissional, quando tem percentual ou vendeu.
+  const mostrarProdutos =
+    !dados.profissionalId || (dados.produtos.percentualAtual ?? 0) > 0 || dados.produtos.totais.quantidadeVendas > 0;
+
   if (!dados.profissionalId) {
     return (
-      <p className="rounded-lg border border-gray-200 p-4 text-sm text-gray-600 dark:border-neutral-800 dark:text-neutral-300">
-        Seu acesso não está ligado a um cadastro de profissional, então não há comissão de serviço para mostrar.
-      </p>
+      <div className="space-y-4">
+        <p className="rounded-lg border border-gray-200 p-4 text-sm text-gray-600 dark:border-neutral-800 dark:text-neutral-300">
+          Seu acesso não está ligado a um cadastro de profissional, então não há comissão de serviço — só a de produtos que você vende.
+        </p>
+        <SecaoComissaoProdutos produtos={dados.produtos} />
+      </div>
     );
   }
 
@@ -185,6 +198,16 @@ function ListaComissoes({ periodo, caminho }: { periodo: Periodo; caminho: strin
 
   return (
     <div className="space-y-4">
+      {mostrarProdutos && (
+        <div className={`${classeCartao} flex flex-wrap items-baseline justify-between gap-2 p-4`} role="status" aria-label="Total geral de comissões">
+          <span className="text-sm text-gray-600 dark:text-neutral-300">
+            Serviços {formatarReais(dados.totais.totalComissao)} + produtos {formatarReais(dados.produtos.totais.totalComissao)}
+          </span>
+          <span className="text-xl font-semibold text-marca-primaria dark:text-marca-acento">Total: {formatarReais(dados.totalGeral)}</span>
+        </div>
+      )}
+
+      <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Comissão de serviços</h2>
       {dados.percentualAtual !== null && (
         <p className="text-sm text-gray-600 dark:text-neutral-300">
           Percentual atual: <strong>{formatarPercentual(dados.percentualAtual)}</strong>
@@ -258,7 +281,56 @@ function ListaComissoes({ periodo, caminho }: { periodo: Periodo; caminho: strin
           )}
         </>
       )}
+
+      {mostrarProdutos && <SecaoComissaoProdutos produtos={dados.produtos} />}
     </div>
+  );
+}
+
+/** Comissão sobre venda de produto (seção 7) — sempre separada da de serviço, com as vendas mais recentes do período. */
+function SecaoComissaoProdutos({ produtos }: { produtos: ComissoesProduto }) {
+  return (
+    <section className="space-y-3" aria-label="Comissão de produtos">
+      <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Comissão de produtos</h2>
+      {produtos.percentualAtual !== null && (
+        <p className="text-sm text-gray-600 dark:text-neutral-300">
+          Percentual atual: <strong>{formatarPercentual(produtos.percentualAtual)}</strong>
+          <span className="text-gray-500 dark:text-neutral-400"> — cada venda guarda o percentual do dia em que foi feita.</span>
+        </p>
+      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className={`${classeCartao} p-4`}>
+          <div className="text-xs text-gray-500 dark:text-neutral-400">Comissão de produtos</div>
+          <div className="mt-1 text-2xl font-semibold text-marca-primaria dark:text-marca-acento">{formatarReais(produtos.totais.totalComissao)}</div>
+        </div>
+        <div className={`${classeCartao} p-4`}>
+          <div className="text-xs text-gray-500 dark:text-neutral-400">Total vendido</div>
+          <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">{formatarReais(produtos.totais.totalVendido)}</div>
+        </div>
+        <div className={`${classeCartao} p-4`}>
+          <div className="text-xs text-gray-500 dark:text-neutral-400">Vendas</div>
+          <div className="mt-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">{produtos.totais.quantidadeVendas}</div>
+        </div>
+      </div>
+      {produtos.itens.length === 0 ? (
+        <p className="text-sm text-gray-500 dark:text-neutral-400">Nenhuma venda de produto neste período.</p>
+      ) : (
+        <ul className="space-y-2">
+          {produtos.itens.map((item) => (
+            <li key={item.vendaId} className={`${classeCartao} flex flex-wrap items-baseline justify-between gap-2 p-3`}>
+              <span>
+                <span className="block text-sm font-medium text-gray-900 dark:text-neutral-50">{item.produtos}</span>
+                <span className="block text-xs text-gray-500 dark:text-neutral-400">
+                  {formatarDataHora(item.data)}
+                  {item.cliente ? ` · ${item.cliente}` : ""} · {formatarReais(item.totalVendido)} × {formatarPercentual(item.percentual)}
+                </span>
+              </span>
+              <span className="font-semibold text-gray-900 dark:text-neutral-50">{formatarReais(item.comissao)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -290,6 +362,7 @@ function CartoesTotais({ totais }: { totais: TotaisComissao }) {
 function VisaoEquipe({ periodo }: { periodo: Periodo }) {
   const { chamarApi } = useAutenticacao();
   const [resumo, setResumo] = useState<ResumoComissaoProfissional[] | null>(null);
+  const [vendedores, setVendedores] = useState<ResumoComissaoVendedor[]>([]);
   const [selecionado, setSelecionado] = useState<ResumoComissaoProfissional | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -297,7 +370,12 @@ function VisaoEquipe({ periodo }: { periodo: Periodo }) {
     try {
       setErro(null);
       const parametros = new URLSearchParams({ de: periodo.de, ate: periodo.ate });
-      setResumo(await chamarApi<ResumoComissaoProfissional[]>(`/painel/comissoes/resumo?${parametros.toString()}`));
+      const [equipe, semCadastro] = await Promise.all([
+        chamarApi<ResumoComissaoProfissional[]>(`/painel/comissoes/resumo?${parametros.toString()}`),
+        chamarApi<ResumoComissaoVendedor[]>(`/painel/comissoes/resumo/vendedores?${parametros.toString()}`),
+      ]);
+      setResumo(equipe);
+      setVendedores(semCadastro);
     } catch {
       setErro("Não foi possível carregar o resumo da equipe.");
     }
@@ -333,9 +411,16 @@ function VisaoEquipe({ periodo }: { periodo: Periodo }) {
     { totalComissao: 0, totalAtendido: 0, quantidadeServicos: 0 },
   );
 
+  const comissaoProdutos =
+    resumo.reduce((soma, r) => soma + r.produtos.totalComissao, 0) + vendedores.reduce((soma, v) => soma + v.totais.totalComissao, 0);
+  const vendedoresComComissao = vendedores.filter((v) => v.percentualAtual > 0 || v.totais.quantidadeVendas > 0);
+
   return (
     <div className="space-y-4">
       <CartoesTotais totais={totais} />
+      <p className="text-sm text-gray-600 dark:text-neutral-300">
+        Comissão de produtos da equipe no período: <strong>{formatarReais(comissaoProdutos)}</strong> (separada da de serviços).
+      </p>
 
       <ul className="space-y-2">
         {resumo.map((r) => (
@@ -353,12 +438,42 @@ function VisaoEquipe({ periodo }: { periodo: Periodo }) {
                 <span className="block text-xs text-gray-500 dark:text-neutral-400">
                   {formatarPercentual(r.percentualAtual)} · {r.totais.quantidadeServicos} serviço(s) · {formatarReais(r.totais.totalAtendido)} atendido
                 </span>
+                {(r.produtos.quantidadeVendas > 0 || r.percentualProdutoAtual > 0) && (
+                  <span className="block text-xs text-gray-500 dark:text-neutral-400">
+                    Produtos: {formatarPercentual(r.percentualProdutoAtual)} · {r.produtos.quantidadeVendas} venda(s) ·{" "}
+                    {formatarReais(r.produtos.totalComissao)} de comissão
+                  </span>
+                )}
               </span>
               <span className="font-semibold text-gray-900 dark:text-neutral-50">{formatarReais(r.totais.totalComissao)}</span>
             </button>
           </li>
         ))}
       </ul>
+
+      {vendedoresComComissao.length > 0 && (
+        <section className="space-y-2" aria-label="Vendedores sem cadastro de profissional">
+          <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">
+            Comissão de produtos — sem cadastro de profissional
+          </h2>
+          <ul className="space-y-2">
+            {vendedoresComComissao.map((v) => (
+              <li key={v.usuarioId} className={`${classeCartao} flex items-center justify-between gap-3 p-3`}>
+                <span>
+                  <span className="block font-medium text-gray-900 dark:text-neutral-50">
+                    {v.nome}
+                    {!v.ativo && <span className="ml-2 text-xs font-normal text-gray-500 dark:text-neutral-400">(inativo)</span>}
+                  </span>
+                  <span className="block text-xs text-gray-500 dark:text-neutral-400">
+                    {formatarPercentual(v.percentualAtual)} · {v.totais.quantidadeVendas} venda(s) · {formatarReais(v.totais.totalVendido)} vendido
+                  </span>
+                </span>
+                <span className="font-semibold text-gray-900 dark:text-neutral-50">{formatarReais(v.totais.totalComissao)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

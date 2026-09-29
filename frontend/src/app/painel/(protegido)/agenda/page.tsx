@@ -5,6 +5,7 @@ import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { ModalAjusteValor } from "@/components/painel/ModalAjusteValor";
 import { ModalEncaixe } from "@/components/painel/ModalEncaixe";
+import { ModalConcluirAtendimento } from "@/components/painel/ModalConcluirAtendimento";
 import { AvisoForcar } from "@/components/painel/AvisoForcar";
 import { GradeDoDia } from "@/components/painel/GradeDoDia";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
@@ -51,6 +52,7 @@ export default function PaginaAgenda() {
   const [modalAberto, setModalAberto] = useState(false);
   const [agendamentoParaPagar, setAgendamentoParaPagar] = useState<AgendamentoResumo | null>(null);
   const [agendamentoValores, setAgendamentoValores] = useState<string | null>(null);
+  const [agendamentoParaConcluir, setAgendamentoParaConcluir] = useState<AgendamentoResumo | null>(null);
   const podeAjustarValor = temPermissao("AjustarValorAtendimento");
   const [encaixeAberto, setEncaixeAberto] = useState(false);
   // Visão "Dia" em grade é a padrão (seção 7); a lista de um profissional guarda as ações de cada atendimento.
@@ -95,7 +97,7 @@ export default function PaginaAgenda() {
     await carregarAgenda();
   }
 
-  async function executarAcao(id: string, acao: "iniciar" | "cancelar" | "concluir" | "faltou" | "reabrir") {
+  async function executarAcao(id: string, acao: "iniciar" | "cancelar" | "faltou" | "reabrir") {
     try {
       setErro(null);
       await chamarApi(`/painel/agendamentos/${id}/${acao}`, { metodo: "POST" });
@@ -233,7 +235,7 @@ export default function PaginaAgenda() {
                 <button className="text-sm font-medium text-violet-700 hover:underline dark:text-violet-300" onClick={() => executarAcao(item.id, "iniciar")}>
                   Iniciar atendimento
                 </button>
-                <button className="text-sm text-green-700 hover:underline dark:text-green-400" onClick={() => executarAcao(item.id, "concluir")}>
+                <button className="text-sm text-green-700 hover:underline dark:text-green-400" onClick={() => setAgendamentoParaConcluir(item)}>
                   Concluir
                 </button>
                 <button className="text-sm text-red-700 hover:underline dark:text-red-400" onClick={() => executarAcao(item.id, "faltou")}>
@@ -251,7 +253,7 @@ export default function PaginaAgenda() {
                     Ajustar valor
                   </button>
                 )}
-                <button className="text-sm text-green-700 hover:underline dark:text-green-400" onClick={() => executarAcao(item.id, "concluir")}>
+                <button className="text-sm text-green-700 hover:underline dark:text-green-400" onClick={() => setAgendamentoParaConcluir(item)}>
                   Concluir
                 </button>
                 <button className="text-sm text-gray-600 hover:underline dark:text-neutral-300" onClick={() => executarAcao(item.id, "cancelar")}>
@@ -310,6 +312,14 @@ export default function PaginaAgenda() {
         agendamentoId={agendamentoValores}
         aoFechar={async (mudou) => {
           setAgendamentoValores(null);
+          if (mudou) await recarregarTudo();
+        }}
+      />
+
+      <ModalConcluirAtendimento
+        agendamento={agendamentoParaConcluir}
+        aoFechar={async (mudou) => {
+          setAgendamentoParaConcluir(null);
           if (mudou) await recarregarTudo();
         }}
       />

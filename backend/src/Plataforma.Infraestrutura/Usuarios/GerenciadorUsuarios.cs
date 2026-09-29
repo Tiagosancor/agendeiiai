@@ -271,8 +271,10 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
     /// Usuário "usado" = já fez alguma ação registrada na auditoria do negócio. Sem isso, não
     /// há nenhum registro que dependa dele e a linha pode sumir de fato (seção 7).
     /// </summary>
-    private Task<bool> TemHistoricoAsync(Guid usuarioId, CancellationToken cancellationToken) =>
-        _dbContext.LogsAuditoriaNegocio.AnyAsync(l => l.AutorUsuarioId == usuarioId, cancellationToken);
+    /// <summary>Autor de alguma ação auditada, ou vendedor de alguma venda de produto (tem comissão no histórico).</summary>
+    private async Task<bool> TemHistoricoAsync(Guid usuarioId, CancellationToken cancellationToken) =>
+        await _dbContext.LogsAuditoriaNegocio.AnyAsync(l => l.AutorUsuarioId == usuarioId, cancellationToken)
+        || await _dbContext.VendasProduto.AnyAsync(v => v.VendedorUsuarioId == usuarioId, cancellationToken);
 
     private async Task RevogarSessoesAsync(Guid usuarioId, CancellationToken cancellationToken)
     {

@@ -48,6 +48,12 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Vínculo opcional com o registro de <c>Profissional</c> agendável — ver docs/decisoes.md.</summary>
     public Guid? ProfissionalId { get; private set; }
 
+    /// <summary>
+    /// Comissão (%) sobre as vendas de produto de quem vende sem cadastro de profissional (ex.: Recepcionista,
+    /// seção 7). Com vínculo, vale o percentual do <c>Profissional</c>.
+    /// </summary>
+    public decimal PercentualComissaoProdutoVenda { get; private set; }
+
     public IReadOnlyCollection<UsuarioPermissao> Permissoes => _permissoes.AsReadOnly();
 
     protected Usuario()
@@ -136,6 +142,9 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
     public void VincularProfissional(Guid profissionalId) => ProfissionalId = profissionalId;
 
     public void DesvincularProfissional() => ProfissionalId = null;
+
+    public void DefinirPercentualComissaoProdutoVenda(decimal percentual) =>
+        PercentualComissaoProdutoVenda = ValidacaoPercentual.Comissao(percentual, nameof(percentual));
 
     public void AlterarSenha(string novoHash)
     {

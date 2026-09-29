@@ -47,6 +47,12 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Entra no fechamento de comissões por quinzena (seção 7). Padrão: não.</summary>
     public bool AcertoPorQuinzena { get; private set; }
 
+    /// <summary>
+    /// Comissão (%) sobre as vendas de produto em que ele é o vendedor (seção 7), separada da de serviço.
+    /// Cada venda grava o percentual do momento.
+    /// </summary>
+    public decimal PercentualComissaoProdutoVenda { get; private set; }
+
     protected Profissional()
     {
     }
@@ -102,6 +108,9 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
         PercentualComissao = percentual;
     }
+
+    public void DefinirPercentualComissaoProdutoVenda(decimal percentual) =>
+        PercentualComissaoProdutoVenda = ValidacaoPercentual.Comissao(percentual, nameof(percentual));
 
     public void Desativar() => Ativo = false;
 

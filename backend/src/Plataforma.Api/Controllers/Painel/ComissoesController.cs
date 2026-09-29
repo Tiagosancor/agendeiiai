@@ -53,6 +53,42 @@ public sealed class ComissoesController : ControllerBase
         return Ok(await _servico.ResumirPorProfissionalAsync(de, ate, cancellationToken));
     }
 
+    /// <summary>Comissão de produto de quem vende sem cadastro de profissional (ex.: Recepcionista).</summary>
+    [HttpGet("comissoes/resumo/vendedores")]
+    [Authorize(Policy = nameof(Permissao.VerComissoesDeTodos))]
+    public async Task<ActionResult<IReadOnlyList<ResumoComissaoVendedor>>> ResumoVendedores(
+        [FromQuery] DateOnly de, [FromQuery] DateOnly ate, CancellationToken cancellationToken)
+    {
+        if (ValidarFiltro(de, ate, 1, 1) is { } erro)
+            return erro;
+
+        return Ok(await _servico.ResumirVendedoresSemProfissionalAsync(de, ate, cancellationToken));
+    }
+
+    [HttpGet("usuarios/{id:guid}/comissao-produto")]
+    public async Task<ActionResult<PercentualComissaoProdutoUsuario>> ObterPercentualProdutoDoUsuario(Guid id, CancellationToken cancellationToken)
+    {
+        if (!TemPermissao(Permissao.GerenciarComissoes) && !TemPermissao(Permissao.VerComissoesDeTodos))
+            return Forbid();
+
+        var percentual = await _servico.ObterPercentualProdutoDoUsuarioAsync(id, cancellationToken);
+        return percentual is null ? NotFound() : Ok(percentual);
+    }
+
+    [HttpPut("usuarios/{id:guid}/comissao-produto")]
+    [Authorize(Policy = nameof(Permissao.GerenciarComissoes))]
+    public async Task<IActionResult> DefinirPercentualProdutoDoUsuario(Guid id, DefinirPercentualProduto dados, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _servico.DefinirPercentualProdutoDoUsuarioAsync(id, dados.Percentual, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (ArgumentException excecao)
+        {
+            return Problem(statusCode: StatusCodes.Status400BadRequest, detail: MensagemSemParametro(excecao));
+        }
+    }
+
     [HttpGet("comissoes/profissionais/{id:guid}")]
     [Authorize(Policy = nameof(Permissao.VerComissoesDeTodos))]
     public async Task<ActionResult<ComissoesDoProfissional>> DoProfissional(
