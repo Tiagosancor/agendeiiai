@@ -389,7 +389,6 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>Qualquer agendamento (de qualquer status) já feito com ele conta como histórico (seção 7).</summary>
     /// <summary>Algum agendamento, venda de produto em que foi o vendedor ou vale/consumo (dinheiro no histórico).</summary>
     private async Task<bool> TemHistoricoAsync(Guid profissionalId, CancellationToken cancellationToken) =>
         await _dbContext.Agendamentos.AnyAsync(a => a.ProfissionalId == profissionalId, cancellationToken)

@@ -385,8 +385,9 @@ function ModalEditarUsuario({
  */
 function ModalComissaoProduto({ usuario, aoFechar }: { usuario: UsuarioResumo | null; aoFechar: () => void }) {
   const { chamarApi } = useAutenticacao();
-  const [dados, setDados] = useState<{ percentual: number; profissionalId: string | null } | null>(null);
+  const [dados, setDados] = useState<{ percentual: number; profissionalId: string | null; acertoPorQuinzena: boolean } | null>(null);
   const [percentual, setPercentual] = useState("");
+  const [acerto, setAcerto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -396,10 +397,11 @@ function ModalComissaoProduto({ usuario, aoFechar }: { usuario: UsuarioResumo | 
     setDados(null);
     setErro(null);
     /* eslint-enable react-hooks/set-state-in-effect */
-    chamarApi<{ percentual: number; profissionalId: string | null }>(`/painel/usuarios/${usuario.id}/comissao-produto`)
+    chamarApi<{ percentual: number; profissionalId: string | null; acertoPorQuinzena: boolean }>(`/painel/usuarios/${usuario.id}/comissao-produto`)
       .then((r) => {
         setDados(r);
         setPercentual(String(r.percentual).replace(".", ","));
+        setAcerto(r.acertoPorQuinzena);
       })
       .catch(() => setErro("Não foi possível carregar a comissão."));
   }, [usuario, chamarApi]);
@@ -415,7 +417,7 @@ function ModalComissaoProduto({ usuario, aoFechar }: { usuario: UsuarioResumo | 
     setErro(null);
     setSalvando(true);
     try {
-      await chamarApi(`/painel/usuarios/${usuario.id}/comissao-produto`, { metodo: "PUT", corpo: { percentual: valor } });
+      await chamarApi(`/painel/usuarios/${usuario.id}/comissao-produto`, { metodo: "PUT", corpo: { percentual: valor, acertoPorQuinzena: acerto } });
       aoFechar();
     } catch (excecao) {
       setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível salvar.");
@@ -442,6 +444,15 @@ function ModalComissaoProduto({ usuario, aoFechar }: { usuario: UsuarioResumo | 
           <label>
             <span className={classeLabel}>Comissão de produto (%)</span>
             <input inputMode="decimal" className={`${classeInput} w-32`} value={percentual} onChange={(e) => setPercentual(e.target.value)} />
+          </label>
+          <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-neutral-300">
+            <input type="checkbox" className="mt-1" checked={acerto} onChange={(e) => setAcerto(e.target.checked)} />
+            <span>
+              Acerto por quinzena
+              <span className="block text-xs text-gray-500 dark:text-neutral-400">
+                Entra no fechamento das quinzenas: comissão de produto menos vales e consumo interno.
+              </span>
+            </span>
           </label>
           {erro && <p className="text-sm text-red-600">{erro}</p>}
           <div className="flex justify-end gap-2">

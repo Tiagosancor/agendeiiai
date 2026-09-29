@@ -259,8 +259,8 @@ public sealed class ServicoVendas : IServicoVendas
             var venda = await _dbContext.VendasProduto.Include(v => v.Itens).FirstOrDefaultAsync(v => v.Id == vendaId, cancellationToken);
             if (venda is null)
                 return false;
-            if (venda.VendedorProfissionalId is { } profissionalId
-                && await _travaQuinzenas.AtendimentoTravadoAsync(profissionalId, venda.Data, cancellationToken))
+            if (await _travaQuinzenas.PessoaTravadaAsync(
+                    PessoaComissao.Criar(venda.VendedorProfissionalId, venda.VendedorUsuarioId), venda.Data, cancellationToken))
                 throw new QuinzenaFechadaException(
                     "A comissão desta venda já entrou numa quinzena fechada. Para estornar, o Administrador precisa reabrir a quinzena.");
 

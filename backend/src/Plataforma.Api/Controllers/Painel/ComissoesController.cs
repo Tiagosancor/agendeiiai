@@ -44,7 +44,10 @@ public sealed class ComissoesController : ControllerBase
     public async Task<ActionResult<QuinzenasDoProfissional>> MinhasQuinzenas(CancellationToken cancellationToken) =>
         Ok(await _quinzenas.ListarMinhasAsync(cancellationToken));
 
-    /// <summary>Vales e consumo do profissional logado (só leitura). Sem vínculo com profissional: 204.</summary>
+    /// <summary>
+    /// Vales e consumo do profissional logado (só leitura). Sem vínculo: os do próprio usuário, se ele recebe por quinzena ou
+    /// já teve lançamento; senão 204.
+    /// </summary>
     [HttpGet("comissoes/minhas/saldo")]
     public async Task<ActionResult<SaldoDevedor>> MeuSaldo(CancellationToken cancellationToken) =>
         await _saldos.DetalharMeuAsync(cancellationToken) is { } saldo ? Ok(saldo) : NoContent();
@@ -88,7 +91,7 @@ public sealed class ComissoesController : ControllerBase
     {
         try
         {
-            return await _servico.DefinirPercentualProdutoDoUsuarioAsync(id, dados.Percentual, cancellationToken) ? NoContent() : NotFound();
+            return await _servico.DefinirPercentualProdutoDoUsuarioAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
         }
         catch (ArgumentException excecao)
         {

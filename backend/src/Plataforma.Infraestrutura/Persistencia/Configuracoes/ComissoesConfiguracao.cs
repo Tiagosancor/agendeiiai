@@ -30,7 +30,9 @@ public sealed class FechamentoComissaoConfiguracao : IEntityTypeConfiguration<Fe
 {
     public void Configure(EntityTypeBuilder<FechamentoComissao> builder)
     {
-        builder.ToTable("fechamentos_comissao");
+        builder.ToTable("fechamentos_comissao", t => t.HasCheckConstraint(
+            "ck_fechamentos_comissao_uma_pessoa", "(profissional_id IS NULL) <> (usuario_id IS NULL)"));
+        builder.Ignore(f => f.Pessoa);
 
         builder.HasKey(f => f.Id);
 
@@ -45,6 +47,8 @@ public sealed class FechamentoComissaoConfiguracao : IEntityTypeConfiguration<Fe
         builder.HasOne<PeriodoComissao>().WithMany().HasForeignKey(f => f.PeriodoComissaoId).OnDelete(DeleteBehavior.Cascade);
         builder.HasIndex(f => new { f.PeriodoComissaoId, f.ProfissionalId }).IsUnique();
         builder.HasIndex(f => f.ProfissionalId);
+        builder.HasIndex(f => new { f.PeriodoComissaoId, f.UsuarioId }).IsUnique();
+        builder.HasIndex(f => f.UsuarioId);
     }
 }
 
@@ -52,7 +56,11 @@ public sealed class LancamentoSaldoDevedorConfiguracao : IEntityTypeConfiguratio
 {
     public void Configure(EntityTypeBuilder<LancamentoSaldoDevedor> builder)
     {
-        builder.ToTable("lancamentos_saldo_devedor", t => t.HasCheckConstraint("ck_lancamentos_saldo_devedor_valor", "valor >= 0"));
+        builder.ToTable("lancamentos_saldo_devedor", t =>
+        {
+            t.HasCheckConstraint("ck_lancamentos_saldo_devedor_valor", "valor >= 0");
+            t.HasCheckConstraint("ck_lancamentos_saldo_devedor_uma_pessoa", "(profissional_id IS NULL) <> (usuario_id IS NULL)");
+        });
         builder.HasKey(l => l.Id);
         builder.Property(l => l.Tipo).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(l => l.Valor).HasColumnType("numeric(12,2)");
@@ -60,6 +68,7 @@ public sealed class LancamentoSaldoDevedorConfiguracao : IEntityTypeConfiguratio
         builder.Property(l => l.Descricao).HasMaxLength(LancamentoSaldoDevedor.TamanhoMaximoDescricao);
         builder.Property(l => l.NomeProduto).HasMaxLength(200);
         builder.HasIndex(l => new { l.ProfissionalId, l.Data });
+        builder.HasIndex(l => new { l.UsuarioId, l.Data });
     }
 }
 

@@ -10,6 +10,52 @@ import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 
 const ROTULO_TIPO = { Vale: "Vale", ConsumoInterno: "Consumo interno" } as const;
 
+/** Quem deve o saldo: profissional ("p:id") ou usuário que vende sem cadastro de profissional ("u:id"). */
+export function chavePessoa(p: { profissionalId: string | null; usuarioId: string | null }) {
+  return p.profissionalId ? `p:${p.profissionalId}` : `u:${p.usuarioId}`;
+}
+
+/** O par que a API espera (exatamente um dos dois). */
+export function corpoPessoa(chave: string) {
+  const id = chave.slice(2);
+  return chave.startsWith("p:") ? { profissionalId: id, usuarioId: null } : { profissionalId: null, usuarioId: id };
+}
+
+/** Seleção de quem recebe o vale ou o consumo: profissionais e, num grupo à parte, quem vende sem cadastro de profissional. */
+export function SeletorPessoaSaldo({
+  pessoas,
+  valor,
+  aoMudar,
+}: {
+  pessoas: SaldoDoProfissional[];
+  valor: string;
+  aoMudar: (chave: string) => void;
+}) {
+  const profissionais = pessoas.filter((p) => p.profissionalId);
+  const usuarios = pessoas.filter((p) => !p.profissionalId);
+  const opcao = (p: SaldoDoProfissional) => (
+    <option key={chavePessoa(p)} value={chavePessoa(p)}>
+      {p.nome}
+    </option>
+  );
+  return (
+    <label className="block">
+      <span className={classeLabel}>{usuarios.length > 0 ? "Profissional ou vendedor" : "Profissional"}</span>
+      <select required className={classeInput} value={valor} onChange={(e) => aoMudar(e.target.value)}>
+        <option value="">Escolha...</option>
+        {usuarios.length === 0 ? (
+          profissionais.map(opcao)
+        ) : (
+          <>
+            <optgroup label="Profissionais">{profissionais.map(opcao)}</optgroup>
+            <optgroup label="Vendedores sem cadastro de profissional">{usuarios.map(opcao)}</optgroup>
+          </>
+        )}
+      </select>
+    </label>
+  );
+}
+
 /** Um lançamento: vale (motivo) ou consumo (produto × quantidade), com o que ainda está em aberto. */
 export function ItemLancamento({ lancamento, acoes }: { lancamento: LancamentoSaldoResumo; acoes?: React.ReactNode }) {
   const quitado = lancamento.aberto < lancamento.valor;
@@ -67,7 +113,7 @@ export function VisaoSaldosDevedores() {
   if (selecionado) {
     return (
       <DetalheSaldo
-        profissionalId={selecionado}
+        chave={selecionado}
         aoVoltar={() => {
           setSelecionado(null);
           carregar();
@@ -80,7 +126,8 @@ export function VisaoSaldosDevedores() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-gray-600 dark:text-neutral-300">
-          Vales e consumo interno descontam do que o profissional tem a receber, nunca do faturamento. Consumo se lança em Estoque.
+          Vales e consumo interno descontam do que o profissional (ou o vendedor com acerto por quinzena) tem a receber, nunca do
+          faturamento. Consumo se lança em Estoque.
         </p>
         {podeLancarVale && (
           <button type="button" className={classeBotaoPrimario} onClick={() => setValeAberto(true)}>
@@ -91,10 +138,10 @@ export function VisaoSaldosDevedores() {
       {erro && <p className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
       <ul className="space-y-2">
         {lista?.map((s) => (
-          <li key={s.profissionalId}>
+          <li key={chavePessoa(s)}>
             <button
               type="button"
-              onClick={() => setSelecionado(s.profissionalId)}
+              onClick={() => setSelecionado(chavePessoa(s))}
               className={`${classeCartao} flex w-full items-center justify-between gap-3 p-3 text-left hover:bg-gray-50 dark:hover:bg-neutral-800/60`}
             >
               <span>
@@ -127,7 +174,7 @@ export function VisaoSaldosDevedores() {
 
 function ModalVale({ profissionais, aoFechar }: { profissionais: SaldoDoProfissional[]; aoFechar: (lancou: boolean) => void }) {
   const { chamarApi } = useAutenticacao();
-  const [profissionalId, setProfissionalId] = useState("");
+  const [pessoa, setPessoa] = useState("");
   const [valor, setValor] = useState("");
   const [data, setData] = useState(dataLocalIso());
   const [motivo, setMotivo] = useState("");
@@ -139,7 +186,7 @@ function ModalVale({ profissionais, aoFechar }: { profissionais: SaldoDoProfissi
     setErro(null);
     setEnviando(true);
     try {
-      await chamarApi("/painel/saldos/vales", { metodo: "POST", corpo: { profissionalId, valor: Number(valor), data, motivo: motivo || null } });
+      await chamarApi("/painel/saldos/vales", { metodo: "POST", corpo: { ...corpoPessoa(pessoa), valor: Number(valor), data, motivo: motivo || null } });
       aoFechar(true);
     } catch (excecao) {
       setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível lançar o vale.");
@@ -151,17 +198,7 @@ function ModalVale({ profissionais, aoFechar }: { profissionais: SaldoDoProfissi
   return (
     <Modal titulo="Lançar vale" aberto aoFechar={() => aoFechar(false)}>
       <form onSubmit={lancar} className="space-y-3">
-        <label className="block">
-          <span className={classeLabel}>Profissional</span>
-          <select required className={classeInput} value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)}>
-            <option value="">Escolha...</option>
-            {profissionais.map((p) => (
-              <option key={p.profissionalId} value={p.profissionalId}>
-                {p.nome}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SeletorPessoaSaldo pessoas={profissionais} valor={pessoa} aoMudar={setPessoa} />
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className={classeLabel}>Valor (R$)</span>
@@ -190,15 +227,16 @@ function ModalVale({ profissionais, aoFechar }: { profissionais: SaldoDoProfissi
   );
 }
 
-function DetalheSaldo({ profissionalId, aoVoltar }: { profissionalId: string; aoVoltar: () => void }) {
+function DetalheSaldo({ chave, aoVoltar }: { chave: string; aoVoltar: () => void }) {
   const { chamarApi, temPermissao } = useAutenticacao();
   const [saldo, setSaldo] = useState<SaldoDevedor | null>(null);
   const [editando, setEditando] = useState<LancamentoSaldoResumo | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
-    setSaldo(await chamarApi<SaldoDevedor>(`/painel/saldos/profissionais/${profissionalId}`));
-  }, [chamarApi, profissionalId]);
+    const tipo = chave.startsWith("p:") ? "profissionais" : "usuarios";
+    setSaldo(await chamarApi<SaldoDevedor>(`/painel/saldos/${tipo}/${chave.slice(2)}`));
+  }, [chamarApi, chave]);
 
   useEffect(() => {
     // Busca disparada pela montagem.

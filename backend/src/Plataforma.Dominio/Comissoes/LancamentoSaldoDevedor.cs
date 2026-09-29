@@ -13,7 +13,7 @@ public enum TipoLancamentoSaldo
 }
 
 /// <summary>
-/// Saldo devedor do profissional (seção 7): vale ou consumo interno. Desconta do valor a receber dele, nunca do
+/// Saldo devedor do profissional, ou do usuário que vende sem cadastro de profissional (seção 7): vale ou consumo interno. Desconta do valor a receber dele, nunca do
 /// faturamento. Fica em aberto até ser quitado no fechamento da quinzena (<see cref="QuitacaoSaldo"/>), que pode
 /// cobrir só uma parte — o resto continua em aberto para a próxima.
 /// </summary>
@@ -23,7 +23,10 @@ public class LancamentoSaldoDevedor : EntidadeBase, IEntidadeDoNegocio
 
     public Guid NegocioId { get; private set; }
 
-    public Guid ProfissionalId { get; private set; }
+    /// <summary>Exatamente um de <see cref="ProfissionalId"/> e <see cref="UsuarioId"/> (<see cref="PessoaComissao"/>).</summary>
+    public Guid? ProfissionalId { get; private set; }
+
+    public Guid? UsuarioId { get; private set; }
 
     public TipoLancamentoSaldo Tipo { get; private set; }
 
@@ -52,12 +55,13 @@ public class LancamentoSaldoDevedor : EntidadeBase, IEntidadeDoNegocio
     }
 
     public static LancamentoSaldoDevedor CriarVale(
-        Guid negocioId, Guid profissionalId, decimal valor, DateOnly data, string? motivo, Guid? usuarioId)
+        Guid negocioId, PessoaComissao pessoa, decimal valor, DateOnly data, string? motivo, Guid? usuarioId)
     {
         var lancamento = new LancamentoSaldoDevedor
         {
             NegocioId = negocioId,
-            ProfissionalId = profissionalId,
+            ProfissionalId = pessoa.ProfissionalId,
+            UsuarioId = pessoa.UsuarioId,
             Tipo = TipoLancamentoSaldo.Vale,
             LancadoPorUsuarioId = usuarioId,
         };
@@ -67,7 +71,7 @@ public class LancamentoSaldoDevedor : EntidadeBase, IEntidadeDoNegocio
 
     /// <summary>Baixa o estoque (produto já travado pelo chamador) e lança o valor como saldo devedor do profissional.</summary>
     public static (LancamentoSaldoDevedor Lancamento, MovimentoEstoque Movimento) CriarConsumo(
-        Guid profissionalId, Produto produto, int quantidade, decimal valorUnitario, DateOnly data, string? observacao, Guid? usuarioId,
+        PessoaComissao pessoa, Produto produto, int quantidade, decimal valorUnitario, DateOnly data, string? observacao, Guid? usuarioId,
         DateTimeOffset agora)
     {
         if (!produto.Ativo)
@@ -78,7 +82,8 @@ public class LancamentoSaldoDevedor : EntidadeBase, IEntidadeDoNegocio
         var lancamento = new LancamentoSaldoDevedor
         {
             NegocioId = produto.NegocioId,
-            ProfissionalId = profissionalId,
+            ProfissionalId = pessoa.ProfissionalId,
+            UsuarioId = pessoa.UsuarioId,
             Tipo = TipoLancamentoSaldo.ConsumoInterno,
             Data = data,
             ProdutoId = produto.Id,

@@ -2,7 +2,8 @@ namespace Plataforma.Aplicacao.Comissoes;
 
 /// <summary>
 /// Fechamento de comissões por quinzena (seção 7). Os períodos são do negócio, com datas
-/// escolhidas pelo Administrador; só profissionais com "acerto por quinzena" entram no fechamento.
+/// escolhidas pelo Administrador; só profissionais com "acerto por quinzena" entram no fechamento — e os usuários que
+/// vendem sem cadastro de profissional com a mesma marcação (comissão de produto − vale/consumo).
 /// </summary>
 public interface IServicoQuinzenas
 {
@@ -60,14 +61,15 @@ public sealed record QuinzenaResumo(
     Guid Id, DateOnly Inicio, DateOnly Fim, string Estado, DateTimeOffset? FechadoEm, string? FechadoPor, int DiasSemPeriodoAntes);
 
 /// <summary>
-/// Uma linha por profissional com acerto por quinzena. <c>Totais</c> é a comissão de serviço; <c>ComissaoProdutos</c>, a de
+/// Uma linha por profissional com acerto por quinzena, ou por usuário vendedor sem cadastro de profissional
+/// (<c>ProfissionalId</c> nulo e <c>UsuarioId</c> preenchido: só comissão de produto e vale/consumo). <c>Totais</c> é a comissão de serviço; <c>ComissaoProdutos</c>, a de
 /// produto; <c>Vales</c>/<c>Consumo</c>, o saldo devedor descontado (do mais antigo ao mais novo, até a comissão acabar);
 /// <c>Liquido</c>, o que ele recebe (nunca negativo); <c>SaldoRestante</c>, o que fica para a próxima quinzena. Na quinzena
 /// aberta tudo é parcial.
 /// </summary>
 public sealed record LinhaQuinzena(
-    Guid ProfissionalId, string Nome, TotaisComissao Totais, decimal ComissaoProdutos = 0m, decimal Vales = 0m, decimal Consumo = 0m,
-    decimal Liquido = 0m, decimal SaldoRestante = 0m);
+    Guid? ProfissionalId, string Nome, TotaisComissao Totais, decimal ComissaoProdutos = 0m, decimal Vales = 0m, decimal Consumo = 0m,
+    decimal Liquido = 0m, decimal SaldoRestante = 0m, Guid? UsuarioId = null);
 
 public sealed record AtendimentoPendente(Guid AgendamentoId, DateTimeOffset Inicio, string Profissional, string Status);
 
@@ -77,5 +79,8 @@ public sealed record QuinzenaDoProfissional(
     Guid PeriodoId, DateOnly Inicio, DateOnly Fim, string Estado, bool Parcial, TotaisComissao Totais, decimal ComissaoProdutos = 0m,
     decimal Vales = 0m, decimal Consumo = 0m, decimal Liquido = 0m, decimal SaldoRestante = 0m);
 
-/// <summary><c>AcertoPorQuinzena</c> falso: o profissional acompanha pelo filtro livre de datas, sem fechamento.</summary>
+/// <summary>
+/// <c>AcertoPorQuinzena</c> falso: acompanha pelo filtro livre de datas, sem fechamento. Vale para o profissional vinculado
+/// ao usuário logado ou, sem vínculo, para o próprio usuário (quem vende sem cadastro de profissional).
+/// </summary>
 public sealed record QuinzenasDoProfissional(bool AcertoPorQuinzena, IReadOnlyList<QuinzenaDoProfissional> Quinzenas);

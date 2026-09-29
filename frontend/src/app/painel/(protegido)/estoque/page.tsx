@@ -7,6 +7,7 @@ import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { formatarReais } from "@/lib/formatacao";
 import type { MovimentoEstoqueResumo, ProdutoResumo, SaldoDoProfissional } from "@/lib/tipos";
+import { corpoPessoa, SeletorPessoaSaldo } from "@/components/painel/SaldosDevedores";
 
 const ROTULO_SITUACAO: Record<ProdutoResumo["situacao"], { texto: string; classe: string }> = {
   Normal: { texto: "Em estoque", classe: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" },
@@ -358,13 +359,13 @@ function ModalConsumo({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar:
   const { chamarApi } = useAutenticacao();
   const { erro, enviando, enviar } = useEnvio(aoFechar);
   const [profissionais, setProfissionais] = useState<SaldoDoProfissional[]>([]);
-  const [profissionalId, setProfissionalId] = useState("");
+  const [pessoa, setPessoa] = useState("");
   const [quantidade, setQuantidade] = useState("1");
   const [valorUnitario, setValorUnitario] = useState(produto.precoCusto.toFixed(2));
   const [observacao, setObservacao] = useState("");
 
   useEffect(() => {
-    // Busca disparada pela abertura: quem pode receber o consumo (profissionais ativos).
+    // Busca disparada pela abertura: quem pode receber o consumo (profissionais ativos e vendedores com acerto por quinzena).
     chamarApi<SaldoDoProfissional[]>("/painel/saldos")
       .then((lista) => setProfissionais(lista.filter((p) => p.ativo)))
       .catch(() => setProfissionais([]));
@@ -380,7 +381,7 @@ function ModalConsumo({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar:
           enviar(e, () =>
             chamarApi(`/painel/estoque/produtos/${produto.id}/consumos`, {
               metodo: "POST",
-              corpo: { profissionalId, quantidade: Number(quantidade), valorUnitario: Number(valorUnitario), observacao: observacao || null },
+              corpo: { ...corpoPessoa(pessoa), quantidade: Number(quantidade), valorUnitario: Number(valorUnitario), observacao: observacao || null },
             }),
           )
         }
@@ -388,17 +389,7 @@ function ModalConsumo({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar:
         <p className="text-sm text-gray-600 dark:text-neutral-400">
           Em estoque agora: {produto.quantidadeEstoque}. O valor vira saldo devedor do profissional e é descontado da comissão dele.
         </p>
-        <label className="block">
-          <span className={classeLabel}>Profissional</span>
-          <select required className={classeInput} value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)}>
-            <option value="">Escolha...</option>
-            {profissionais.map((p) => (
-              <option key={p.profissionalId} value={p.profissionalId}>
-                {p.nome}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SeletorPessoaSaldo pessoas={profissionais} valor={pessoa} aoMudar={setPessoa} />
         <div className="grid grid-cols-2 gap-3">
           <label className="block">
             <span className={classeLabel}>Quantidade</span>

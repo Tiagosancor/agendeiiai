@@ -51,11 +51,13 @@ export function MinhasQuinzenas() {
                 {formatarDia(q.inicio)} a {formatarDia(q.fim)} <SeloEstado estado={q.estado} />
               </div>
               <div className="text-xs text-gray-500 dark:text-neutral-400">
-                {q.parcial ? "Valor parcial, ainda pode mudar" : "Valor final, a receber"} · {q.totais.quantidadeServicos} serviço(s)
+                {q.parcial ? "Valor parcial, ainda pode mudar" : "Valor final, a receber"}
+                {q.totais.quantidadeServicos > 0 && ` · ${q.totais.quantidadeServicos} serviço(s)`}
               </div>
               <div className="text-xs text-gray-500 dark:text-neutral-400">
-                Serviços {formatarReais(q.totais.totalComissao)}
-                {q.comissaoProdutos > 0 && ` + produtos ${formatarReais(q.comissaoProdutos)}`}
+                {q.totais.totalComissao > 0 || q.comissaoProdutos === 0
+                  ? `Serviços ${formatarReais(q.totais.totalComissao)}${q.comissaoProdutos > 0 ? ` + produtos ${formatarReais(q.comissaoProdutos)}` : ""}`
+                  : `Produtos ${formatarReais(q.comissaoProdutos)}`}
                 {q.vales + q.consumo > 0 && ` − vale/consumo ${formatarReais(q.vales + q.consumo)}`}
               </div>
               {q.saldoRestante > 0 && (
@@ -295,7 +297,8 @@ function DetalheDaQuinzena({ id, podeGerenciar, aoVoltar }: { id: string; podeGe
 
       {detalhe.linhas.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-neutral-400">
-          Nenhum profissional com &quot;acerto por quinzena&quot;. Ligue a opção na ficha de cada profissional.
+          Ninguém com &quot;acerto por quinzena&quot;. Ligue a opção na ficha de cada profissional (ou, para quem vende sem cadastro
+          de profissional, na comissão de produto do usuário).
         </p>
       ) : (
         <div className={classeCartao}>
@@ -313,8 +316,11 @@ function DetalheDaQuinzena({ id, podeGerenciar, aoVoltar }: { id: string; podeGe
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
               {detalhe.linhas.map((l) => (
-                <tr key={l.profissionalId}>
-                  <td className={classeTd}>{l.nome}</td>
+                <tr key={l.profissionalId ?? `u:${l.usuarioId}`}>
+                  <td className={classeTd}>
+                    {l.nome}
+                    {!l.profissionalId && <span className="block text-xs text-gray-500 dark:text-neutral-400">vendedor</span>}
+                  </td>
                   <td className={`${classeTd} text-right`}>{l.totais.quantidadeServicos}</td>
                   <td className={`${classeTd} hidden text-right sm:table-cell`}>{formatarReais(l.totais.totalAtendido)}</td>
                   <td className={`${classeTd} text-right`}>{formatarReais(l.totais.totalComissao)}</td>

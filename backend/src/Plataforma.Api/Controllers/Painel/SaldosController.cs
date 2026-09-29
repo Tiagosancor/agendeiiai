@@ -8,8 +8,8 @@ using Plataforma.Dominio.Usuarios;
 namespace Plataforma.Api.Controllers.Painel;
 
 /// <summary>
-/// Saldo devedor dos profissionais (seção 7): vales e consumo interno. Ver: quem vê as comissões de todos, lança vales
-/// ou gerencia o estoque. Vale é de "lançar vales"; consumo (lançado no estoque) é de "gerenciar estoque" — editar e
+/// Saldo devedor dos profissionais e dos usuários que vendem sem cadastro de profissional (seção 7): vales e consumo
+/// interno. Ver: quem vê as comissões de todos, lança vales ou gerencia o estoque. Vale é de "lançar vales"; consumo (lançado no estoque) é de "gerenciar estoque" — editar e
 /// excluir seguem o tipo do lançamento. O profissional vê o dele em <c>/painel/comissoes/minhas/saldo</c>.
 /// </summary>
 [ApiController]
@@ -31,6 +31,14 @@ public sealed class SaldosController : ControllerBase
         if (!PodeVer())
             return Forbid();
         return await _saldos.DetalharAsync(id, cancellationToken) is { } saldo ? Ok(saldo) : NotFound();
+    }
+
+    [HttpGet("usuarios/{id:guid}")]
+    public async Task<ActionResult<SaldoDevedor>> DetalharUsuario(Guid id, CancellationToken cancellationToken)
+    {
+        if (!PodeVer())
+            return Forbid();
+        return await _saldos.DetalharUsuarioAsync(id, cancellationToken) is { } saldo ? Ok(saldo) : NotFound();
     }
 
     [HttpPost("vales")]

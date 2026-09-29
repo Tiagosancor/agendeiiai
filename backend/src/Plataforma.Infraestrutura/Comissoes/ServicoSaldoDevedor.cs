@@ -14,7 +14,8 @@ namespace Plataforma.Infraestrutura.Comissoes;
 internal sealed class LinhaSaldo
 {
     public Guid Id { get; init; }
-    public Guid ProfissionalId { get; init; }
+    public Guid? ProfissionalId { get; init; }
+    public Guid? UsuarioId { get; init; }
     public TipoLancamentoSaldo Tipo { get; init; }
     public DateOnly Data { get; init; }
     public DateTimeOffset CriadoEm { get; init; }
@@ -31,6 +32,7 @@ internal static class ConsultaSaldoDevedor
         {
             Id = l.Id,
             ProfissionalId = l.ProfissionalId,
+            UsuarioId = l.UsuarioId,
             Tipo = l.Tipo,
             Data = l.Data,
             CriadoEm = l.CriadoEm,
@@ -66,11 +68,12 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
 
     public async Task<Guid> LancarValeAsync(LancarVale dados, CancellationToken cancellationToken = default)
     {
-        var nome = await NomeDoProfissionalAtivoAsync(dados.ProfissionalId, cancellationToken);
+        var pessoa = PessoaComissao.Criar(dados.ProfissionalId, dados.UsuarioId);
+        var nome = await NomeDaPessoaAtivaAsync(pessoa, cancellationToken);
         var data = dados.Data ?? await HojeAsync(cancellationToken);
 
         var vale = LancamentoSaldoDevedor.CriarVale(
-            _contextoNegocio.NegocioId!.Value, dados.ProfissionalId, dados.Valor, data, dados.Motivo, _usuarioAtual.UsuarioId);
+            _contextoNegocio.NegocioId!.Value, pessoa, dados.Valor, data, dados.Motivo, _usuarioAtual.UsuarioId);
         _dbContext.LancamentosSaldoDevedor.Add(vale);
         _auditoria.Registrar(AcoesAuditoria.LancarVale, nameof(LancamentoSaldoDevedor), vale.Id,
             $"{nome}: {FormatacaoBrasil.Reais(vale.Valor)} em {vale.Data:dd/MM/yyyy}" + (vale.Descricao is null ? "" : $". Motivo: {vale.Descricao}"));
@@ -80,7 +83,8 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
 
     public async Task<Guid?> LancarConsumoAsync(Guid produtoId, LancarConsumo dados, CancellationToken cancellationToken = default)
     {
-        var nome = await NomeDoProfissionalAtivoAsync(dados.ProfissionalId, cancellationToken);
+        var pessoa = PessoaComissao.Criar(dados.ProfissionalId, dados.UsuarioId);
+        var nome = await NomeDaPessoaAtivaAsync(pessoa, cancellationToken);
         var hoje = await HojeAsync(cancellationToken);
         var negocioId = _contextoNegocio.NegocioId!.Value;
 
@@ -93,7 +97,7 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
                 return (Guid?)null;
 
             var (consumo, movimento) = LancamentoSaldoDevedor.CriarConsumo(
-                dados.ProfissionalId, produto, dados.Quantidade, dados.ValorUnitario ?? produto.PrecoCusto, hoje, dados.Observacao,
+                pessoa, produto, dados.Quantidade, dados.ValorUnitario ?? produto.PrecoCusto, hoje, dados.Observacao,
                 _usuarioAtual.UsuarioId, DateTimeOffset.UtcNow);
             _dbContext.MovimentosEstoque.Add(movimento);
             _dbContext.LancamentosSaldoDevedor.Add(consumo);
@@ -110,40 +114,68 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
     public async Task<IReadOnlyList<SaldoDoProfissional>> ResumirAsync(CancellationToken cancellationToken = default)
     {
         var abertos = await ConsultaSaldoDevedor.EmAberto(_dbContext)
-            .GroupBy(l => new { l.ProfissionalId, l.Tipo })
-            .Select(g => new { g.Key.ProfissionalId, g.Key.Tipo, Aberto = g.Sum(l => l.Aberto) })
+            .GroupBy(l => new { l.ProfissionalId, l.UsuarioId, l.Tipo })
+            .Select(g => new { g.Key.ProfissionalId, g.Key.UsuarioId, g.Key.Tipo, Aberto = g.Sum(l => l.Aberto) })
             .ToListAsync(cancellationToken);
 
-        var comSaldo = abertos.Select(a => a.ProfissionalId).Distinct().ToList();
+        var comSaldo = abertos.Where(a => a.ProfissionalId != null).Select(a => a.ProfissionalId!.Value).Distinct().ToList();
         var profissionais = await _dbContext.Profissionais.AsNoTracking()
             .Where(p => (p.Ativo && !p.Excluido) || comSaldo.Contains(p.Id))
             .OrderBy(p => p.Nome)
             .Select(p => new { p.Id, p.Nome, p.Ativo })
             .ToListAsync(cancellationToken);
 
-        decimal Soma(Guid id, TipoLancamentoSaldo tipo) =>
-            abertos.Where(a => a.ProfissionalId == id && a.Tipo == tipo).Sum(a => a.Aberto);
+        // Usuários sem cadastro de profissional: quem tem acerto por quinzena (é quem recebe por ela) ou já teve lançamento.
+        var comLancamento = await _dbContext.LancamentosSaldoDevedor
+            .Where(l => l.UsuarioId != null)
+            .Select(l => l.UsuarioId!.Value)
+            .Distinct()
+            .ToListAsync(cancellationToken);
+        var usuarios = await _dbContext.Usuarios.AsNoTracking()
+            .Where(u => (u.AcertoPorQuinzena && u.ProfissionalId == null && u.Ativo && !u.Excluido) || comLancamento.Contains(u.Id))
+            .OrderBy(u => u.Nome)
+            .Select(u => new { u.Id, u.Nome, u.Ativo })
+            .ToListAsync(cancellationToken);
 
-        return profissionais
-            .Select(p => new SaldoDoProfissional(p.Id, p.Nome, p.Ativo, Soma(p.Id, TipoLancamentoSaldo.Vale), Soma(p.Id, TipoLancamentoSaldo.ConsumoInterno)))
+        decimal Soma(PessoaComissao pessoa, TipoLancamentoSaldo tipo) =>
+            abertos.Where(a => PessoaComissao.Criar(a.ProfissionalId, a.UsuarioId) == pessoa && a.Tipo == tipo).Sum(a => a.Aberto);
+
+        SaldoDoProfissional Linha(PessoaComissao pessoa, string nome, bool ativo) => new(
+            pessoa.ProfissionalId, nome, ativo, Soma(pessoa, TipoLancamentoSaldo.Vale), Soma(pessoa, TipoLancamentoSaldo.ConsumoInterno),
+            pessoa.UsuarioId);
+
+        return profissionais.Select(p => Linha(PessoaComissao.Profissional(p.Id), p.Nome, p.Ativo))
+            .Concat(usuarios.Select(u => Linha(PessoaComissao.Usuario(u.Id), u.Nome, u.Ativo)))
             .ToList();
     }
 
     public async Task<SaldoDevedor?> DetalharAsync(Guid profissionalId, CancellationToken cancellationToken = default)
     {
-        var profissional = await _dbContext.Profissionais.AsNoTracking()
+        var nome = await _dbContext.Profissionais.AsNoTracking()
             .Where(p => p.Id == profissionalId)
-            .Select(p => new { p.Id, p.Nome })
+            .Select(p => p.Nome)
             .FirstOrDefaultAsync(cancellationToken);
-        if (profissional is null)
-            return null;
+        return nome is null ? null : await DetalharPessoaAsync(PessoaComissao.Profissional(profissionalId), nome, cancellationToken);
+    }
 
+    public async Task<SaldoDevedor?> DetalharUsuarioAsync(Guid usuarioId, CancellationToken cancellationToken = default)
+    {
+        var nome = await _dbContext.Usuarios.AsNoTracking()
+            .Where(u => u.Id == usuarioId && u.ProfissionalId == null)
+            .Select(u => u.Nome)
+            .FirstOrDefaultAsync(cancellationToken);
+        return nome is null ? null : await DetalharPessoaAsync(PessoaComissao.Usuario(usuarioId), nome, cancellationToken);
+    }
+
+    private async Task<SaldoDevedor> DetalharPessoaAsync(PessoaComissao pessoa, string nomePessoa, CancellationToken cancellationToken)
+    {
+        var (profissionalId, usuarioId) = (pessoa.ProfissionalId, pessoa.UsuarioId);
         var abertos = await ConsultaSaldoDevedor.Todos(_dbContext)
-            .Where(l => l.ProfissionalId == profissionalId)
+            .Where(l => profissionalId != null ? l.ProfissionalId == profissionalId : l.UsuarioId == usuarioId)
             .ToDictionaryAsync(l => l.Id, l => l.Aberto, cancellationToken);
 
         var lancamentos = await _dbContext.LancamentosSaldoDevedor.AsNoTracking()
-            .Where(l => l.ProfissionalId == profissionalId)
+            .Where(l => profissionalId != null ? l.ProfissionalId == profissionalId : l.UsuarioId == usuarioId)
             .OrderByDescending(l => l.Data).ThenByDescending(l => l.CriadoEm)
             .ToListAsync(cancellationToken);
 
@@ -159,17 +191,27 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
             .ToList();
 
         return new SaldoDevedor(
-            profissional.Id, profissional.Nome,
+            profissionalId, nomePessoa,
             itens.Where(i => i.Tipo == nameof(TipoLancamentoSaldo.Vale)).Sum(i => i.Aberto),
             itens.Where(i => i.Tipo == nameof(TipoLancamentoSaldo.ConsumoInterno)).Sum(i => i.Aberto),
-            itens);
+            itens, usuarioId);
     }
 
     public async Task<SaldoDevedor?> DetalharMeuAsync(CancellationToken cancellationToken = default)
     {
         var usuarioId = _usuarioAtual.UsuarioId ?? throw new InvalidOperationException("Sem usuário logado.");
-        var profissionalId = await _dbContext.Usuarios.Where(u => u.Id == usuarioId).Select(u => u.ProfissionalId).FirstOrDefaultAsync(cancellationToken);
-        return profissionalId is { } id ? await DetalharAsync(id, cancellationToken) : null;
+        var usuario = await _dbContext.Usuarios.AsNoTracking()
+            .Where(u => u.Id == usuarioId)
+            .Select(u => new { u.ProfissionalId, u.AcertoPorQuinzena })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (usuario is null)
+            return null;
+        if (usuario.ProfissionalId is { } id)
+            return await DetalharAsync(id, cancellationToken);
+
+        // Sem vínculo: só quem recebe por quinzena ou já teve vale/consumo tem o que ver.
+        var temLancamento = await _dbContext.LancamentosSaldoDevedor.AnyAsync(l => l.UsuarioId == usuarioId, cancellationToken);
+        return usuario.AcertoPorQuinzena || temLancamento ? await DetalharUsuarioAsync(usuarioId, cancellationToken) : null;
     }
 
     public Task<ResultadoLancamentoSaldo> AlterarAsync(
@@ -248,12 +290,19 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
         });
     }
 
-    private async Task<string> NomeDoProfissionalAtivoAsync(Guid profissionalId, CancellationToken cancellationToken) =>
-        await _dbContext.Profissionais.AsNoTracking()
-            .Where(p => p.Id == profissionalId && p.Ativo && !p.Excluido)
-            .Select(p => p.Nome)
-            .FirstOrDefaultAsync(cancellationToken)
-        ?? throw new ArgumentException("Escolha um profissional ativo.");
+    /// <summary>Usuário vinculado a profissional é recusado: o saldo dele fica no profissional.</summary>
+    private async Task<string> NomeDaPessoaAtivaAsync(PessoaComissao pessoa, CancellationToken cancellationToken) =>
+        pessoa.ProfissionalId is { } profissionalId
+            ? await _dbContext.Profissionais.AsNoTracking()
+                  .Where(p => p.Id == profissionalId && p.Ativo && !p.Excluido)
+                  .Select(p => p.Nome)
+                  .FirstOrDefaultAsync(cancellationToken)
+              ?? throw new ArgumentException("Escolha um profissional ativo.")
+            : await _dbContext.Usuarios.AsNoTracking()
+                  .Where(u => u.Id == pessoa.UsuarioId && u.Ativo && !u.Excluido && u.ProfissionalId == null)
+                  .Select(u => u.Nome)
+                  .FirstOrDefaultAsync(cancellationToken)
+              ?? throw new ArgumentException("Escolha um usuário ativo sem cadastro de profissional.");
 
     private async Task<DateOnly> HojeAsync(CancellationToken cancellationToken) =>
         ConversorFusoHorario.ParaLocal(DateTimeOffset.UtcNow, await _trava.FusoAsync(cancellationToken)).Dia;

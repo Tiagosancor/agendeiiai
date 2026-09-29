@@ -784,8 +784,10 @@ export interface QuinzenaResumo {
 }
 
 /** `totais` = comissão de serviço; `liquido` = serviço + produto − vale − consumo descontados (nunca negativo). */
+/** Profissional ou, sem cadastro de profissional, o usuário que vende (`profissionalId` nulo). */
 export interface LinhaQuinzena {
-  profissionalId: string;
+  profissionalId: string | null;
+  usuarioId: string | null;
   nome: string;
   totais: TotaisComissao;
   comissaoProdutos: number;
@@ -840,7 +842,8 @@ export interface LancamentoSaldoResumo {
 }
 
 export interface SaldoDevedor {
-  profissionalId: string;
+  profissionalId: string | null;
+  usuarioId: string | null;
   nome: string;
   valesEmAberto: number;
   consumoEmAberto: number;
@@ -848,8 +851,10 @@ export interface SaldoDevedor {
   lancamentos: LancamentoSaldoResumo[];
 }
 
+/** Profissional ou usuário que vende sem cadastro de profissional (`profissionalId` nulo). */
 export interface SaldoDoProfissional {
-  profissionalId: string;
+  profissionalId: string | null;
+  usuarioId: string | null;
   nome: string;
   ativo: boolean;
   valesEmAberto: number;

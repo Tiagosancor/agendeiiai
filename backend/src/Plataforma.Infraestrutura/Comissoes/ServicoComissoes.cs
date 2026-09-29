@@ -240,11 +240,11 @@ public sealed class ServicoComissoes : IServicoComissoes
         Guid usuarioId, CancellationToken cancellationToken = default) =>
         _dbContext.Usuarios.AsNoTracking()
             .Where(u => u.Id == usuarioId && !u.Excluido)
-            .Select(u => new PercentualComissaoProdutoUsuario(u.PercentualComissaoProdutoVenda, u.ProfissionalId))
+            .Select(u => new PercentualComissaoProdutoUsuario(u.PercentualComissaoProdutoVenda, u.ProfissionalId, u.AcertoPorQuinzena))
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<bool> DefinirPercentualProdutoDoUsuarioAsync(
-        Guid usuarioId, decimal percentual, CancellationToken cancellationToken = default)
+        Guid usuarioId, DefinirPercentualProduto dados, CancellationToken cancellationToken = default)
     {
         var usuario = await _dbContext.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && !u.Excluido, cancellationToken);
         if (usuario is null)
@@ -253,11 +253,19 @@ public sealed class ServicoComissoes : IServicoComissoes
             throw new ArgumentException("Este usuário é um profissional: a comissão de produto fica na ficha do profissional.");
 
         var anterior = usuario.PercentualComissaoProdutoVenda;
-        usuario.DefinirPercentualComissaoProdutoVenda(percentual);
-        if (anterior != percentual)
+        var acertoAnterior = usuario.AcertoPorQuinzena;
+        usuario.DefinirPercentualComissaoProdutoVenda(dados.Percentual);
+        if (dados.AcertoPorQuinzena is { } acerto)
+            usuario.DefinirAcertoPorQuinzena(acerto);
+
+        var mudancas = new List<string>();
+        if (anterior != dados.Percentual)
+            mudancas.Add($"Comissão de produto: {Percentual(anterior)} → {Percentual(dados.Percentual)}");
+        if (acertoAnterior != usuario.AcertoPorQuinzena)
+            mudancas.Add($"Acerto por quinzena: {SimNao(acertoAnterior)} → {SimNao(usuario.AcertoPorQuinzena)}");
+        if (mudancas.Count > 0)
         {
-            _auditoria.Registrar(AcoesAuditoria.AlterarComissaoProduto, nameof(Usuario), usuario.Id,
-                $"Comissão de produto: {Percentual(anterior)} → {Percentual(percentual)}");
+            _auditoria.Registrar(AcoesAuditoria.AlterarComissaoProduto, nameof(Usuario), usuario.Id, string.Join("; ", mudancas));
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
 

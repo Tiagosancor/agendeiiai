@@ -180,6 +180,73 @@ public sealed class SaldoDevedorTestes : IAsyncLifetime
         (saldo.ValesEmAberto, saldo.ConsumoEmAberto).Should().Be((100m, 5m));
     }
 
+    [Fact]
+    public async Task Recepcionista_sem_cadastro_de_profissional_entra_na_quinzena_com_comissao_de_produto_menos_vale_e_consumo()
+    {
+        var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        using var recepcao = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Recepcionista,
+            permissoesExtras: Usuario.PermissoesPadrao(Perfil.Recepcionista).ToArray());
+        var recepcaoId = await _fabrica.NoBancoAsync(db => db.Usuarios.IgnoreQueryFilters()
+            .Where(u => u.NegocioId == negocioId && u.Perfil == Perfil.Recepcionista).Select(u => u.Id).SingleAsync());
+
+        // Sem acerto por quinzena ainda: sem saldo nem quinzenas para ela.
+        (await recepcao.GetAsync("/painel/comissoes/minhas/saldo")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await admin.PutAsJsonAsync($"/painel/usuarios/{recepcaoId}/comissao-produto", new DefinirPercentualProduto(10m, true)))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await admin.GetFromJsonAsync<PercentualComissaoProdutoUsuario>($"/painel/usuarios/{recepcaoId}/comissao-produto"))!
+            .AcertoPorQuinzena.Should().BeTrue();
+
+        // Comissão de produto: 10% de 2 × R$ 30 = R$ 6. Saldo devedor: vale de R$ 4 (mais antigo) e consumo de R$ 5.
+        var produtoId = await CriarProdutoAsync(admin, "Balm", custo: 5m, venda: 30m, quantidade: 5);
+        var venda = await admin.PostAsJsonAsync("/painel/vendas", new LancarVenda([new ItemLancarVenda(produtoId, 2, 30m)], null, recepcaoId));
+        venda.StatusCode.Should().Be(HttpStatusCode.Created);
+        var vendaId = (await venda.Content.ReadFromJsonAsync<VendaLancada>())!.VendaId;
+        (await admin.PostAsJsonAsync("/painel/saldos/vales", new LancarVale(null, 4m, Dia(-1), "Adiantamento", recepcaoId)))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        (await admin.PostAsJsonAsync($"{Produtos}/{produtoId}/consumos", new LancarConsumo(null, 1, UsuarioId: recepcaoId)))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+
+        // Os dois, ou nenhum: recusado.
+        var profissionalId = await _fabrica.CriarProfissionalAsync(negocioId, "Ana");
+        (await admin.PostAsJsonAsync("/painel/saldos/vales", new LancarVale(profissionalId, 4m, UsuarioId: recepcaoId)))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await admin.PostAsJsonAsync("/painel/saldos/vales", new LancarVale(null, 4m))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var resumo = (await admin.GetFromJsonAsync<List<SaldoDoProfissional>>("/painel/saldos"))!;
+        resumo.Single(s => s.UsuarioId == recepcaoId).Should().Match<SaldoDoProfissional>(s =>
+            s.ProfissionalId == null && s.ValesEmAberto == 4m && s.ConsumoEmAberto == 5m);
+
+        var quinzena = await CriarQuinzenaAsync(admin, Dia(-3), Dia(0));
+        var linha = (await admin.GetFromJsonAsync<DetalheQuinzena>($"/painel/quinzenas/{quinzena}"))!.Linhas.Single(l => l.UsuarioId == recepcaoId);
+        (linha.ProfissionalId, linha.Totais.TotalComissao, linha.ComissaoProdutos, linha.Vales, linha.Consumo, linha.Liquido, linha.SaldoRestante)
+            .Should().Be(((Guid?)null, 0m, 6m, 4m, 2m, 0m, 3m));
+
+        (await admin.PostAsJsonAsync($"/painel/quinzenas/{quinzena}/fechar", new FecharQuinzenaRequisicao(false)))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var fechamento = await _fabrica.NoBancoAsync(db => db.FechamentosComissao.IgnoreQueryFilters().SingleAsync(f => f.UsuarioId == recepcaoId));
+        (fechamento.ProfissionalId, fechamento.TotalComissaoProdutos, fechamento.Liquido, fechamento.SaldoRestante)
+            .Should().Be(((Guid?)null, 6m, 0m, 3m));
+        var fechada = (await admin.GetFromJsonAsync<DetalheQuinzena>($"/painel/quinzenas/{quinzena}"))!.Linhas.Single(l => l.UsuarioId == recepcaoId);
+        fechada.Nome.Should().NotBeEmpty();
+
+        // Ela vê as próprias quinzenas e o saldo, só leitura.
+        var minhas = (await recepcao.GetFromJsonAsync<QuinzenasDoProfissional>("/painel/comissoes/minhas/quinzenas"))!;
+        minhas.AcertoPorQuinzena.Should().BeTrue();
+        minhas.Quinzenas.Single().Should().Match<QuinzenaDoProfissional>(q => !q.Parcial && q.ComissaoProdutos == 6m && q.SaldoRestante == 3m);
+        var meu = (await recepcao.GetFromJsonAsync<SaldoDevedor>("/painel/comissoes/minhas/saldo"))!;
+        (meu.UsuarioId, meu.ValesEmAberto, meu.ConsumoEmAberto).Should().Be(((Guid?)recepcaoId, 0m, 3m));
+        (await admin.GetFromJsonAsync<SaldoDevedor>($"/painel/saldos/usuarios/{recepcaoId}"))!.ConsumoEmAberto.Should().Be(3m);
+
+        // A comissão da venda já entrou no fechamento: estornar só depois de reabrir.
+        var estorno = await admin.PostAsJsonAsync($"/painel/vendas/{vendaId}/estornar", new EstornarVenda("Engano"));
+        estorno.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await estorno.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codigo").GetString().Should().Be("quinzena_fechada");
+
+        // Com histórico de dinheiro, excluir o usuário é lógico (a linha fica para o fechamento).
+        (await admin.DeleteAsync($"/painel/usuarios/{recepcaoId}")).EnsureSuccessStatusCode();
+        (await _fabrica.NoBancoAsync(db => db.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Id == recepcaoId))).Should().BeTrue();
+    }
+
     private static async Task<Guid> CriarProdutoAsync(HttpClient admin, string nome, decimal custo, decimal venda, int quantidade)
     {
         var resposta = await admin.PostAsJsonAsync(Produtos, new CriarProduto(nome, null, custo, venda, quantidade));

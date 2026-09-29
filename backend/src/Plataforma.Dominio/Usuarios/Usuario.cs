@@ -54,6 +54,12 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
     /// </summary>
     public decimal PercentualComissaoProdutoVenda { get; private set; }
 
+    /// <summary>
+    /// Entra no fechamento por quinzena (comissão de produto − vale/consumo) quando vende sem cadastro de profissional.
+    /// Com vínculo, vale o do <c>Profissional</c>.
+    /// </summary>
+    public bool AcertoPorQuinzena { get; private set; }
+
     public IReadOnlyCollection<UsuarioPermissao> Permissoes => _permissoes.AsReadOnly();
 
     protected Usuario()
@@ -142,6 +148,8 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
     public void VincularProfissional(Guid profissionalId) => ProfissionalId = profissionalId;
 
     public void DesvincularProfissional() => ProfissionalId = null;
+
+    public void DefinirAcertoPorQuinzena(bool acertoPorQuinzena) => AcertoPorQuinzena = acertoPorQuinzena;
 
     public void DefinirPercentualComissaoProdutoVenda(decimal percentual) =>
         PercentualComissaoProdutoVenda = ValidacaoPercentual.Comissao(percentual, nameof(percentual));
