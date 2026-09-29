@@ -16,6 +16,8 @@ public sealed class AgendamentoConfiguracao : IEntityTypeConfiguration<Agendamen
         builder.Property(a => a.Fim).IsRequired();
         builder.Property(a => a.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(a => a.Forcado).HasDefaultValue(false).IsRequired();
+        builder.Property(a => a.ForcadoMotivo).HasMaxLength(500);
+        builder.Property(a => a.ForcadoRegras).HasMaxLength(2000);
         builder.Property(a => a.Origem).HasConversion<string>().HasMaxLength(20).HasDefaultValue(OrigemAgendamento.Painel).HasSentinel((OrigemAgendamento)0).IsRequired();
         builder.Ignore(a => a.PodeReceberMensagens);
         builder.Property(a => a.Observacoes).HasMaxLength(2000);

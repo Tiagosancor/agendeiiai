@@ -142,6 +142,43 @@ public sealed class AgendamentoTestes
     }
 
     [Fact]
+    public void Forcar_exige_motivo_e_ao_menos_uma_regra_quebrada()
+    {
+        var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+
+        FluentActions.Invoking(() => agendamento.MarcarForcado("  ", ["Fora do expediente"], Guid.NewGuid(), Inicio))
+            .Should().Throw<ArgumentException>();
+        FluentActions.Invoking(() => agendamento.MarcarForcado("Cliente VIP", [], Guid.NewGuid(), Inicio))
+            .Should().Throw<InvalidOperationException>();
+        agendamento.Forcado.Should().BeFalse();
+
+        var usuarioId = Guid.NewGuid();
+        agendamento.MarcarForcado(" Cliente VIP ", ["Fora do expediente", "Sobrepõe outro agendamento às 10:00"], usuarioId, Inicio);
+
+        agendamento.Forcado.Should().BeTrue();
+        agendamento.ForcadoMotivo.Should().Be("Cliente VIP");
+        agendamento.ForcadoPorUsuarioId.Should().Be(usuarioId);
+        agendamento.ForcadoEm.Should().Be(Inicio);
+        agendamento.ForcadoRegras.Should().Be("Fora do expediente\nSobrepõe outro agendamento às 10:00");
+    }
+
+    [Fact]
+    public void Remarcar_ou_transferir_pelo_caminho_normal_tira_a_marca_de_forcado()
+    {
+        var movido = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+        movido.MarcarForcado("Cliente VIP", ["Fora do expediente"], Guid.NewGuid(), Inicio);
+        movido.Mover(Inicio.AddDays(1), Inicio.AddDays(1).AddMinutes(30));
+        movido.Forcado.Should().BeFalse();
+        movido.ForcadoMotivo.Should().BeNull();
+        movido.ForcadoRegras.Should().BeNull();
+
+        var transferido = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);
+        transferido.MarcarForcado("Cliente VIP", ["Fora do expediente"], Guid.NewGuid(), Inicio);
+        transferido.TransferirPara(Guid.NewGuid());
+        transferido.Forcado.Should().BeFalse();
+    }
+
+    [Fact]
     public void Mover_um_agendamento_cancelado_lanca_excecao()
     {
         var agendamento = Agendamento.CriarConfirmado(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Inicio, [ServicoDeTeste]);

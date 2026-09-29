@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeInput, classeLabel } from "@/components/estilos";
-import type { ClienteResumo, ProfissionalResumo, ServicoResumo } from "@/lib/tipos";
+import type { ClienteResumo, ConsultaForcar, ProfissionalResumo, ServicoResumo } from "@/lib/tipos";
 import { formatarReais } from "@/lib/formatacao";
+import { AvisoForcar } from "@/components/painel/AvisoForcar";
 
 interface OpcoesEncaixe {
   profissionais: ProfissionalResumo[];
@@ -37,7 +38,8 @@ export function ModalEncaixe({
   aoFechar: () => void;
   aoLancar: () => void;
 }) {
-  const { chamarApi } = useAutenticacao();
+  const { chamarApi, temPermissao } = useAutenticacao();
+  const podeForcar = temPermissao("ForcarAgendamento");
   const [opcoes, setOpcoes] = useState<OpcoesEncaixe | null>(null);
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState<ClienteResumo[]>([]);
@@ -52,6 +54,8 @@ export function ModalEncaixe({
   const [erro, setErro] = useState<string | null>(null);
   const [sugestoes, setSugestoes] = useState<string[]>([]);
   const [enviando, setEnviando] = useState(false);
+  // Forçar (seção 7): o horário recusado e qual dos dois botões foi usado.
+  const [forcar, setForcar] = useState<{ consulta: ConsultaForcar; iniciarAtendimento: boolean } | null>(null);
 
   useEffect(() => {
     if (!aberto) return;
@@ -68,6 +72,7 @@ export function ModalEncaixe({
     setAutorizou(false);
     setErro(null);
     setSugestoes([]);
+    setForcar(null);
     /* eslint-enable react-hooks/set-state-in-effect */
     chamarApi<OpcoesEncaixe>("/painel/encaixes/opcoes")
       .then((dados) => {
@@ -94,23 +99,26 @@ export function ModalEncaixe({
   const clienteOk = cliente !== null || (novoCliente && nomeNovo.trim().length > 0);
   const podeEnviar = clienteOk && profissionalId && servicoIds.length > 0 && !enviando;
 
+  function corpoDoEncaixe(iniciarAtendimento: boolean, clienteId: string | null, motivoForcar: string | null) {
+    return {
+      profissionalId,
+      clienteId,
+      novoCliente: clienteId ? null : { nome: nomeNovo.trim(), telefone: telefoneNovo.trim() || null },
+      servicoIds,
+      inicio: iniciarAtendimento ? null : new Date(horario).toISOString(),
+      iniciarAtendimento,
+      clienteAutorizouMensagens: autorizou,
+      motivoForcar,
+    };
+  }
+
   async function lancar(iniciarAtendimento: boolean) {
     setErro(null);
     setSugestoes([]);
+    setForcar(null);
     setEnviando(true);
     try {
-      await chamarApi("/painel/encaixes", {
-        metodo: "POST",
-        corpo: {
-          profissionalId,
-          clienteId: cliente?.id ?? null,
-          novoCliente: cliente ? null : { nome: nomeNovo.trim(), telefone: telefoneNovo.trim() || null },
-          servicoIds,
-          inicio: iniciarAtendimento ? null : new Date(horario).toISOString(),
-          iniciarAtendimento,
-          clienteAutorizouMensagens: autorizou,
-        },
-      });
+      await chamarApi("/painel/encaixes", { metodo: "POST", corpo: corpoDoEncaixe(iniciarAtendimento, cliente?.id ?? null, null) });
       aoLancar();
     } catch (excecao) {
       if (excecao instanceof ErroApi) {
@@ -119,12 +127,26 @@ export function ModalEncaixe({
         const clienteId = excecao.corpo?.clienteId as string | undefined;
         if (clienteId && !cliente) setCliente({ id: clienteId, nome: nomeNovo.trim() });
         setSugestoes((excecao.corpo?.proximosHorariosLivres as string[] | undefined) ?? []);
+        if (podeForcar && (excecao.status === 400 || excecao.status === 409))
+          setForcar({
+            consulta: { profissionalId, servicoIds, inicio: iniciarAtendimento ? null : new Date(horario).toISOString() },
+            iniciarAtendimento,
+          });
       } else {
         setErro("Não foi possível lançar o atendimento.");
       }
     } finally {
       setEnviando(false);
     }
+  }
+
+  async function lancarForcado(motivo: string) {
+    if (!forcar) return;
+    await chamarApi("/painel/encaixes", {
+      metodo: "POST",
+      corpo: corpoDoEncaixe(forcar.iniciarAtendimento, cliente?.id ?? null, motivo),
+    });
+    aoLancar();
   }
 
   return (
@@ -261,14 +283,18 @@ export function ModalEncaixe({
 
         {erro && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
 
-        <div className="flex flex-wrap justify-end gap-2">
-          <button type="button" className={classeBotaoSecundario} disabled={!podeEnviar} onClick={() => lancar(false)}>
-            Apenas encaixar
-          </button>
-          <button type="button" className={classeBotaoPrimario} disabled={!podeEnviar} onClick={() => lancar(true)}>
-            {enviando ? "Lançando..." : "Lançar e iniciar atendimento"}
-          </button>
-        </div>
+        {forcar ? (
+          <AvisoForcar consulta={forcar.consulta} aoForcar={lancarForcado} aoDesistir={() => setForcar(null)} />
+        ) : (
+          <div className="flex flex-wrap justify-end gap-2">
+            <button type="button" className={classeBotaoSecundario} disabled={!podeEnviar} onClick={() => lancar(false)}>
+              Apenas encaixar
+            </button>
+            <button type="button" className={classeBotaoPrimario} disabled={!podeEnviar} onClick={() => lancar(true)}>
+              {enviando ? "Lançando..." : "Lançar e iniciar atendimento"}
+            </button>
+          </div>
+        )}
       </div>
     </Modal>
   );

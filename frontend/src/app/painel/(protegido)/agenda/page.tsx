@@ -5,10 +5,12 @@ import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { ModalAjusteValor } from "@/components/painel/ModalAjusteValor";
 import { ModalEncaixe } from "@/components/painel/ModalEncaixe";
+import { AvisoForcar } from "@/components/painel/AvisoForcar";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import type {
   AgendamentoResumo,
   ClienteResumo,
+  ConsultaForcar,
   CriarAgendamento,
   FormaPagamento,
   ProfissionalResumo,
@@ -144,12 +146,29 @@ export default function PaginaAgenda() {
                 <span className={`rounded-full px-2 py-0.5 text-xs ${RUBRICA_STATUS[item.status] ?? ""}`}>
                   {ROTULO_STATUS[item.status] ?? item.status}
                 </span>
+                {item.forcado && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
+                    Forçado
+                  </span>
+                )}
               </div>
               <p className="text-sm text-gray-700 dark:text-neutral-300">{item.clienteNome}</p>
               <p className="text-xs text-gray-500 dark:text-neutral-400">
                 {item.servicos.join(", ")} · {formatarReais(item.total)}
               </p>
               {item.observacoes && <p className="text-xs text-gray-500 dark:text-neutral-400">Obs.: {item.observacoes}</p>}
+              {item.forcado && (
+                <details className="text-xs text-amber-800 dark:text-amber-200">
+                  <summary className="cursor-pointer">
+                    Forçado{item.forcadoPor ? ` por ${item.forcadoPor}` : ""}: {item.forcadoMotivo}
+                  </summary>
+                  <ul className="mt-1 list-disc pl-5">
+                    {item.forcadoRegras?.map((regra) => (
+                      <li key={regra}>{regra}</li>
+                    ))}
+                  </ul>
+                </details>
+              )}
             </div>
             {item.status === "Agendado" && (
               <div className="flex flex-wrap gap-2">
@@ -331,7 +350,8 @@ function ModalNovoAgendamento({
   data: string;
   aoCriar: () => Promise<void>;
 }) {
-  const { chamarApi } = useAutenticacao();
+  const { chamarApi, temPermissao } = useAutenticacao();
+  const podeForcar = temPermissao("ForcarAgendamento");
 
   const [servicos, setServicos] = useState<ServicoResumo[]>([]);
   const [clientes, setClientes] = useState<ClienteResumo[]>([]);
@@ -342,6 +362,9 @@ function ModalNovoAgendamento({
   const [observacoes, setObservacoes] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  // Forçar (seção 7): horário digitado fora da lista de livres e o aviso das regras quebradas.
+  const [outroHorario, setOutroHorario] = useState("");
+  const [consultaForcar, setConsultaForcar] = useState<ConsultaForcar | null>(null);
 
   useEffect(() => {
     if (!aberto) return;
@@ -379,32 +402,42 @@ function ModalNovoAgendamento({
     setServicoIdsSelecionados((atual) => (atual.includes(id) ? atual.filter((s) => s !== id) : [...atual, id]));
   }
 
+  // Horário digitado vale no dia da agenda, no fuso do navegador (como o resto da tela).
+  const inicio = outroHorario ? new Date(`${data}T${outroHorario}`).toISOString() : horarioSelecionado;
+
+  function dadosDoAgendamento(): CriarAgendamento {
+    return { profissionalId, clienteId, servicoIds: servicoIdsSelecionados, inicio, observacoes: observacoes || null };
+  }
+
+  async function concluirCriacao() {
+    setServicoIdsSelecionados([]);
+    setClienteId("");
+    setHorarioSelecionado("");
+    setOutroHorario("");
+    setObservacoes("");
+    setConsultaForcar(null);
+    await aoCriar();
+  }
+
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
     setErro(null);
+    setConsultaForcar(null);
 
-    if (servicoIdsSelecionados.length === 0 || !clienteId || !horarioSelecionado) {
+    if (servicoIdsSelecionados.length === 0 || !clienteId || !inicio) {
       setErro("Escolha ao menos um serviço, o cliente e o horário.");
       return;
     }
 
     setEnviando(true);
     try {
-      const dados: CriarAgendamento = {
-        profissionalId,
-        clienteId,
-        servicoIds: servicoIdsSelecionados,
-        inicio: horarioSelecionado,
-        observacoes: observacoes || null,
-      };
-      await chamarApi("/painel/agendamentos", { metodo: "POST", corpo: dados });
-      setServicoIdsSelecionados([]);
-      setClienteId("");
-      setHorarioSelecionado("");
-      setObservacoes("");
-      await aoCriar();
+      await chamarApi("/painel/agendamentos", { metodo: "POST", corpo: dadosDoAgendamento() });
+      await concluirCriacao();
     } catch (excecao) {
-      if (excecao instanceof ErroApi && excecao.status === 409) {
+      if (excecao instanceof ErroApi && (excecao.status === 400 || excecao.status === 409) && podeForcar) {
+        setErro(excecao.message);
+        setConsultaForcar({ profissionalId, servicoIds: servicoIdsSelecionados, inicio });
+      } else if (excecao instanceof ErroApi && excecao.status === 409) {
         setErro("Esse horário acabou de ser preenchido por outra pessoa. Escolha outro.");
       } else {
         setErro("Não foi possível criar o agendamento (confira o expediente e os bloqueios do profissional).");
@@ -412,6 +445,11 @@ function ModalNovoAgendamento({
     } finally {
       setEnviando(false);
     }
+  }
+
+  async function forcar(motivo: string) {
+    await chamarApi("/painel/agendamentos/forcados", { metodo: "POST", corpo: { ...dadosDoAgendamento(), motivo } });
+    await concluirCriacao();
   }
 
   return (
@@ -446,10 +484,13 @@ function ModalNovoAgendamento({
         <label>
           <span className={classeLabel}>Horário ({duracaoTotal} min no total)</span>
           <select
-            required
+            required={!outroHorario}
             className={classeInput}
             value={horarioSelecionado}
-            onChange={(e) => setHorarioSelecionado(e.target.value)}
+            onChange={(e) => {
+              setHorarioSelecionado(e.target.value);
+              setOutroHorario("");
+            }}
             disabled={duracaoTotal === 0}
           >
             <option value="">Selecione...</option>
@@ -464,6 +505,22 @@ function ModalNovoAgendamento({
           )}
         </label>
 
+        {podeForcar && (
+          <label className="block">
+            <span className={classeLabel}>Outro horário (fora da lista — pode exigir forçar)</span>
+            <input
+              type="time"
+              className={classeInput}
+              value={outroHorario}
+              onChange={(e) => {
+                setOutroHorario(e.target.value);
+                setHorarioSelecionado("");
+                setConsultaForcar(null);
+              }}
+            />
+          </label>
+        )}
+
         <label>
           <span className={classeLabel}>Observações (opcional)</span>
           <textarea className={classeInput} rows={2} value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
@@ -471,14 +528,18 @@ function ModalNovoAgendamento({
 
         {erro && <p className="text-sm text-red-600">{erro}</p>}
 
-        <div className="flex justify-end gap-2 pt-2">
-          <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
-            Cancelar
-          </button>
-          <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
-            {enviando ? "Criando..." : "Criar"}
-          </button>
-        </div>
+        {consultaForcar ? (
+          <AvisoForcar consulta={consultaForcar} aoForcar={forcar} aoDesistir={() => setConsultaForcar(null)} />
+        ) : (
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={enviando} className={classeBotaoPrimario}>
+              {enviando ? "Criando..." : "Criar"}
+            </button>
+          </div>
+        )}
       </form>
     </Modal>
   );

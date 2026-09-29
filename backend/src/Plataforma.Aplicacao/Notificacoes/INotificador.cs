@@ -75,7 +75,7 @@ public sealed record ResultadoEnvioCanais(StatusCanal? WhatsApp, string? IdMensa
 
 public sealed record DadosNotificacaoProfissional(
     EventoAgendamentoProfissional Evento, string? EmailProfissional, string? TelefoneProfissional, string NomeCliente,
-    DateTimeOffset Inicio, DateTimeOffset Fim, IReadOnlyList<string> Servicos, string? Observacoes);
+    DateTimeOffset Inicio, DateTimeOffset Fim, IReadOnlyList<string> Servicos, string? Observacoes, bool Forcado = false);
 
 public sealed record DadosNotificacaoAgendamento(
     string NomeCliente, string? EmailCliente, TelefoneE164? TelefoneCliente,

@@ -48,6 +48,22 @@ public interface IServicoAgendamentos
     Task<ResultadoAgendamento> MoverAsync(Guid agendamentoId, DateTimeOffset novoInicio, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Quais regras de horário um agendamento quebraria (seção 7, "Forçar agendamento") — o aviso que
+    /// quem tem a permissão vê antes de "Forçar mesmo assim". Não grava nada.
+    /// </summary>
+    Task<PreviaForcar> PreverForcarAsync(ConsultaForcar dados, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cria por cima das regras de horário (seção 7): só pelo painel, com a permissão própria e motivo.
+    /// Profissional inativo, data no passado (e, pela API, assinatura suspensa) nunca podem ser forçados.
+    /// </summary>
+    Task<ResultadoAgendamento> CriarForcadoAsync(CriarAgendamento dados, string motivo, CancellationToken cancellationToken = default);
+
+    /// <summary>Move por cima das regras de horário (seção 7) — mesmas condições de <see cref="CriarForcadoAsync"/>.</summary>
+    Task<ResultadoAgendamento> MoverForcadoAsync(
+        Guid agendamentoId, DateTimeOffset novoInicio, string motivo, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Atendimento sem agendamento (seção 7): cliente existente ou cadastro rápido (telefone opcional),
     /// e "Lançar e iniciar" (EmAtendimento, começa agora) ou "Apenas encaixar" (Agendado no horário dado).
     /// Mesmas regras de horário do painel (409 com próximos horários livres).
@@ -81,9 +97,23 @@ public sealed record CriarAgendamento(
 public sealed record NovoClienteEncaixe(string Nome, string? Telefone);
 
 /// <summary><c>Inicio</c> só vale para "Apenas encaixar"; "Lançar e iniciar" começa agora.</summary>
+/// <summary>
+/// <c>MotivoForcar</c> preenchido = encaixe forçado por cima das regras de horário (seção 7); o controller
+/// só aceita com a permissão "forçar agendamento".
+/// </summary>
 public sealed record LancarEncaixe(
     Guid ProfissionalId, Guid? ClienteId, NovoClienteEncaixe? NovoCliente, IReadOnlyList<Guid> ServicoIds,
-    DateTimeOffset? Inicio, bool IniciarAtendimento, bool ClienteAutorizouMensagens, string? Observacoes = null);
+    DateTimeOffset? Inicio, bool IniciarAtendimento, bool ClienteAutorizouMensagens, string? Observacoes = null,
+    string? MotivoForcar = null);
+
+/// <summary>
+/// O que se quer forçar: um horário novo (<c>ServicoIds</c>) ou mover um existente (<c>AgendamentoId</c>, que
+/// dá profissional e serviços). <c>Inicio</c> nulo = agora (o "Lançar e iniciar" do encaixe).
+/// </summary>
+public sealed record ConsultaForcar(Guid? ProfissionalId, IReadOnlyList<Guid>? ServicoIds, DateTimeOffset? Inicio, Guid? AgendamentoId = null);
+
+/// <summary><c>Impedimento</c> = o que nunca pode ser forçado (profissional inativo, passado); <c>Regras</c> = o que será quebrado.</summary>
+public sealed record PreviaForcar(IReadOnlyList<string> Regras, string? Impedimento);
 
 /// <summary><c>ClienteId</c> vem mesmo quando o horário falha: o cadastro rápido já foi feito e a tela passa a usá-lo.</summary>
 public sealed record ResultadoEncaixe(ResultadoAgendamento Agendamento, Guid? ClienteId);
@@ -102,9 +132,11 @@ public static class VersaoTermos
 
 public sealed record ResultadoPreVisualizacaoCupom(bool Sucesso, decimal Desconto = 0m, string? MensagemErro = null);
 
+/// <summary>Os campos <c>Forcado*</c> vêm do "Forçar agendamento" (seção 7): marca na agenda, motivo, quem autorizou e as regras quebradas.</summary>
 public sealed record AgendamentoResumo(
     Guid Id, Guid ProfissionalId, Guid? ClienteId, string ClienteNome, DateTimeOffset Inicio, DateTimeOffset Fim,
-    string Status, string? Observacoes, IReadOnlyList<string> Servicos, decimal Total);
+    string Status, string? Observacoes, IReadOnlyList<string> Servicos, decimal Total,
+    bool Forcado = false, string? ForcadoMotivo = null, string? ForcadoPor = null, IReadOnlyList<string>? ForcadoRegras = null);
 
 public sealed record ResultadoAgendamento(
     bool Sucesso, Guid? AgendamentoId = null, string? MensagemErro = null,

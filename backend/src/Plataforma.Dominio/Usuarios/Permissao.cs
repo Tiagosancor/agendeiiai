@@ -39,4 +39,10 @@ public enum Permissao
 
     /// <summary>Lançar atendimento sem agendamento — o encaixe do balcão (seção 7). Administrador e Recepcionista, por padrão.</summary>
     LancarAtendimentoSemAgendamento = 16,
+
+    /// <summary>
+    /// Criar ou mover agendamento por cima das regras de horário, só no painel (seção 7). Desligada para
+    /// todos os perfis; só o Administrador a tem de origem e concede por usuário.
+    /// </summary>
+    ForcarAgendamento = 17,
 }

@@ -72,10 +72,24 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     public IReadOnlyCollection<AgendamentoServico> Servicos => _servicos.AsReadOnly();
 
     /// <summary>
-    /// Criado por cima das regras de horário (seção 7, "Forçar agendamento" — item 10). Já existe para a
-    /// exclusion constraint ser recriada uma vez só (`AND NOT forcado`); por ora é sempre falso.
+    /// Criado ou movido por cima das regras de horário (seção 7, "Forçar agendamento"). Fica fora da
+    /// exclusion constraint (`AND NOT forcado`), mas continua ocupando o horário: a disponibilidade o
+    /// considera e a criação normal confere a sobreposição com ele na aplicação, sob a trava do profissional.
+    /// Só <see cref="MarcarForcado"/> liga; remarcar ou transferir pelo caminho normal desliga.
     /// </summary>
     public bool Forcado { get; private set; }
+
+    /// <summary>Tamanho da coluna das regras quebradas; muitas sobreposições são cortadas no fim.</summary>
+    public const int TamanhoMaximoRegras = 2000;
+
+    public string? ForcadoMotivo { get; private set; }
+
+    public Guid? ForcadoPorUsuarioId { get; private set; }
+
+    public DateTimeOffset? ForcadoEm { get; private set; }
+
+    /// <summary>Regras quebradas no momento em que foi forçado, uma por linha (sem nome de cliente).</summary>
+    public string? ForcadoRegras { get; private set; }
 
     /// <summary>De onde veio o agendamento (seção 7), para filtros e relatórios.</summary>
     public OrigemAgendamento Origem { get; private set; } = OrigemAgendamento.Painel;
@@ -225,6 +239,38 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
 
         Inicio = novoInicio;
         Fim = novoFim;
+
+        // O horário novo segue as regras normais (seção 7); quem move forçando marca de novo depois.
+        LimparForcado();
+    }
+
+    /// <summary>
+    /// Grava que o agendamento passou por cima das regras de horário (seção 7): motivo obrigatório,
+    /// quem forçou, quando e quais regras foram quebradas.
+    /// </summary>
+    public void MarcarForcado(string motivo, IReadOnlyCollection<string> regrasQuebradas, Guid? usuarioId, DateTimeOffset agora)
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+            throw new ArgumentException("Informe o motivo para forçar o agendamento.", nameof(motivo));
+
+        if (regrasQuebradas.Count == 0)
+            throw new InvalidOperationException("Nenhuma regra de horário foi quebrada — não há o que forçar.");
+
+        Forcado = true;
+        ForcadoMotivo = motivo.Trim();
+        ForcadoPorUsuarioId = usuarioId;
+        ForcadoEm = agora;
+        var regras = string.Join("\n", regrasQuebradas);
+        ForcadoRegras = regras.Length > TamanhoMaximoRegras ? regras[..TamanhoMaximoRegras] : regras;
+    }
+
+    private void LimparForcado()
+    {
+        Forcado = false;
+        ForcadoMotivo = null;
+        ForcadoPorUsuarioId = null;
+        ForcadoEm = null;
+        ForcadoRegras = null;
     }
 
     /// <summary>
@@ -237,6 +283,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
             throw new InvalidOperationException("Só um agendamento ativo pode ser transferido.");
 
         ProfissionalId = novoProfissionalId;
+        LimparForcado();
     }
 
     /// <summary>Encaixe (seção 7): quem lançou marcou que o cliente autorizou receber mensagens.</summary>

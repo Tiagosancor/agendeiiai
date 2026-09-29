@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -29,6 +30,11 @@ namespace Plataforma.Infraestrutura.Agendamentos;
 public sealed class ServicoAgendamentos : IServicoAgendamentos
 {
     private static readonly TimeSpan DuracaoDaReserva = TimeSpan.FromMinutes(10);
+
+    /// <summary>Folga para o "agora" do encaixe forçado não ser recusado como passado (seção 7).</summary>
+    private static readonly TimeSpan ToleranciaAgora = TimeSpan.FromMinutes(5);
+
+    private const int TamanhoMaximoMotivo = 500;
 
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
@@ -80,7 +86,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         var resultado = await CriarInternoAsync(
             new CriarAgendamento(dados.ProfissionalId, cliente.Id, dados.ServicoIds, inicio, dados.Observacoes),
             confirmarDeImediato: true, cancellationToken,
-            new OpcoesCriacao(OrigemAgendamento.Encaixe, dados.IniciarAtendimento, dados.ClienteAutorizouMensagens));
+            new OpcoesCriacao(OrigemAgendamento.Encaixe, dados.IniciarAtendimento, dados.ClienteAutorizouMensagens, dados.MotivoForcar));
 
         if (resultado.Sucesso)
         {
@@ -160,38 +166,41 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         CriarInternoAsync(
             new CriarAgendamento(dados.ProfissionalId, null, dados.ServicoIds, dados.Inicio), confirmarDeImediato: false, cancellationToken);
 
-    /// <summary>O que muda na criação do encaixe (seção 7) em relação ao agendamento comum do painel.</summary>
-    private sealed record OpcoesCriacao(OrigemAgendamento Origem, bool IniciarAtendimento, bool ClienteAutorizouMensagens);
-
-    private async Task<ResultadoAgendamento> CriarInternoAsync(
-        CriarAgendamento dados, bool confirmarDeImediato, CancellationToken cancellationToken, OpcoesCriacao? opcoes = null)
+    public async Task<ResultadoAgendamento> CriarForcadoAsync(CriarAgendamento dados, string motivo, CancellationToken cancellationToken = default)
     {
-        var negocioId = _contextoNegocio.NegocioId!.Value;
+        var resultado = await CriarInternoAsync(dados, confirmarDeImediato: true, cancellationToken,
+            new OpcoesCriacao(OrigemAgendamento.Painel, IniciarAtendimento: false, ClienteAutorizouMensagens: false, motivo ?? string.Empty));
 
-        var negocio = await _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == negocioId, cancellationToken);
-        var fuso = TimeZoneInfo.FindSystemTimeZoneById(negocio.Fuso);
+        if (resultado.Sucesso)
+            await NotificarProfissionalAsync(resultado.AgendamentoId!.Value, EventoAgendamentoProfissional.Novo, cancellationToken);
 
+        return resultado;
+    }
+
+    /// <summary>
+    /// O que muda na criação do encaixe e do agendamento forçado (seção 7) em relação ao agendamento comum
+    /// do painel. <c>MotivoForcar</c> não nulo = passar por cima das regras de horário.
+    /// </summary>
+    private sealed record OpcoesCriacao(
+        OrigemAgendamento Origem, bool IniciarAtendimento, bool ClienteAutorizouMensagens, string? MotivoForcar = null);
+
+    /// <summary>Serviços do agendamento com preço e duração do profissional (personalização por profissional, seção 7).</summary>
+    private async Task<(List<ItemServicoAgendamento> Itens, string? Erro)> MontarItensAsync(
+        Guid profissionalId, IReadOnlyList<Guid> servicoIds, CancellationToken cancellationToken)
+    {
         var servicos = await _dbContext.Servicos.AsNoTracking()
-            .Where(s => dados.ServicoIds.Contains(s.Id))
+            .Where(s => servicoIds.Contains(s.Id))
             .ToListAsync(cancellationToken);
 
-        if (servicos.Count != dados.ServicoIds.Distinct().Count())
-            return ResultadoAgendamento.ComErro("Um ou mais serviços não foram encontrados.");
-
-        // O painel confirma na hora, e um agendamento confirmado sempre tem cliente (antes isso
-        // estourava na entidade e virava 500 — seção 8.2.4: nunca 500).
-        if (confirmarDeImediato && dados.ClienteId is null)
-            return ResultadoAgendamento.ComErro("Escolha o cliente do agendamento.");
+        if (servicos.Count == 0 || servicos.Count != servicoIds.Distinct().Count())
+            return ([], "Um ou mais serviços não foram encontrados.");
 
         // Excluído sai da oferta na hora (seção 7) — nem por ID guardado dá para agendar.
         if (servicos.Any(s => s.Excluido))
-            return ResultadoAgendamento.ComErro("Um ou mais serviços não estão mais disponíveis.");
-
-        if (await _dbContext.Profissionais.AnyAsync(p => p.Id == dados.ProfissionalId && p.Excluido, cancellationToken))
-            return ResultadoAgendamento.ComErro("Este profissional não atende mais.");
+            return ([], "Um ou mais serviços não estão mais disponíveis.");
 
         var overrides = await _dbContext.ProfissionalServicos.AsNoTracking()
-            .Where(ps => ps.ProfissionalId == dados.ProfissionalId && dados.ServicoIds.Contains(ps.ServicoId))
+            .Where(ps => ps.ProfissionalId == profissionalId && servicoIds.Contains(ps.ServicoId))
             .ToListAsync(cancellationToken);
 
         // Serviços ocupam um único intervalo contínuo — soma das durações (seção 8.2.5).
@@ -201,6 +210,33 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             return new ItemServicoAgendamento(
                 s.Id, s.Nome, over?.PrecoPersonalizado ?? s.Preco, over?.DuracaoPersonalizadaMinutos ?? s.DuracaoMinutos);
         }).ToList();
+
+        return (itens, null);
+    }
+
+    private async Task<ResultadoAgendamento> CriarInternoAsync(
+        CriarAgendamento dados, bool confirmarDeImediato, CancellationToken cancellationToken, OpcoesCriacao? opcoes = null)
+    {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+
+        var negocio = await _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == negocioId, cancellationToken);
+        var fuso = TimeZoneInfo.FindSystemTimeZoneById(negocio.Fuso);
+
+        var (itens, erroServicos) = await MontarItensAsync(dados.ProfissionalId, dados.ServicoIds, cancellationToken);
+        if (erroServicos is not null)
+            return ResultadoAgendamento.ComErro(erroServicos);
+
+        // O painel confirma na hora, e um agendamento confirmado sempre tem cliente (antes isso
+        // estourava na entidade e virava 500 — seção 8.2.4: nunca 500).
+        if (confirmarDeImediato && dados.ClienteId is null)
+            return ResultadoAgendamento.ComErro("Escolha o cliente do agendamento.");
+
+        if (await _dbContext.Profissionais.AnyAsync(p => p.Id == dados.ProfissionalId && p.Excluido, cancellationToken))
+            return ResultadoAgendamento.ComErro("Este profissional não atende mais.");
+
+        var motivoForcar = opcoes?.MotivoForcar;
+        if (motivoForcar is not null && ValidarMotivo(motivoForcar) is { } erroMotivo)
+            return ResultadoAgendamento.ComErro(erroMotivo);
 
         var duracaoTotalMinutos = itens.Sum(i => i.DuracaoMinutos);
         var fim = dados.Inicio.AddMinutes(duracaoTotalMinutos);
@@ -225,31 +261,57 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                     .SetProperty(a => a.Status, StatusAgendamento.Expirado)
                     .SetProperty(a => a.ReservadoAte, (DateTimeOffset?)null), cancellationToken);
 
-            // 2) Expediente e almoço — a exclusion constraint não cobre isso.
             var (diaLocal, horaInicioLocal) = ConversorFusoHorario.ParaLocal(dados.Inicio, fuso);
-            var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(fim, fuso);
-            var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
+            List<RegraQuebrada> regrasQuebradas = [];
 
-            var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
-                .Where(h => h.ProfissionalId == dados.ProfissionalId && h.DiaSemana == diaSemana)
-                .ToListAsync(cancellationToken);
-
-            var cabeDentroDeUmIntervalo = horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim);
-
-            if (!cabeDentroDeUmIntervalo)
+            if (motivoForcar is not null)
             {
-                await transacao.RollbackAsync(cancellationToken);
-                return ResultadoAgendamento.ComErro("Fora do expediente do profissional (ou cai no horário de almoço).");
+                // Forçar (seção 7): o que nunca pode ser forçado barra; o resto vira a lista de regras quebradas.
+                if (await VerificarImpedimentoAsync(dados.ProfissionalId, dados.Inicio, agora, cancellationToken) is { } impedimento)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro(impedimento);
+                }
+
+                regrasQuebradas = await ListarRegrasQuebradasAsync(
+                    dados.ProfissionalId, dados.Inicio, fim, null, negocio.Fuso, fuso, agora, cancellationToken);
             }
-
-            // 3) Bloqueios/folgas.
-            var temBloqueio = await _dbContext.BloqueiosAgenda.AsNoTracking()
-                .AnyAsync(b => b.ProfissionalId == dados.ProfissionalId && b.InicioUtc < fim && b.FimUtc > dados.Inicio, cancellationToken);
-
-            if (temBloqueio)
+            else
             {
-                await transacao.RollbackAsync(cancellationToken);
-                return ResultadoAgendamento.ComErro("O profissional está de folga ou bloqueado nesse horário.");
+                // 2) Expediente e almoço — a exclusion constraint não cobre isso.
+                var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(fim, fuso);
+                var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
+
+                var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
+                    .Where(h => h.ProfissionalId == dados.ProfissionalId && h.DiaSemana == diaSemana)
+                    .ToListAsync(cancellationToken);
+
+                var cabeDentroDeUmIntervalo = horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim);
+
+                if (!cabeDentroDeUmIntervalo)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro("Fora do expediente do profissional (ou cai no horário de almoço).");
+                }
+
+                // 3) Bloqueios/folgas.
+                var temBloqueio = await _dbContext.BloqueiosAgenda.AsNoTracking()
+                    .AnyAsync(b => b.ProfissionalId == dados.ProfissionalId && b.InicioUtc < fim && b.FimUtc > dados.Inicio, cancellationToken);
+
+                if (temBloqueio)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro("O profissional está de folga ou bloqueado nesse horário.");
+                }
+
+                // Agendamento forçado fica fora da exclusion constraint, mas ocupa o horário (seção 8.2):
+                // a conferência é aqui, sob a mesma trava do profissional que o forçado também toma.
+                if (await SobrepoeForcadoAsync(dados.ProfissionalId, dados.Inicio, fim, null, cancellationToken))
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return await ConflitoComProximosAsync(
+                        "Esse horário já está ocupado. Escolha outro.", dados.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
+                }
             }
 
             // 4) Insere — se outra requisição venceu a corrida pro mesmo intervalo, a
@@ -266,6 +328,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             if (opcoes?.ClienteAutorizouMensagens == true)
                 agendamento.AutorizarMensagens(_usuarioAtual.UsuarioId, agora);
 
+            // Nada quebrado = agendamento comum, dentro da exclusion constraint.
+            if (regrasQuebradas.Count > 0)
+                RegistrarForcado(agendamento, motivoForcar!, regrasQuebradas, agora, detalheAntes: null);
+
             _dbContext.Agendamentos.Add(agendamento);
 
             try
@@ -277,12 +343,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             catch (DbUpdateException excecao) when (excecao.EhViolacaoDeExclusao())
             {
                 await transacao.RollbackAsync(cancellationToken);
-
-                var proximos = await _consultaDisponibilidade.ListarHorariosLivresAsync(
-                    dados.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
-
-                return ResultadoAgendamento.ComConflito(
-                    "Esse horário acabou de ser preenchido. Escolha outro.", proximos.Take(5).ToList());
+                return await ConflitoComProximosAsync(
+                    "Esse horário acabou de ser preenchido. Escolha outro.", dados.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
             }
         });
     }
@@ -456,7 +518,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         var resultado = await _notificador.EnviarNotificacaoProfissionalAsync(new DadosNotificacaoProfissional(
             evento, profissional.Email, profissional.Telefone, nomeCliente, agendamento.Inicio, agendamento.Fim,
-            agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Observacoes), cancellationToken);
+            agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Observacoes, agendamento.Forcado), cancellationToken);
 
         if (resultado.WhatsApp is null && resultado.Email is null)
             return;
@@ -628,6 +690,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 return ResultadoAgendamento.ComErro("O outro profissional está de folga ou bloqueado nesse horário.");
             }
 
+            if (await SobrepoeForcadoAsync(novoProfissionalId, agendamento.Inicio, agendamento.Fim, agendamento.Id, cancellationToken))
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComConflito("O outro profissional já tem um atendimento nesse horário.", []);
+            }
+
             var profissionalAnterior = agendamento.ProfissionalId;
             agendamento.TransferirPara(novoProfissionalId);
             _auditoria.Registrar(AcoesAuditoria.TransferirAgendamento, "Agendamento", agendamento.Id,
@@ -653,9 +721,24 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         return resultado;
     }
 
-    public async Task<ResultadoAgendamento> MoverAsync(
-        Guid agendamentoId, DateTimeOffset novoInicio, CancellationToken cancellationToken = default)
+    public Task<ResultadoAgendamento> MoverAsync(
+        Guid agendamentoId, DateTimeOffset novoInicio, CancellationToken cancellationToken = default) =>
+        MoverInternoAsync(agendamentoId, novoInicio, motivoForcar: null, cancellationToken);
+
+    public Task<ResultadoAgendamento> MoverForcadoAsync(
+        Guid agendamentoId, DateTimeOffset novoInicio, string motivo, CancellationToken cancellationToken = default) =>
+        MoverInternoAsync(agendamentoId, novoInicio, motivo ?? string.Empty, cancellationToken);
+
+    /// <summary>
+    /// Remarca. Sem <paramref name="motivoForcar"/>, valem as regras normais — inclusive para um agendamento
+    /// que tinha sido forçado (seção 7: o cliente remarcando pelo link não herda a exceção).
+    /// </summary>
+    private async Task<ResultadoAgendamento> MoverInternoAsync(
+        Guid agendamentoId, DateTimeOffset novoInicio, string? motivoForcar, CancellationToken cancellationToken)
     {
+        if (motivoForcar is not null && ValidarMotivo(motivoForcar) is { } erroMotivo)
+            return ResultadoAgendamento.ComErro(erroMotivo);
+
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
 
         var resultado = await estrategia.ExecuteAsync(async () =>
@@ -684,30 +767,58 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             var novoFim = novoInicio.AddMinutes(duracaoTotalMinutos);
 
             var (diaLocal, horaInicioLocal) = ConversorFusoHorario.ParaLocal(novoInicio, fuso);
-            var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(novoFim, fuso);
-            var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
+            var agora = DateTimeOffset.UtcNow;
+            List<RegraQuebrada> regrasQuebradas = [];
 
-            var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
-                .Where(h => h.ProfissionalId == agendamento.ProfissionalId && h.DiaSemana == diaSemana)
-                .ToListAsync(cancellationToken);
-
-            if (!horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim))
+            if (motivoForcar is not null)
             {
-                await transacao.RollbackAsync(cancellationToken);
-                return ResultadoAgendamento.ComErro("Fora do expediente do profissional (ou cai no horário de almoço).");
+                if (await VerificarImpedimentoAsync(agendamento.ProfissionalId, novoInicio, agora, cancellationToken) is { } impedimento)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro(impedimento);
+                }
+
+                regrasQuebradas = await ListarRegrasQuebradasAsync(
+                    agendamento.ProfissionalId, novoInicio, novoFim, agendamento.Id, negocio.Fuso, fuso, agora, cancellationToken);
+            }
+            else
+            {
+                var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(novoFim, fuso);
+                var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
+
+                var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
+                    .Where(h => h.ProfissionalId == agendamento.ProfissionalId && h.DiaSemana == diaSemana)
+                    .ToListAsync(cancellationToken);
+
+                if (!horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim))
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro("Fora do expediente do profissional (ou cai no horário de almoço).");
+                }
+
+                var temBloqueio = await _dbContext.BloqueiosAgenda.AsNoTracking()
+                    .AnyAsync(b => b.ProfissionalId == agendamento.ProfissionalId
+                        && b.InicioUtc < novoFim && b.FimUtc > novoInicio, cancellationToken);
+
+                if (temBloqueio)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro("O profissional está de folga ou bloqueado nesse horário.");
+                }
+
+                if (await SobrepoeForcadoAsync(agendamento.ProfissionalId, novoInicio, novoFim, agendamento.Id, cancellationToken))
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return await ConflitoComProximosAsync(
+                        "Esse horário já está ocupado. Escolha outro.", agendamento.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
+                }
             }
 
-            var temBloqueio = await _dbContext.BloqueiosAgenda.AsNoTracking()
-                .AnyAsync(b => b.ProfissionalId == agendamento.ProfissionalId
-                    && b.InicioUtc < novoFim && b.FimUtc > novoInicio, cancellationToken);
-
-            if (temBloqueio)
-            {
-                await transacao.RollbackAsync(cancellationToken);
-                return ResultadoAgendamento.ComErro("O profissional está de folga ou bloqueado nesse horário.");
-            }
-
-            agendamento.Mover(novoInicio, novoFim);
+            var inicioAnterior = agendamento.Inicio;
+            agendamento.Mover(novoInicio, novoFim, agora);
+            if (regrasQuebradas.Count > 0)
+                RegistrarForcado(agendamento, motivoForcar!, regrasQuebradas, agora,
+                    detalheAntes: $"Movido de {FormatacaoBrasil.DataHora(inicioAnterior, negocio.Fuso)} para {FormatacaoBrasil.DataHora(novoInicio, negocio.Fuso)}. ");
 
             try
             {
@@ -718,11 +829,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             catch (DbUpdateException excecao) when (excecao.EhViolacaoDeExclusao())
             {
                 await transacao.RollbackAsync(cancellationToken);
-
-                var proximos = await _consultaDisponibilidade.ListarHorariosLivresAsync(
-                    agendamento.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
-
-                return ResultadoAgendamento.ComConflito("Esse horário já está ocupado. Escolha outro.", proximos.Take(5).ToList());
+                return await ConflitoComProximosAsync(
+                    "Esse horário já está ocupado. Escolha outro.", agendamento.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
             }
         });
 
@@ -849,12 +957,23 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             .Where(c => clienteIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, cancellationToken);
 
+        // Quem autorizou cada agendamento forçado (seção 7: o detalhe mostra o motivo e quem autorizou).
+        var autorIds = agendamentos.Where(a => a.ForcadoPorUsuarioId is not null).Select(a => a.ForcadoPorUsuarioId!.Value).Distinct().ToList();
+        var autores = autorIds.Count == 0
+            ? []
+            : await _dbContext.Usuarios.AsNoTracking()
+                .Where(u => autorIds.Contains(u.Id))
+                .ToDictionaryAsync(u => u.Id, u => u.Nome, cancellationToken);
+
         return agendamentos.Select(a => new AgendamentoResumo(
             a.Id, a.ProfissionalId, a.ClienteId,
             a.ClienteId is not null && clientes.TryGetValue(a.ClienteId.Value, out var cliente) ? cliente.Nome : "Reservando...",
             a.Inicio, a.Fim, a.Status.ToString(), a.Observacoes,
             // Total a cobrar: valor ajustado no atendimento, menos o cupom (é o que a tela sugere no pagamento).
-            a.Servicos.Select(s => s.Nome).ToList(), a.Total)).ToList();
+            a.Servicos.Select(s => s.Nome).ToList(), a.Total,
+            a.Forcado, a.ForcadoMotivo,
+            a.ForcadoPorUsuarioId is not null && autores.TryGetValue(a.ForcadoPorUsuarioId.Value, out var autor) ? autor : null,
+            a.ForcadoRegras?.Split('\n'))).ToList();
     }
 
     public async Task<DetalhePublicoAgendamento?> ObterDetalhePublicoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
@@ -873,6 +992,204 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         return new DetalhePublicoAgendamento(
             agendamento.Id, negocio.NomeExibido, local, agendamento.Inicio, agendamento.Fim,
             agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, agendamento.Status.ToString());
+    }
+
+    public async Task<PreviaForcar> PreverForcarAsync(ConsultaForcar dados, CancellationToken cancellationToken = default)
+    {
+        Guid profissionalId;
+        int duracaoMinutos;
+        Guid? agendamentoIgnorado = null;
+
+        if (dados.AgendamentoId is { } agendamentoId)
+        {
+            var agendamento = await _dbContext.Agendamentos.AsNoTracking()
+                .Include(a => a.Servicos)
+                .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
+            if (agendamento is null)
+                return new PreviaForcar([], "Agendamento não encontrado.");
+
+            profissionalId = agendamento.ProfissionalId;
+            duracaoMinutos = agendamento.Servicos.Sum(s => s.DuracaoMinutos);
+            agendamentoIgnorado = agendamento.Id;
+        }
+        else
+        {
+            if (dados.ProfissionalId is not { } profissional || dados.ServicoIds is null || dados.ServicoIds.Count == 0)
+                return new PreviaForcar([], "Escolha o profissional e os serviços.");
+
+            var (itens, erro) = await MontarItensAsync(profissional, dados.ServicoIds, cancellationToken);
+            if (erro is not null)
+                return new PreviaForcar([], erro);
+
+            profissionalId = profissional;
+            duracaoMinutos = itens.Sum(i => i.DuracaoMinutos);
+        }
+
+        var agora = DateTimeOffset.UtcNow;
+        var inicio = dados.Inicio ?? new DateTimeOffset(agora.Year, agora.Month, agora.Day, agora.Hour, agora.Minute, 0, TimeSpan.Zero);
+
+        if (await VerificarImpedimentoAsync(profissionalId, inicio, agora, cancellationToken) is { } impedimento)
+            return new PreviaForcar([], impedimento);
+
+        var negocio = await _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
+        var fuso = TimeZoneInfo.FindSystemTimeZoneById(negocio.Fuso);
+
+        var regras = await ListarRegrasQuebradasAsync(
+            profissionalId, inicio, inicio.AddMinutes(duracaoMinutos), agendamentoIgnorado, negocio.Fuso, fuso, agora, cancellationToken);
+        return new PreviaForcar(regras.Select(r => r.Aviso).ToList(), null);
+    }
+
+    /// <summary>
+    /// Uma regra de horário quebrada: <c>Aviso</c> é o texto da tela (pode ter o nome do cliente do outro
+    /// agendamento); <c>Registro</c> é o que fica gravado no agendamento e na auditoria, sem nome de cliente.
+    /// </summary>
+    private sealed record RegraQuebrada(string Aviso, string Registro)
+    {
+        public RegraQuebrada(string texto) : this(texto, texto)
+        {
+        }
+    }
+
+    /// <summary>
+    /// O que forçar esse horário quebra (seção 7): folga da semana, fora do expediente, intervalo de almoço
+    /// (o espaço entre dois turnos do dia), folga/bloqueio e sobreposição com outros agendamentos.
+    /// Antecedência mínima não entra: no painel não existe (só no cancelar/remarcar pelo link).
+    /// </summary>
+    private async Task<List<RegraQuebrada>> ListarRegrasQuebradasAsync(
+        Guid profissionalId, DateTimeOffset inicio, DateTimeOffset fim, Guid? agendamentoIgnorado,
+        string idFuso, TimeZoneInfo fuso, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        var regras = new List<RegraQuebrada>();
+
+        var (diaInicio, horaInicio) = ConversorFusoHorario.ParaLocal(inicio, fuso);
+        var (diaFim, horaFimLocal) = ConversorFusoHorario.ParaLocal(fim, fuso);
+        var viraODia = diaFim != diaInicio && horaFimLocal != TimeOnly.MinValue;
+        var horaFim = diaFim != diaInicio ? TimeOnly.MaxValue : horaFimLocal;
+        var diaSemana = (DiaSemana)(int)diaInicio.DayOfWeek;
+
+        var turnos = (await _dbContext.HorariosTrabalho.AsNoTracking()
+                .Where(h => h.ProfissionalId == profissionalId && h.DiaSemana == diaSemana)
+                .ToListAsync(cancellationToken))
+            .OrderBy(h => h.Inicio)
+            .ToList();
+
+        if (turnos.Count == 0)
+        {
+            regras.Add(new RegraQuebrada("O profissional não trabalha nesse dia da semana (folga)"));
+        }
+        else if (viraODia || !turnos.Any(t => horaInicio >= t.Inicio && horaFim <= t.Fim))
+        {
+            if (viraODia || horaInicio < turnos[0].Inicio || horaFim > turnos.Max(t => t.Fim))
+            {
+                var expediente = string.Join(", ", turnos.Select(t => $"{Hora(t.Inicio)}–{Hora(t.Fim)}"));
+                regras.Add(new RegraQuebrada($"Fora do expediente do profissional ({expediente})"));
+            }
+
+            for (var i = 0; i < turnos.Count - 1; i++)
+            {
+                var (intervaloInicio, intervaloFim) = (turnos[i].Fim, turnos[i + 1].Inicio);
+                if (intervaloFim > intervaloInicio && horaInicio < intervaloFim && horaFim > intervaloInicio)
+                    regras.Add(new RegraQuebrada($"Cai no horário de almoço/intervalo ({Hora(intervaloInicio)}–{Hora(intervaloFim)})"));
+            }
+        }
+
+        var bloqueios = await _dbContext.BloqueiosAgenda.AsNoTracking()
+            .Where(b => b.ProfissionalId == profissionalId && b.InicioUtc < fim && b.FimUtc > inicio)
+            .OrderBy(b => b.InicioUtc)
+            .ToListAsync(cancellationToken);
+        foreach (var bloqueio in bloqueios)
+        {
+            var motivo = string.IsNullOrWhiteSpace(bloqueio.Motivo) ? "" : $": {bloqueio.Motivo}";
+            regras.Add(new RegraQuebrada(
+                $"Cai numa folga/bloqueio ({FormatacaoBrasil.DataHora(bloqueio.InicioUtc, idFuso)} a {FormatacaoBrasil.DataHora(bloqueio.FimUtc, idFuso)}{motivo})"));
+        }
+
+        var sobrepostos = await _dbContext.Agendamentos.AsNoTracking()
+            .Where(a => a.ProfissionalId == profissionalId
+                && (agendamentoIgnorado == null || a.Id != agendamentoIgnorado)
+                && a.Inicio < fim && a.Fim > inicio
+                && (a.Status == StatusAgendamento.Agendado
+                    || a.Status == StatusAgendamento.EmAtendimento
+                    || a.Status == StatusAgendamento.Concluido
+                    || (a.Status == StatusAgendamento.Reservado && a.ReservadoAte >= agora)))
+            .OrderBy(a => a.Inicio)
+            .Select(a => new { a.Inicio, a.ClienteId })
+            .ToListAsync(cancellationToken);
+
+        var clienteIds = sobrepostos.Where(a => a.ClienteId is not null).Select(a => a.ClienteId!.Value).Distinct().ToList();
+        var nomes = clienteIds.Count == 0
+            ? []
+            : await _dbContext.Clientes.AsNoTracking()
+                .Where(c => clienteIds.Contains(c.Id))
+                .ToDictionaryAsync(c => c.Id, c => c.Nome, cancellationToken);
+
+        foreach (var outro in sobrepostos)
+        {
+            var hora = Hora(ConversorFusoHorario.ParaLocal(outro.Inicio, fuso).Item2);
+            regras.Add(outro.ClienteId is { } clienteId && nomes.TryGetValue(clienteId, out var nome)
+                ? new RegraQuebrada($"Sobrepõe o agendamento de {nome} às {hora}", $"Sobrepõe outro agendamento às {hora}")
+                : new RegraQuebrada($"Sobrepõe uma reserva em andamento às {hora}"));
+        }
+
+        return regras;
+    }
+
+    private static string Hora(TimeOnly hora) => hora.ToString("HH:mm", CultureInfo.InvariantCulture);
+
+    /// <summary>O que nunca pode ser forçado (seção 7). Assinatura suspensa já barra o painel inteiro antes (402).</summary>
+    private async Task<string?> VerificarImpedimentoAsync(
+        Guid profissionalId, DateTimeOffset inicio, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        if (!await _dbContext.Profissionais.AnyAsync(p => p.Id == profissionalId && p.Ativo && !p.Excluido, cancellationToken))
+            return "Profissional inativo ou excluído não pode receber agendamento forçado.";
+
+        // O encaixe "agora" continua permitido: a tolerância cobre o minuto em que a tela foi aberta.
+        if (inicio < agora - ToleranciaAgora)
+            return "Não dá para forçar um horário que já passou.";
+
+        return null;
+    }
+
+    private static string? ValidarMotivo(string motivo)
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+            return "Informe o motivo para forçar o agendamento.";
+
+        return motivo.Trim().Length > TamanhoMaximoMotivo
+            ? $"O motivo pode ter no máximo {TamanhoMaximoMotivo} caracteres."
+            : null;
+    }
+
+    private void RegistrarForcado(
+        Agendamento agendamento, string motivo, List<RegraQuebrada> regras, DateTimeOffset agora, string? detalheAntes)
+    {
+        var registros = regras.Select(r => r.Registro).ToList();
+        agendamento.MarcarForcado(motivo, registros, _usuarioAtual.UsuarioId, agora);
+
+        var detalhe = $"{detalheAntes}Motivo: {motivo.Trim()}. Regras quebradas: {string.Join("; ", registros)}";
+        _auditoria.Registrar(AcoesAuditoria.ForcarAgendamento, "Agendamento", agendamento.Id,
+            detalhe.Length > 1000 ? detalhe[..1000] : detalhe);
+    }
+
+    /// <summary>
+    /// Sobreposição com agendamento forçado (seção 8.2): a exclusion constraint não o enxerga, então a
+    /// criação e a remarcação normais conferem aqui, dentro da transação e sob a trava do profissional.
+    /// </summary>
+    private Task<bool> SobrepoeForcadoAsync(
+        Guid profissionalId, DateTimeOffset inicio, DateTimeOffset fim, Guid? agendamentoIgnorado, CancellationToken cancellationToken) =>
+        _dbContext.Agendamentos.AnyAsync(a => a.ProfissionalId == profissionalId && a.Forcado
+            && (agendamentoIgnorado == null || a.Id != agendamentoIgnorado)
+            && a.Inicio < fim && a.Fim > inicio
+            && (a.Status == StatusAgendamento.Reservado
+                || a.Status == StatusAgendamento.Agendado
+                || a.Status == StatusAgendamento.EmAtendimento
+                || a.Status == StatusAgendamento.Concluido), cancellationToken);
+
+    private async Task<ResultadoAgendamento> ConflitoComProximosAsync(
+        string mensagem, Guid profissionalId, DateOnly diaLocal, int duracaoMinutos, CancellationToken cancellationToken)
+    {
+        var proximos = await _consultaDisponibilidade.ListarHorariosLivresAsync(profissionalId, diaLocal, duracaoMinutos, cancellationToken);
+        return ResultadoAgendamento.ComConflito(mensagem, proximos.Take(5).ToList());
     }
 
     /// <summary>
