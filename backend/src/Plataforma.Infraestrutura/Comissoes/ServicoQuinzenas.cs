@@ -130,7 +130,9 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
                 join p in _dbContext.Profissionais on f.ProfissionalId equals p.Id
                 where f.PeriodoComissaoId == periodo.Id
                 orderby p.Nome
-                select new LinhaQuinzena(p.Id, p.Nome, new TotaisComissao(f.TotalComissao, f.TotalCobrado, f.QuantidadeServicos)))
+                select new LinhaQuinzena(
+                    p.Id, p.Nome, new TotaisComissao(f.TotalComissao, f.TotalCobrado, f.QuantidadeServicos),
+                    f.TotalComissaoProdutos, f.TotalVales, f.TotalConsumo, f.Liquido, f.SaldoRestante))
                 .ToListAsync(cancellationToken);
             return new DetalheQuinzena(resumo, false, linhasFechadas, []);
         }
@@ -157,14 +159,23 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
             var agora = DateTimeOffset.UtcNow;
             var usuarioId = _usuarioAtual.UsuarioId;
             foreach (var linha in calculo.Linhas)
-                _dbContext.FechamentosComissao.Add(FechamentoComissao.Criar(
+            {
+                var fechamento = FechamentoComissao.Criar(
                     periodo.NegocioId, periodo.Id, linha.ProfissionalId, linha.Totais.TotalAtendido, linha.Totais.TotalComissao,
-                    linha.Totais.QuantidadeServicos, usuarioId, agora));
+                    linha.Totais.QuantidadeServicos, usuarioId, agora);
+                fechamento.RegistrarProdutosEDescontos(linha.ComissaoProdutos, linha.Vales, linha.Consumo, linha.SaldoRestante);
+                _dbContext.FechamentosComissao.Add(fechamento);
+
+                // Quitação do saldo devedor (seção 7): cada desconto fica ligado a este fechamento; reabrir apaga (volta a ficar em aberto).
+                foreach (var desconto in calculo.Descontos.GetValueOrDefault(linha.ProfissionalId, []))
+                    _dbContext.QuitacoesSaldo.Add(QuitacaoSaldo.Criar(periodo.NegocioId, fechamento.Id, desconto.LancamentoId, desconto.Valor));
+            }
 
             periodo.Fechar(usuarioId, agora);
             _auditoria.Registrar(AcoesAuditoria.FecharQuinzena, Entidade, periodo.Id,
                 $"{Intervalo(periodo.Inicio, periodo.Fim)}: {calculo.Linhas.Count} profissional(is), comissão total "
-                + FormatacaoBrasil.Reais(calculo.Linhas.Sum(l => l.Totais.TotalComissao))
+                + FormatacaoBrasil.Reais(calculo.Linhas.Sum(l => l.Totais.TotalComissao + l.ComissaoProdutos))
+                + $", vale/consumo descontado {FormatacaoBrasil.Reais(calculo.Linhas.Sum(l => l.Vales + l.Consumo))}"
                 + (calculo.Pendentes.Count > 0 ? $"; fechada com {calculo.Pendentes.Count} atendimento(s) sem conclusão" : ""));
 
             try
@@ -241,13 +252,14 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
                 // Fechada sem fechamento meu: eu não estava no acerto quando fechou.
                 if (meusFechamentos.TryGetValue(periodo.Id, out var f))
                     quinzenas.Add(new QuinzenaDoProfissional(periodo.Id, periodo.Inicio, periodo.Fim, periodo.Estado.ToString(), false,
-                        new TotaisComissao(f.TotalComissao, f.TotalCobrado, f.QuantidadeServicos)));
+                        new TotaisComissao(f.TotalComissao, f.TotalCobrado, f.QuantidadeServicos),
+                        f.TotalComissaoProdutos, f.TotalVales, f.TotalConsumo, f.Liquido, f.SaldoRestante));
                 continue;
             }
 
-            var totais = await TotaisPorProfissionalAsync(periodo, fuso, [profissional.Id], cancellationToken);
+            var linha = (await CalcularLinhasAsync(periodo, fuso, [(profissional.Id, string.Empty)], cancellationToken)).Linhas.Single();
             quinzenas.Add(new QuinzenaDoProfissional(periodo.Id, periodo.Inicio, periodo.Fim, periodo.Estado.ToString(), true,
-                totais.GetValueOrDefault(profissional.Id, TotaisComissao.Zero)));
+                linha.Totais, linha.ComissaoProdutos, linha.Vales, linha.Consumo, linha.Liquido, linha.SaldoRestante));
         }
 
         return new QuinzenasDoProfissional(true, quinzenas);
@@ -255,7 +267,9 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
 
     // ---------------------------------------------------------------- apoio
 
-    private sealed record Calculo(IReadOnlyList<LinhaQuinzena> Linhas, IReadOnlyList<AtendimentoPendente> Pendentes);
+    private sealed record Calculo(
+        IReadOnlyList<LinhaQuinzena> Linhas, IReadOnlyList<AtendimentoPendente> Pendentes,
+        IReadOnlyDictionary<Guid, IReadOnlyList<DescontoAplicado>> Descontos);
 
     /// <summary>Totais ao vivo de quem tem acerto por quinzena e os atendimentos do período ainda sem conclusão.</summary>
     private async Task<Calculo> CalcularAsync(PeriodoComissao periodo, CancellationToken cancellationToken)
@@ -268,10 +282,7 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
         var ids = profissionais.Select(p => p.Id).ToList();
 
         var fuso = await _trava.FusoAsync(cancellationToken);
-        var totais = await TotaisPorProfissionalAsync(periodo, fuso, ids, cancellationToken);
-        var linhas = profissionais
-            .Select(p => new LinhaQuinzena(p.Id, p.Nome, totais.GetValueOrDefault(p.Id, TotaisComissao.Zero)))
-            .ToList();
+        var (linhas, descontos) = await CalcularLinhasAsync(periodo, fuso, profissionais.Select(p => (p.Id, p.Nome)).ToList(), cancellationToken);
 
         var (inicioUtc, fimUtc) = ConsultaLinhasComissao.IntervaloUtc(periodo.Inicio, periodo.Fim, fuso);
         var nomes = profissionais.ToDictionary(p => p.Id, p => p.Nome);
@@ -284,7 +295,50 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
             .Select(a => new AtendimentoPendente(a.Id, a.Inicio, nomes[a.ProfissionalId], a.Status.ToString()))
             .ToList();
 
-        return new Calculo(linhas, pendentes);
+        return new Calculo(linhas, pendentes, descontos);
+    }
+
+    /// <summary>
+    /// Comissão de serviço e de produto do período, e a quitação do saldo devedor: vales e consumos em aberto até o fim
+    /// da quinzena, do mais antigo para o mais novo, descontados da comissão bruta até ela acabar (seção 7).
+    /// </summary>
+    private async Task<(IReadOnlyList<LinhaQuinzena> Linhas, IReadOnlyDictionary<Guid, IReadOnlyList<DescontoAplicado>> Descontos)> CalcularLinhasAsync(
+        PeriodoComissao periodo, TimeZoneInfo fuso, IReadOnlyList<(Guid Id, string Nome)> profissionais, CancellationToken cancellationToken)
+    {
+        var ids = profissionais.Select(p => p.Id).ToList();
+        var totais = await TotaisPorProfissionalAsync(periodo, fuso, ids, cancellationToken);
+
+        var (inicioUtc, fimUtc) = ConsultaLinhasComissao.IntervaloUtc(periodo.Inicio, periodo.Fim, fuso);
+        var produtos = await _dbContext.VendasProduto.AsNoTracking()
+            .Where(v => v.VendedorProfissionalId != null && ids.Contains(v.VendedorProfissionalId.Value) && v.Data >= inicioUtc && v.Data < fimUtc)
+            .GroupBy(v => v.VendedorProfissionalId!.Value)
+            .Select(g => new { ProfissionalId = g.Key, Comissao = g.Sum(v => v.ValorComissao) })
+            .ToDictionaryAsync(g => g.ProfissionalId, g => g.Comissao, cancellationToken);
+
+        var emAberto = (await ConsultaSaldoDevedor.EmAberto(_dbContext)
+                .Where(l => ids.Contains(l.ProfissionalId) && l.Data <= periodo.Fim)
+                .DoMaisAntigo()
+                .ToListAsync(cancellationToken))
+            .ToLookup(l => l.ProfissionalId);
+
+        var linhas = new List<LinhaQuinzena>(profissionais.Count);
+        var descontos = new Dictionary<Guid, IReadOnlyList<DescontoAplicado>>();
+        foreach (var (id, nome) in profissionais)
+        {
+            var servico = totais.GetValueOrDefault(id, TotaisComissao.Zero);
+            var produto = produtos.GetValueOrDefault(id);
+            var (aplicados, liquido, restante) = CalculadoraQuitacao.Aplicar(
+                servico.TotalComissao + produto, emAberto[id].Select(l => new SaldoEmAberto(l.Id, l.Tipo, l.Aberto)));
+
+            descontos[id] = aplicados;
+            linhas.Add(new LinhaQuinzena(
+                id, nome, servico, produto,
+                aplicados.Where(d => d.Tipo == TipoLancamentoSaldo.Vale).Sum(d => d.Valor),
+                aplicados.Where(d => d.Tipo == TipoLancamentoSaldo.ConsumoInterno).Sum(d => d.Valor),
+                liquido, restante));
+        }
+
+        return (linhas, descontos);
     }
 
     private async Task<Dictionary<Guid, TotaisComissao>> TotaisPorProfissionalAsync(

@@ -50,8 +50,14 @@ public enum Permissao
     VenderProdutos = 18,
 
     /// <summary>
-    /// Cadastrar e editar produto, lançar entrada, ajuste, vale e consumo interno (seção 7, "Estoque"). Só o
+    /// Cadastrar e editar produto, lançar entrada, ajuste e consumo interno (seção 7, "Estoque"). Só o
     /// Administrador, por padrão; também é quem vê o preço de custo.
     /// </summary>
     GerenciarEstoque = 19,
+
+    /// <summary>
+    /// Lançar, editar e excluir vales (adiantamento em dinheiro ao profissional, seção 7). Só o Administrador, por
+    /// padrão — permissão própria, separada do estoque (decisão do dono).
+    /// </summary>
+    LancarVales = 20,
 }

@@ -8,16 +8,18 @@ import type {
   ComissoesProduto,
   ResumoComissaoProfissional,
   ResumoComissaoVendedor,
+  SaldoDevedor,
   TotaisComissao,
 } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import { MinhasQuinzenas, VisaoQuinzenas } from "@/components/painel/Quinzenas";
+import { CartoesSaldo, ItemLancamento, VisaoSaldosDevedores } from "@/components/painel/SaldosDevedores";
 
 const TAMANHO_PAGINA = 20;
 
-type Aba = "minhas" | "equipe" | "quinzenas";
+type Aba = "minhas" | "equipe" | "quinzenas" | "saldos";
 
-const ROTULOS_ABA: Record<Aba, string> = { minhas: "Minhas comissões", equipe: "Equipe", quinzenas: "Quinzenas" };
+const ROTULOS_ABA: Record<Aba, string> = { minhas: "Minhas comissões", equipe: "Equipe", quinzenas: "Quinzenas", saldos: "Vales e consumo" };
 
 type Periodo = { de: string; ate: string };
 
@@ -60,6 +62,8 @@ const formatarDataHora = (iso: string) =>
 export default function PaginaComissoes() {
   const { temPermissao } = useAutenticacao();
   const podeVerEquipe = temPermissao("VerComissoesDeTodos");
+  const podeVerSaldos = podeVerEquipe || temPermissao("LancarVales") || temPermissao("GerenciarEstoque");
+  const abas: Aba[] = ["minhas", ...(podeVerEquipe ? (["equipe", "quinzenas"] as const) : []), ...(podeVerSaldos ? (["saldos"] as const) : [])];
   const [aba, setAba] = useState<Aba>("minhas");
   const [periodo, setPeriodo] = useState<Periodo>(esteMes);
 
@@ -67,9 +71,9 @@ export default function PaginaComissoes() {
     <div className="space-y-6">
       <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Comissões</h1>
 
-      {podeVerEquipe && (
-        <div role="tablist" className="flex gap-2">
-          {(["minhas", "equipe", "quinzenas"] as const).map((valor) => (
+      {abas.length > 1 && (
+        <div role="tablist" className="flex flex-wrap gap-2">
+          {abas.map((valor) => (
             <button
               key={valor}
               role="tab"
@@ -89,6 +93,8 @@ export default function PaginaComissoes() {
 
       {aba === "quinzenas" && podeVerEquipe ? (
         <VisaoQuinzenas />
+      ) : aba === "saldos" && podeVerSaldos ? (
+        <VisaoSaldosDevedores />
       ) : (
         <>
           <FiltroPeriodo periodo={periodo} aoMudar={setPeriodo} />
@@ -141,16 +147,25 @@ function MinhasComissoes({ periodo }: { periodo: Periodo }) {
   return (
     <div className="space-y-6">
       <MinhasQuinzenas />
-      <ListaComissoes periodo={periodo} caminho="/painel/comissoes/minhas" />
+      <ListaComissoes periodo={periodo} caminho="/painel/comissoes/minhas" caminhoSaldo="/painel/comissoes/minhas/saldo" />
     </div>
   );
 }
 
 /** Cartões de resumo + lista paginada — a mesma para "Minhas comissões" e para o detalhe de um profissional (visão do Administrador). */
-function ListaComissoes({ periodo, caminho }: { periodo: Periodo; caminho: string }) {
+function ListaComissoes({ periodo, caminho, caminhoSaldo }: { periodo: Periodo; caminho: string; caminhoSaldo?: string }) {
   const { chamarApi } = useAutenticacao();
   const [pagina, setPagina] = useState(1);
   const [dados, setDados] = useState<ComissoesDoProfissional | null>(null);
+  const [saldo, setSaldo] = useState<SaldoDevedor | null>(null);
+
+  useEffect(() => {
+    if (!caminhoSaldo) return;
+    // Saldo devedor (vales e consumo em aberto); sem vínculo com profissional a API responde vazio.
+    chamarApi<SaldoDevedor | undefined>(caminhoSaldo)
+      .then((r) => setSaldo(r ?? null))
+      .catch(() => setSaldo(null));
+  }, [chamarApi, caminhoSaldo]);
   const [erro, setErro] = useState<string | null>(null);
 
   // Trocar o período volta para a primeira página.
@@ -283,7 +298,38 @@ function ListaComissoes({ periodo, caminho }: { periodo: Periodo; caminho: strin
       )}
 
       {mostrarProdutos && <SecaoComissaoProdutos produtos={dados.produtos} />}
+
+      {saldo && saldo.lancamentos.length > 0 && <SecaoSaldoDevedor saldo={saldo} comissaoDoPeriodo={dados.totalGeral} />}
     </div>
+  );
+}
+
+/**
+ * Vales e consumo em aberto (seção 7) e o líquido a receber: a comissão do período menos os dois, nunca negativo. Só
+ * leitura — quem lança, edita e exclui é o Administrador, na aba "Vales e consumo".
+ */
+function SecaoSaldoDevedor({ saldo, comissaoDoPeriodo }: { saldo: SaldoDevedor; comissaoDoPeriodo: number }) {
+  const liquido = Math.max(0, comissaoDoPeriodo - saldo.totalEmAberto);
+  const emAberto = saldo.lancamentos.filter((l) => l.aberto > 0);
+  return (
+    <section className="space-y-3" aria-label="Vales e consumo">
+      <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Vales e consumo</h2>
+      <CartoesSaldo saldo={saldo} />
+      <p className={`${classeCartao} p-4 text-sm text-gray-700 dark:text-neutral-300`} role="status" aria-label="Líquido a receber">
+        Líquido a receber: <strong className="text-lg text-marca-primaria dark:text-marca-acento">{formatarReais(liquido)}</strong>
+        <span className="block text-xs text-gray-500 dark:text-neutral-400">
+          Comissão do período ({formatarReais(comissaoDoPeriodo)}) menos vales e consumo em aberto ({formatarReais(saldo.totalEmAberto)}).
+          {comissaoDoPeriodo < saldo.totalEmAberto && ` Restam ${formatarReais(saldo.totalEmAberto - comissaoDoPeriodo)} para os próximos acertos.`}
+        </span>
+      </p>
+      {emAberto.length > 0 && (
+        <ul className="space-y-2">
+          {emAberto.map((l) => (
+            <ItemLancamento key={l.id} lancamento={l} />
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -394,7 +440,11 @@ function VisaoEquipe({ periodo }: { periodo: Periodo }) {
           ← Voltar para a equipe
         </button>
         <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">{selecionado.nome}</h2>
-        <ListaComissoes periodo={periodo} caminho={`/painel/comissoes/profissionais/${selecionado.profissionalId}`} />
+        <ListaComissoes
+          periodo={periodo}
+          caminho={`/painel/comissoes/profissionais/${selecionado.profissionalId}`}
+          caminhoSaldo={`/painel/saldos/profissionais/${selecionado.profissionalId}`}
+        />
       </div>
     );
   }

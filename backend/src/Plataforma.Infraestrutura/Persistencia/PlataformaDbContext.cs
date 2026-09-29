@@ -88,6 +88,10 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<VendaProduto> VendasProduto => Set<VendaProduto>();
 
+    public DbSet<Plataforma.Dominio.Comissoes.LancamentoSaldoDevedor> LancamentosSaldoDevedor => Set<Plataforma.Dominio.Comissoes.LancamentoSaldoDevedor>();
+
+    public DbSet<Plataforma.Dominio.Comissoes.QuitacaoSaldo> QuitacoesSaldo => Set<Plataforma.Dominio.Comissoes.QuitacaoSaldo>();
+
     public DbSet<ProgramaFidelidade> ProgramasFidelidade => Set<ProgramaFidelidade>();
 
     public DbSet<SeloCliente> SelosCliente => Set<SeloCliente>();

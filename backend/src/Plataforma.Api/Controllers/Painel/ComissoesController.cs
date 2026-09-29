@@ -19,11 +19,13 @@ public sealed class ComissoesController : ControllerBase
 {
     private readonly IServicoComissoes _servico;
     private readonly IServicoQuinzenas _quinzenas;
+    private readonly IServicoSaldoDevedor _saldos;
 
-    public ComissoesController(IServicoComissoes servico, IServicoQuinzenas quinzenas)
+    public ComissoesController(IServicoComissoes servico, IServicoQuinzenas quinzenas, IServicoSaldoDevedor saldos)
     {
         _servico = servico;
         _quinzenas = quinzenas;
+        _saldos = saldos;
     }
 
     [HttpGet("comissoes/minhas")]
@@ -41,6 +43,11 @@ public sealed class ComissoesController : ControllerBase
     [HttpGet("comissoes/minhas/quinzenas")]
     public async Task<ActionResult<QuinzenasDoProfissional>> MinhasQuinzenas(CancellationToken cancellationToken) =>
         Ok(await _quinzenas.ListarMinhasAsync(cancellationToken));
+
+    /// <summary>Vales e consumo do profissional logado (só leitura). Sem vínculo com profissional: 204.</summary>
+    [HttpGet("comissoes/minhas/saldo")]
+    public async Task<ActionResult<SaldoDevedor>> MeuSaldo(CancellationToken cancellationToken) =>
+        await _saldos.DetalharMeuAsync(cancellationToken) is { } saldo ? Ok(saldo) : NoContent();
 
     [HttpGet("comissoes/resumo")]
     [Authorize(Policy = nameof(Permissao.VerComissoesDeTodos))]

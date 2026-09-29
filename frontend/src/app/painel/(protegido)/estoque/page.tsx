@@ -6,7 +6,7 @@ import { ErroApi } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { formatarReais } from "@/lib/formatacao";
-import type { MovimentoEstoqueResumo, ProdutoResumo } from "@/lib/tipos";
+import type { MovimentoEstoqueResumo, ProdutoResumo, SaldoDoProfissional } from "@/lib/tipos";
 
 const ROTULO_SITUACAO: Record<ProdutoResumo["situacao"], { texto: string; classe: string }> = {
   Normal: { texto: "Em estoque", classe: "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300" },
@@ -22,11 +22,11 @@ const ROTULO_MOVIMENTO: Record<MovimentoEstoqueResumo["tipo"], string> = {
   Ajuste: "Ajuste",
 };
 
-type Acao = { tipo: "editar" | "entrada" | "ajuste" | "historico"; produto: ProdutoResumo } | null;
+type Acao = { tipo: "editar" | "entrada" | "ajuste" | "consumo" | "historico"; produto: ProdutoResumo } | null;
 
 /**
  * Estoque (seção 7): a quantidade nunca é digitada direto — muda por entrada (reposição), ajuste (contagem,
- * com motivo) e, depois, venda e consumo interno. "Esgotado" e "Estoque baixo" ficam em destaque no topo.
+ * com motivo), venda e consumo interno (produto usado pelo profissional, que vira saldo devedor dele). "Esgotado" e "Estoque baixo" ficam em destaque no topo.
  */
 export default function PaginaEstoque() {
   const { chamarApi, temPermissao } = useAutenticacao();
@@ -133,6 +133,7 @@ export default function PaginaEstoque() {
                   <td className={`${classeTd} space-x-3 whitespace-nowrap`}>
                     <BotaoLink onClick={() => setAcao({ tipo: "entrada", produto })}>Entrada</BotaoLink>
                     <BotaoLink onClick={() => setAcao({ tipo: "ajuste", produto })}>Ajuste</BotaoLink>
+                    {produto.ativo && <BotaoLink onClick={() => setAcao({ tipo: "consumo", produto })}>Consumo</BotaoLink>}
                     <BotaoLink onClick={() => setAcao({ tipo: "historico", produto })}>Histórico</BotaoLink>
                     <BotaoLink onClick={() => setAcao({ tipo: "editar", produto })}>Editar</BotaoLink>
                     <BotaoLink cinza onClick={() => alternarAtivo(produto)}>
@@ -167,6 +168,7 @@ export default function PaginaEstoque() {
       {acao?.tipo === "editar" && <ModalProduto aberto produto={acao.produto} aoFechar={fechar} />}
       {acao?.tipo === "entrada" && <ModalEntrada produto={acao.produto} aoFechar={fechar} />}
       {acao?.tipo === "ajuste" && <ModalAjuste produto={acao.produto} aoFechar={fechar} />}
+      {acao?.tipo === "consumo" && <ModalConsumo produto={acao.produto} aoFechar={fechar} />}
       {acao?.tipo === "historico" && <ModalHistorico produto={acao.produto} aoFechar={() => setAcao(null)} />}
     </div>
   );
@@ -343,6 +345,78 @@ function ModalEntrada({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar:
         </label>
         {erro && <p className="text-sm text-red-600">{erro}</p>}
         <Rodape enviando={enviando} aoFechar={() => aoFechar(false)} rotulo="Lançar entrada" />
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Consumo interno (seção 7): produto usado pelo profissional. Baixa o estoque e vira saldo devedor dele, pelo preço de
+ * custo (editável na hora) — não entra no faturamento. É descontado da comissão no fechamento da quinzena.
+ */
+function ModalConsumo({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar: (mudou: boolean) => void }) {
+  const { chamarApi } = useAutenticacao();
+  const { erro, enviando, enviar } = useEnvio(aoFechar);
+  const [profissionais, setProfissionais] = useState<SaldoDoProfissional[]>([]);
+  const [profissionalId, setProfissionalId] = useState("");
+  const [quantidade, setQuantidade] = useState("1");
+  const [valorUnitario, setValorUnitario] = useState(produto.precoCusto.toFixed(2));
+  const [observacao, setObservacao] = useState("");
+
+  useEffect(() => {
+    // Busca disparada pela abertura: quem pode receber o consumo (profissionais ativos).
+    chamarApi<SaldoDoProfissional[]>("/painel/saldos")
+      .then((lista) => setProfissionais(lista.filter((p) => p.ativo)))
+      .catch(() => setProfissionais([]));
+  }, [chamarApi]);
+
+  const total = (Number(quantidade) || 0) * (Number(valorUnitario) || 0);
+
+  return (
+    <Modal titulo={`Consumo interno — ${produto.nome}`} aberto aoFechar={() => aoFechar(false)}>
+      <form
+        className="space-y-3"
+        onSubmit={(e) =>
+          enviar(e, () =>
+            chamarApi(`/painel/estoque/produtos/${produto.id}/consumos`, {
+              metodo: "POST",
+              corpo: { profissionalId, quantidade: Number(quantidade), valorUnitario: Number(valorUnitario), observacao: observacao || null },
+            }),
+          )
+        }
+      >
+        <p className="text-sm text-gray-600 dark:text-neutral-400">
+          Em estoque agora: {produto.quantidadeEstoque}. O valor vira saldo devedor do profissional e é descontado da comissão dele.
+        </p>
+        <label className="block">
+          <span className={classeLabel}>Profissional</span>
+          <select required className={classeInput} value={profissionalId} onChange={(e) => setProfissionalId(e.target.value)}>
+            <option value="">Escolha...</option>
+            {profissionais.map((p) => (
+              <option key={p.profissionalId} value={p.profissionalId}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block">
+            <span className={classeLabel}>Quantidade</span>
+            <input required type="number" min={1} step={1} className={classeInput} value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className={classeLabel}>Valor por unidade (R$)</span>
+            <input required type="number" min={0} step="0.01" className={classeInput} value={valorUnitario} onChange={(e) => setValorUnitario(e.target.value)} />
+          </label>
+        </div>
+        <p className="text-xs text-gray-500 dark:text-neutral-400">Sugerido: o preço de custo ({formatarReais(produto.precoCusto)}).</p>
+        <label className="block">
+          <span className={classeLabel}>Observação (opcional)</span>
+          <input className={classeInput} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
+        </label>
+        <p className="text-right text-sm font-medium text-gray-900 dark:text-neutral-50">Saldo devedor: {formatarReais(total)}</p>
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <Rodape enviando={enviando} aoFechar={() => aoFechar(false)} rotulo="Lançar consumo" />
       </form>
     </Modal>
   );
