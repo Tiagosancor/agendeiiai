@@ -287,6 +287,7 @@ export interface ServicoResumo {
   duracaoMinutos: number;
   popular: boolean;
   ativo: boolean;
+  exibirNaPaginaInicial: boolean;
 }
 
 export interface ClienteResumo {
@@ -493,6 +494,8 @@ export interface ServicoPublico {
   preco: number;
   duracaoMinutos: number;
   popular: boolean;
+  /** Só a vitrine da página do negócio (seção 6.1); o assistente mostra o serviço de qualquer jeito. */
+  exibirNaPaginaInicial: boolean;
 }
 
 export interface CategoriaComServicosPublicos {
@@ -507,6 +510,8 @@ export interface ProfissionalPublico {
   fotoUrl: string | null;
   funcao: string | null;
   servicoIds: string[];
+  /** Preço e duração dele em cada serviço (personalizados no vínculo, quando há). */
+  servicos?: { servicoId: string; preco: number; duracaoMinutos: number }[];
 }
 
 export interface HorarioLivrePublico {

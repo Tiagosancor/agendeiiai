@@ -11,9 +11,14 @@ import type {
   HorarioLivrePublico,
   NegocioPublico,
   ProfissionalPublico,
+  ServicoPublico,
 } from "@/lib/tipos";
 
-type Etapa = 1 | 2 | 3 | 4 | "sucesso";
+/** 1 Profissional · 2 Serviços · 3 Data e horário · 4 Seus dados · 5 Resumo (seção 6.2). */
+type Etapa = 1 | 2 | 3 | 4 | 5 | "sucesso";
+
+/** "Qualquer profissional": a etapa de horário acha, entre quem faz a combinação escolhida, alguém livre. */
+const QUALQUER = "";
 
 interface Props {
   aberto: boolean;
@@ -37,9 +42,13 @@ function proximosDias(quantidade: number): Date[] {
 }
 
 export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, profissionais, servicoInicialId }: Props) {
-  const [etapa, setEtapa] = useState<Etapa>(1);
+  // Com um único profissional ativo, o passo Profissional é pulado (seção 6.2.1).
+  const unico = profissionais.length === 1 ? profissionais[0] : null;
+  const primeiraEtapa: Etapa = unico ? 2 : 1;
+
+  const [etapa, setEtapa] = useState<Etapa>(primeiraEtapa);
   const [servicoIds, setServicoIds] = useState<string[]>([]);
-  const [profissionalId, setProfissionalId] = useState<string>(""); // "" = qualquer profissional
+  const [profissionalId, setProfissionalId] = useState<string | null>(null); // null = ainda não escolheu; QUALQUER = qualquer um
   const [dataEscolhida, setDataEscolhida] = useState(() => new Date());
   const [horariosLivres, setHorariosLivres] = useState<HorarioLivrePublico[] | null>(null);
   const [horarioEscolhido, setHorarioEscolhido] = useState<HorarioLivrePublico | null>(null);
@@ -68,7 +77,29 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   const [erro, setErro] = useState<string | null>(null);
 
   const todosServicos = useMemo(() => categorias.flatMap((c) => c.servicos), [categorias]);
-  const servicosSelecionados = todosServicos.filter((s) => servicoIds.includes(s.id));
+
+  // Entrando por um serviço da página (seção 6.1): o passo Profissional mostra só quem o executa.
+  const candidatos = servicoInicialId ? profissionais.filter((p) => p.servicoIds.includes(servicoInicialId)) : profissionais;
+  const profissionalEscolhido = profissionalId ? profissionais.find((p) => p.id === profissionalId) ?? null : null;
+  // Preço e duração são os do profissional (personalizados no vínculo); com "Qualquer", os do cadastro até o horário
+  // definir quem atende.
+  const profissionalDosValores =
+    profissionalEscolhido ?? (horarioEscolhido ? profissionais.find((p) => p.id === horarioEscolhido.profissionalId) ?? null : null);
+
+  const catalogo = useMemo(() => {
+    if (!profissionalEscolhido) return categorias;
+    const dele = new Set(profissionalEscolhido.servicoIds);
+    return categorias
+      .map((c) => ({ ...c, servicos: c.servicos.filter((s) => dele.has(s.id)) }))
+      .filter((c) => c.servicos.length > 0);
+  }, [categorias, profissionalEscolhido]);
+
+  function valoresDe(servico: ServicoPublico) {
+    const proprio = profissionalDosValores?.servicos?.find((s) => s.servicoId === servico.id);
+    return { preco: proprio?.preco ?? servico.preco, duracaoMinutos: proprio?.duracaoMinutos ?? servico.duracaoMinutos };
+  }
+
+  const servicosSelecionados = todosServicos.filter((s) => servicoIds.includes(s.id)).map((s) => ({ ...s, ...valoresDe(s) }));
   const duracaoTotal = servicosSelecionados.reduce((soma, s) => soma + s.duracaoMinutos, 0);
   const totalServicos = servicosSelecionados.reduce((soma, s) => soma + s.preco, 0);
   const totalComDesconto = totalServicos - desconto;
@@ -76,14 +107,15 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   const profissionaisElegiveis = profissionalId
     ? profissionais.filter((p) => p.id === profissionalId)
     : profissionais.filter((p) => servicoIds.every((id) => p.servicoIds.includes(id)));
+  const nomeDoProfissional = profissionalDosValores?.nome ?? null;
 
   useEffect(() => {
     // Reseta o assistente toda vez que ele é reaberto.
     if (!aberto) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setEtapa(1);
+    setEtapa(primeiraEtapa);
     setServicoIds(servicoInicialId ? [servicoInicialId] : []);
-    setProfissionalId("");
+    setProfissionalId(unico ? unico.id : null);
     setDataEscolhida(new Date());
     setHorariosLivres(null);
     setHorarioEscolhido(null);
@@ -102,10 +134,11 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     setResumoFinal(null);
     setTokenAgendamento(null);
     setErro(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto, servicoInicialId]);
 
   useEffect(() => {
-    if (etapa !== 2 || duracaoTotal === 0) return;
+    if (etapa !== 3 || duracaoTotal === 0 || profissionaisElegiveis.length === 0) return;
 
     const dataIso = dataLocalIso(dataEscolhida);
     const parametros = new URLSearchParams({ data: dataIso, duracaoMinutos: String(duracaoTotal) });
@@ -129,6 +162,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
   if (!aberto) return null;
 
+  /** Trocar de profissional tira os serviços que o novo não executa. */
+  function escolherProfissional(id: string) {
+    setProfissionalId(id);
+    setHorarioEscolhido(null);
+    if (id !== QUALQUER) {
+      const dele = profissionais.find((p) => p.id === id)?.servicoIds ?? [];
+      setServicoIds((atual) => atual.filter((s) => dele.includes(s)));
+    }
+  }
+
   function alternarServico(id: string) {
     setServicoIds((atual) => (atual.includes(id) ? atual.filter((s) => s !== id) : [...atual, id]));
   }
@@ -146,7 +189,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
       const resposta = await requisicaoApiPublica<{ agendamentoId: string }>("/reservas", { metodo: "POST", corpo: dados });
       setAgendamentoId(resposta.agendamentoId);
       setReservadoAte(Date.now() + 10 * 60 * 1000);
-      setEtapa(3);
+      setEtapa(4);
     } catch (excecao) {
       if (excecao instanceof ErroApi && excecao.status === 409) {
         setErro("Esse horário acabou de ser preenchido. Volte e escolha outro.");
@@ -198,7 +241,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
         corpo: { telefone, codigo },
       });
       setTokenVerificacao(resposta.tokenVerificacao);
-      setEtapa(4);
+      setEtapa(5);
     } catch {
       setErro("Código inválido ou expirado. Confira e tente de novo.");
     } finally {
@@ -270,8 +313,10 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     }
   }
 
-  const podeContinuarEtapa1 = servicoIds.length > 0;
-  const podeContinuarEtapa2 = horarioEscolhido !== null;
+  const podeEscolherServicos = profissionalId !== null;
+  const podeContinuarServicos = servicoIds.length > 0;
+  const podeContinuarHorario = horarioEscolhido !== null;
+  const etapas: number[] = unico ? [2, 3, 4, 5] : [1, 2, 3, 4, 5];
   // DDD + número (10 ou 11 dígitos) basta: a API completa o +55. Com "+", é número de outro país.
   const podeEnviarCodigo = telefone.replace(/\D/g, "").length >= 10 && nome.trim().length > 0 && aceite;
   const podeConfirmar = tokenVerificacao !== null;
@@ -279,7 +324,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   return (
     <div data-testid="assistente-agendamento" className="fixed inset-0 z-40 flex flex-col bg-white dark:bg-neutral-950">
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-neutral-800">
-        {etapa !== 1 && etapa !== "sucesso" ? (
+        {etapa !== primeiraEtapa && etapa !== "sucesso" ? (
           <button onClick={() => setEtapa((e) => (typeof e === "number" ? ((e - 1) as Etapa) : e))} className="text-sm text-gray-500">
             ← Voltar
           </button>
@@ -287,7 +332,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
           <span />
         )}
         <div className="flex gap-1">
-          {[1, 2, 3, 4].map((n) => (
+          {etapas.map((n) => (
             <span
               key={n}
               className={`h-1.5 w-6 rounded-full ${typeof etapa === "number" && etapa >= n ? "bg-(--cor-primaria)" : "bg-gray-200 dark:bg-neutral-800"}`}
@@ -304,13 +349,63 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
         {etapa === 1 && (
           <div>
-            <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha os serviços</h2>
-            {categorias.map((categoria) => (
+            <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha o profissional</h2>
+            <div className="space-y-2" role="group" aria-label="Profissionais">
+              <button
+                aria-pressed={profissionalId === QUALQUER}
+                onClick={() => escolherProfissional(QUALQUER)}
+                className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm ${
+                  profissionalId === QUALQUER ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950" : "border-gray-300 dark:border-neutral-700"
+                }`}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--cor-primaria) text-white">★</span>
+                <span>
+                  <span className="block font-medium text-gray-900 dark:text-neutral-50">
+                    {servicoInicialId ? "Qualquer profissional entre eles" : "Qualquer profissional"}
+                  </span>
+                  <span className="block text-xs text-gray-500 dark:text-neutral-400">O primeiro horário livre de quem faz o serviço</span>
+                </span>
+              </button>
+              {candidatos.map((p) => (
+                <button
+                  key={p.id}
+                  aria-pressed={profissionalId === p.id}
+                  onClick={() => escolherProfissional(p.id)}
+                  className={`flex w-full items-center gap-3 rounded-lg border px-3 py-3 text-left text-sm ${
+                    profissionalId === p.id ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-neutral-800"
+                  }`}
+                >
+                  {p.fotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.fotoUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                  ) : (
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 font-semibold text-gray-600 dark:bg-neutral-800 dark:text-neutral-300">
+                      {p.nome.charAt(0)}
+                    </span>
+                  )}
+                  <span>
+                    <span className="block font-medium text-gray-900 dark:text-neutral-50">{p.nome}</span>
+                    {p.funcao && <span className="block text-xs text-gray-500 dark:text-neutral-400">{p.funcao}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {etapa === 2 && (
+          <div>
+            <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha os serviços</h2>
+            <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
+              {profissionalEscolhido ? `Com ${profissionalEscolhido.nome}` : "Com qualquer profissional"}
+            </p>
+            {catalogo.map((categoria) => (
               <div key={categoria.categoriaId} className="mb-4">
                 <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-neutral-400">{categoria.nome}</h3>
                 <div className="space-y-2">
                   {categoria.servicos.map((s) => {
                     const selecionado = servicoIds.includes(s.id);
+                    const valores = valoresDe(s);
                     return (
                       <button
                         key={s.id}
@@ -323,7 +418,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                         <span>
                           <span className="text-gray-900 dark:text-neutral-50">{s.nome}</span>
                           <span className="ml-2 text-xs text-gray-500 dark:text-neutral-400">
-                            {s.duracaoMinutos} min · {formatarReais(s.preco)}
+                            {valores.duracaoMinutos} min · {formatarReais(valores.preco)}
                           </span>
                         </span>
                         <span
@@ -342,30 +437,12 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
           </div>
         )}
 
-        {etapa === 2 && (
+        {etapa === 3 && (
           <div>
-            <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Data e horário</h2>
-
-            {profissionais.length > 1 && (
-              <label className="mb-3 block">
-                <span className="mb-1 block text-sm text-gray-600 dark:text-neutral-400">Profissional</span>
-                <select
-                  value={profissionalId}
-                  onChange={(e) => {
-                    setProfissionalId(e.target.value);
-                    setHorarioEscolhido(null);
-                  }}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-                >
-                  <option value="">Qualquer profissional</option>
-                  {profissionaisElegiveis.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+            <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">Data e horário</h2>
+            <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
+              {profissionalEscolhido ? `Com ${profissionalEscolhido.nome}` : "Com qualquer profissional"}
+            </p>
 
             <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
               {proximosDias(14).map((dia) => {
@@ -388,7 +465,9 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               })}
             </div>
 
-            {horariosLivres === null ? (
+            {profissionaisElegiveis.length === 0 ? (
+              <p className="text-sm text-gray-500">Nenhum profissional faz todos esses serviços juntos. Volte e ajuste a escolha.</p>
+            ) : horariosLivres === null ? (
               <p className="text-sm text-gray-500">Carregando horários...</p>
             ) : horariosLivres.length === 0 ? (
               <p className="text-sm text-gray-500">Nenhum horário livre neste dia. Escolha outra data.</p>
@@ -412,7 +491,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
           </div>
         )}
 
-        {etapa === 3 && (
+        {etapa === 4 && (
           <div className="space-y-3">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Seus dados</h2>
             {reservadoAte && (
@@ -514,7 +593,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
           </div>
         )}
 
-        {etapa === 4 && horarioEscolhido && (
+        {etapa === 5 && horarioEscolhido && (
           <div className="space-y-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Resumo</h2>
 
@@ -533,6 +612,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
             <div>
               <h3 className="text-xs font-semibold uppercase text-gray-500">Serviços</h3>
+              {nomeDoProfissional && <p className="text-xs text-gray-500 dark:text-neutral-400">com {nomeDoProfissional}</p>}
               <ul className="text-sm text-gray-800 dark:text-neutral-200">
                 {servicosSelecionados.map((s) => (
                   <li key={s.id} className="flex justify-between">
@@ -607,25 +687,27 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               {servicosSelecionados.length > 0 ? `${servicosSelecionados.length} serviço(s) · ${duracaoTotal} min` : "Nenhum serviço"}
             </span>
             <span className="font-semibold text-gray-900 dark:text-neutral-50">
-              {formatarReais((etapa === 4 ? totalComDesconto : totalServicos))}
+              {formatarReais(etapa === 5 ? totalComDesconto : totalServicos)}
             </span>
           </div>
           <button
             disabled={
-              (etapa === 1 && !podeContinuarEtapa1) ||
-              (etapa === 2 && !podeContinuarEtapa2) ||
-              (etapa === 3 && !podeConfirmar) ||
-              (etapa === 4 && confirmando)
+              (etapa === 1 && !podeEscolherServicos) ||
+              (etapa === 2 && !podeContinuarServicos) ||
+              (etapa === 3 && !podeContinuarHorario) ||
+              (etapa === 4 && !podeConfirmar) ||
+              (etapa === 5 && confirmando)
             }
             onClick={() => {
               if (etapa === 1) setEtapa(2);
-              else if (etapa === 2) avancarParaResumo();
-              else if (etapa === 3) setEtapa(4);
-              else if (etapa === 4) confirmarAgendamento();
+              else if (etapa === 2) setEtapa(3);
+              else if (etapa === 3) avancarParaResumo();
+              else if (etapa === 4) setEtapa(5);
+              else if (etapa === 5) confirmarAgendamento();
             }}
             className="w-full rounded-lg bg-(--cor-primaria) px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {textoBotaoContinuar(etapa, podeContinuarEtapa1, podeContinuarEtapa2, podeConfirmar, confirmando)}
+            {textoBotaoContinuar(etapa, { podeEscolherServicos, podeContinuarServicos, podeContinuarHorario, podeConfirmar, confirmando })}
           </button>
         </div>
       )}
@@ -635,14 +717,18 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
 function textoBotaoContinuar(
   etapa: Etapa,
-  podeContinuarEtapa1: boolean,
-  podeContinuarEtapa2: boolean,
-  podeConfirmar: boolean,
-  confirmando: boolean,
+  estado: {
+    podeEscolherServicos: boolean;
+    podeContinuarServicos: boolean;
+    podeContinuarHorario: boolean;
+    podeConfirmar: boolean;
+    confirmando: boolean;
+  },
 ): string {
-  if (etapa === 1) return podeContinuarEtapa1 ? "Continuar" : "Selecione um serviço";
-  if (etapa === 2) return podeContinuarEtapa2 ? "Continuar" : "Selecione um horário";
-  if (etapa === 3) return podeConfirmar ? "Continuar" : "Valide o código";
-  if (etapa === 4) return confirmando ? "Confirmando..." : "Confirmar Agendamento";
+  if (etapa === 1) return estado.podeEscolherServicos ? "Continuar" : "Selecione um profissional";
+  if (etapa === 2) return estado.podeContinuarServicos ? "Continuar" : "Selecione um serviço";
+  if (etapa === 3) return estado.podeContinuarHorario ? "Continuar" : "Selecione um horário";
+  if (etapa === 4) return estado.podeConfirmar ? "Continuar" : "Valide o código";
+  if (etapa === 5) return estado.confirmando ? "Confirmando..." : "Confirmar Agendamento";
   return "Continuar";
 }

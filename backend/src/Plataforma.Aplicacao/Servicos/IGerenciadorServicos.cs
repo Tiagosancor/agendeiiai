@@ -24,8 +24,11 @@ public interface IGerenciadorServicos
 }
 
 public sealed record ServicoResumo(
-    Guid Id, Guid CategoriaId, string Nome, decimal Preco, int DuracaoMinutos, bool Popular, bool Ativo);
+    Guid Id, Guid CategoriaId, string Nome, decimal Preco, int DuracaoMinutos, bool Popular, bool Ativo, bool ExibirNaPaginaInicial = true);
 
-public sealed record CriarServico(Guid CategoriaId, string Nome, decimal Preco, int DuracaoMinutos, bool Popular = false);
+public sealed record CriarServico(
+    Guid CategoriaId, string Nome, decimal Preco, int DuracaoMinutos, bool Popular = false, bool ExibirNaPaginaInicial = true);
 
-public sealed record AtualizarServico(Guid CategoriaId, string Nome, decimal Preco, int DuracaoMinutos, bool Popular);
+/// <summary><c>ExibirNaPaginaInicial</c> nulo: não muda.</summary>
+public sealed record AtualizarServico(
+    Guid CategoriaId, string Nome, decimal Preco, int DuracaoMinutos, bool Popular, bool? ExibirNaPaginaInicial = null);

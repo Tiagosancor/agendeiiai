@@ -20,8 +20,9 @@ public sealed class ConsultaCatalogoPublico : IConsultaCatalogoPublico
             .OrderBy(c => c.Nome)
             .ToListAsync(cancellationToken);
 
+        var executados = ServicosExecutadosPorProfissionalAtivo();
         var servicos = await _dbContext.Servicos.AsNoTracking()
-            .Where(s => s.Ativo)
+            .Where(s => s.Ativo && executados.Contains(s.Id))
             .OrderByDescending(s => s.Popular).ThenBy(s => s.Nome)
             .ToListAsync(cancellationToken);
 
@@ -29,7 +30,7 @@ public sealed class ConsultaCatalogoPublico : IConsultaCatalogoPublico
             .Select(categoria => new CategoriaComServicosPublicos(
                 categoria.Id, categoria.Nome,
                 servicos.Where(s => s.CategoriaId == categoria.Id)
-                    .Select(s => new ServicoPublico(s.Id, s.Nome, s.Preco, s.DuracaoMinutos, s.Popular))
+                    .Select(s => new ServicoPublico(s.Id, s.Nome, s.Preco, s.DuracaoMinutos, s.Popular, s.ExibirNaPaginaInicial))
                     .ToList()))
             .Where(c => c.Servicos.Count > 0)
             .ToList();
@@ -42,12 +43,34 @@ public sealed class ConsultaCatalogoPublico : IConsultaCatalogoPublico
             .OrderBy(p => p.Nome)
             .ToListAsync(cancellationToken);
 
-        var vinculos = await _dbContext.ProfissionalServicos.AsNoTracking().ToListAsync(cancellationToken);
+        // Só serviços ativos: um serviço desativado não pode ser oferecido por ninguém.
+        var vinculos = await (
+            from v in _dbContext.ProfissionalServicos.AsNoTracking()
+            join s in _dbContext.Servicos on v.ServicoId equals s.Id
+            where s.Ativo
+            select new
+            {
+                v.ProfissionalId,
+                v.ServicoId,
+                Preco = v.PrecoPersonalizado ?? s.Preco,
+                Duracao = v.DuracaoPersonalizadaMinutos ?? s.DuracaoMinutos,
+            }).ToListAsync(cancellationToken);
 
         return profissionais
-            .Select(p => new ProfissionalPublico(
-                p.Id, p.Nome, p.FotoUrl, p.Funcao,
-                vinculos.Where(v => v.ProfissionalId == p.Id).Select(v => v.ServicoId).ToList()))
+            .Select(p =>
+            {
+                var dele = vinculos.Where(v => v.ProfissionalId == p.Id).ToList();
+                return new ProfissionalPublico(
+                    p.Id, p.Nome, p.FotoUrl, p.Funcao,
+                    dele.Select(v => v.ServicoId).ToList(),
+                    dele.Select(v => new ServicoDoProfissionalPublico(v.ServicoId, v.Preco, v.Duracao)).ToList());
+            })
             .ToList();
     }
+
+    private IQueryable<Guid> ServicosExecutadosPorProfissionalAtivo() =>
+        from v in _dbContext.ProfissionalServicos
+        join p in _dbContext.Profissionais on v.ProfissionalId equals p.Id
+        where p.Ativo
+        select v.ServicoId;
 }

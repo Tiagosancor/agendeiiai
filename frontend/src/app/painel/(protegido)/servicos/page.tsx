@@ -104,6 +104,7 @@ export default function PaginaServicos() {
                   <th className={classeTh}>Preço</th>
                   <th className={classeTh}>Duração</th>
                   <th className={classeTh}>Popular</th>
+                  <th className={classeTh}>Na página</th>
                   <th className={classeTh}>Status</th>
                   <th className={classeTh}>Ações</th>
                 </tr>
@@ -116,6 +117,7 @@ export default function PaginaServicos() {
                     <td className={classeTd}>{formatarReais(servico.preco)}</td>
                     <td className={classeTd}>{servico.duracaoMinutos} min</td>
                     <td className={classeTd}>{servico.popular ? "Sim" : "Não"}</td>
+                    <td className={classeTd}>{servico.exibirNaPaginaInicial ? "Sim" : "Não"}</td>
                     <td className={classeTd}>{servico.ativo ? "Ativo" : "Inativo"}</td>
                     <td className={`${classeTd} space-x-3 whitespace-nowrap`}>
                       {podeEditar && (
@@ -250,6 +252,7 @@ function ModalNovoServico({
   const [preco, setPreco] = useState("");
   const [duracao, setDuracao] = useState("30");
   const [popular, setPopular] = useState(false);
+  const [naPagina, setNaPagina] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -267,12 +270,13 @@ function ModalNovoServico({
     try {
       await chamarApi("/painel/servicos", {
         metodo: "POST",
-        corpo: { categoriaId, nome, preco: Number(preco), duracaoMinutos: Number(duracao), popular },
+        corpo: { categoriaId, nome, preco: Number(preco), duracaoMinutos: Number(duracao), popular, exibirNaPaginaInicial: naPagina },
       });
       setNome("");
       setPreco("");
       setDuracao("30");
       setPopular(false);
+      setNaPagina(true);
       await aoCriar();
     } catch {
       setErro("Não foi possível criar o serviço.");
@@ -312,6 +316,7 @@ function ModalNovoServico({
           <input type="checkbox" checked={popular} onChange={(e) => setPopular(e.target.checked)} />
           Serviço popular (aparece em destaque)
         </label>
+        <CampoNaPagina valor={naPagina} aoMudar={setNaPagina} />
 
         {erro && <p className="text-sm text-red-600">{erro}</p>}
 
@@ -346,6 +351,7 @@ function ModalEditarServico({
   const [preco, setPreco] = useState(servico.preco.toFixed(2).replace(".", ","));
   const [duracao, setDuracao] = useState(String(servico.duracaoMinutos));
   const [popular, setPopular] = useState(servico.popular);
+  const [naPagina, setNaPagina] = useState(servico.exibirNaPaginaInicial);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -356,7 +362,14 @@ function ModalEditarServico({
     try {
       await chamarApi(`/painel/servicos/${servico.id}`, {
         metodo: "PUT",
-        corpo: { categoriaId, nome, preco: Number(preco.replace(",", ".")), duracaoMinutos: Number(duracao), popular },
+        corpo: {
+          categoriaId,
+          nome,
+          preco: Number(preco.replace(",", ".")),
+          duracaoMinutos: Number(duracao),
+          popular,
+          exibirNaPaginaInicial: naPagina,
+        },
       });
       await aoSalvar();
     } catch {
@@ -397,6 +410,7 @@ function ModalEditarServico({
           <input type="checkbox" checked={popular} onChange={(e) => setPopular(e.target.checked)} />
           Popular (aparece primeiro)
         </label>
+        <CampoNaPagina valor={naPagina} aoMudar={setNaPagina} />
         <p className="rounded-lg bg-gray-50 p-2 text-xs text-gray-600 dark:bg-neutral-800 dark:text-neutral-300">
           Preço e duração novos valem só para agendamentos novos. Os já marcados e o financeiro continuam com os valores da época.
         </p>
@@ -413,5 +427,18 @@ function ModalEditarServico({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Vitrine da página do negócio (seção 6.1): fora dela, o serviço continua agendável no assistente por quem o executa. */
+function CampoNaPagina({ valor, aoMudar }: { valor: boolean; aoMudar: (valor: boolean) => void }) {
+  return (
+    <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-neutral-200">
+      <input type="checkbox" className="mt-1" checked={valor} onChange={(e) => aoMudar(e.target.checked)} />
+      <span>
+        Exibir na página do negócio
+        <span className="block text-xs text-gray-500 dark:text-neutral-400">Desmarcado, some da vitrine, mas continua agendável no assistente.</span>
+      </span>
+    </label>
   );
 }
