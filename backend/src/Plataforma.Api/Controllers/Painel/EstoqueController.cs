@@ -4,6 +4,7 @@ using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Cadastros;
 using Plataforma.Aplicacao.Comissoes;
 using Plataforma.Aplicacao.Estoque;
+using Plataforma.Dominio.Comissoes;
 using Plataforma.Dominio.Estoque;
 using Plataforma.Dominio.Usuarios;
 
@@ -66,6 +67,12 @@ public sealed class EstoqueController : ControllerBase
             ? StatusCode(StatusCodes.Status201Created, lancamentoId)
             : NotFound());
 
+    /// <summary>Estorno de venda (seção 7): só quem gerencia o estoque (decisão do dono). Motivo obrigatório.</summary>
+    [HttpPost("~/painel/vendas/{id:guid}/estornar")]
+    public Task<IActionResult> EstornarVenda(
+        Guid id, EstornarVenda dados, [FromServices] IServicoVendas vendas, CancellationToken cancellationToken) =>
+        TraduzirAsync(async () => await vendas.EstornarAsync(id, dados.Motivo, cancellationToken) ? NoContent() : NotFound());
+
     [HttpGet("produtos/{id:guid}/movimentos")]
     public async Task<ActionResult<IReadOnlyList<MovimentoEstoqueResumo>>> Movimentos(Guid id, CancellationToken cancellationToken) =>
         await _estoque.ListarMovimentosAsync(id, cancellationToken) is { } movimentos ? Ok(movimentos) : NotFound();
@@ -87,6 +94,10 @@ public sealed class EstoqueController : ControllerBase
         catch (ArgumentException excecao)
         {
             return BadRequest(new ProblemDetails { Title = excecao.Message });
+        }
+        catch (InvalidOperationException excecao) when (excecao is not QuinzenaFechadaException and not EstoqueInsuficienteException)
+        {
+            return Conflict(new ProblemDetails { Title = excecao.Message });
         }
     }
 }

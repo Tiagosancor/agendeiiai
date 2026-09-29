@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
@@ -14,6 +14,8 @@ const formatarHora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", 
 export default function PaginaVendas() {
   const { chamarApi, temPermissao } = useAutenticacao();
   const podeVender = temPermissao("VenderProdutos");
+  const podeEstornar = temPermissao("GerenciarEstoque");
+  const [estornando, setEstornando] = useState<VendaResumo | null>(null);
   const [data, setData] = useState(dataLocalIso());
   const [vendas, setVendas] = useState<VendaResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -39,7 +41,7 @@ export default function PaginaVendas() {
     return <p className="text-sm text-gray-600 dark:text-neutral-400">Você não tem permissão para vender produtos.</p>;
   }
 
-  const totalDia = vendas?.reduce((soma, v) => soma + v.total, 0) ?? 0;
+  const totalDia = vendas?.filter((v) => !v.estornada).reduce((soma, v) => soma + v.total, 0) ?? 0;
 
   return (
     <div>
@@ -63,22 +65,44 @@ export default function PaginaVendas() {
         {vendas?.map((venda) => (
           <div key={venda.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3" role="article" aria-label={`Venda das ${formatarHora(venda.data)}`}>
             <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-neutral-50">
+              <p className={`text-sm font-medium text-gray-900 dark:text-neutral-50 ${venda.estornada ? "line-through opacity-60" : ""}`}>
                 {formatarHora(venda.data)} · {venda.itens.map((i) => (i.quantidade === 1 ? i.produto : `${i.produto} × ${i.quantidade}`)).join(", ")}
               </p>
+              {venda.estornada && (
+                <p className="text-xs font-medium text-red-700 dark:text-red-400">Estornada: {venda.motivoEstorno}</p>
+              )}
               <p className="text-xs text-gray-500 dark:text-neutral-400">
                 Vendido por {venda.vendedor}
                 {venda.cliente ? ` · ${venda.cliente}` : ""}
                 {venda.agendamentoId ? " · no atendimento" : ""}
               </p>
             </div>
-            <span className="text-sm font-medium text-gray-900 dark:text-neutral-50">{formatarReais(venda.total)}</span>
+            <span className="flex flex-col items-end gap-1">
+              <span className={`text-sm font-medium text-gray-900 dark:text-neutral-50 ${venda.estornada ? "line-through opacity-60" : ""}`}>
+                {formatarReais(venda.total)}
+              </span>
+              {podeEstornar && !venda.estornada && (
+                <button type="button" className="text-xs text-red-700 hover:underline dark:text-red-400" onClick={() => setEstornando(venda)}>
+                  Estornar
+                </button>
+              )}
+            </span>
           </div>
         ))}
         {vendas && vendas.length > 0 && (
           <p className="px-4 py-3 text-right text-sm font-semibold text-gray-900 dark:text-neutral-50">Total do dia: {formatarReais(totalDia)}</p>
         )}
       </div>
+
+      {estornando && (
+        <ModalEstorno
+          venda={estornando}
+          aoFechar={async (estornou) => {
+            setEstornando(null);
+            if (estornou) await carregar();
+          }}
+        />
+      )}
 
       <ModalNovaVenda
         aberta={novaAberta}
@@ -91,6 +115,58 @@ export default function PaginaVendas() {
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Estorno (seção 7): desfaz a venda — os produtos voltam ao estoque e ela sai do faturamento e da comissão de quem
+ * vendeu. Só quem gerencia o estoque; motivo obrigatório. A venda continua na lista, marcada como estornada.
+ */
+function ModalEstorno({ venda, aoFechar }: { venda: VendaResumo; aoFechar: (estornou: boolean) => void }) {
+  const { chamarApi } = useAutenticacao();
+  const [motivo, setMotivo] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  async function estornar(evento: FormEvent) {
+    evento.preventDefault();
+    setErro(null);
+    setEnviando(true);
+    try {
+      await chamarApi(`/painel/vendas/${venda.id}/estornar`, { metodo: "POST", corpo: { motivo } });
+      aoFechar(true);
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível estornar.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <Modal titulo="Estornar venda" aberto aoFechar={() => aoFechar(false)}>
+      <form onSubmit={estornar} className="space-y-3">
+        <p className="text-sm text-gray-700 dark:text-neutral-300">
+          {venda.itens.map((i) => `${i.produto} × ${i.quantidade}`).join(", ")} · {formatarReais(venda.total)} · vendido por {venda.vendedor}
+        </p>
+        <p className="text-sm text-gray-600 dark:text-neutral-400">
+          Os produtos voltam ao estoque e a venda sai do faturamento e da comissão de quem vendeu. Ela continua na lista, marcada como
+          estornada.
+        </p>
+        <label className="block">
+          <span className={classeLabel}>Motivo (obrigatório)</span>
+          <input required maxLength={500} className={classeInput} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
+        </label>
+        {erro && <p className="text-sm text-red-600">{erro}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button type="button" className={classeBotaoSecundario} onClick={() => aoFechar(false)}>
+            Cancelar
+          </button>
+          <button type="submit" disabled={enviando || !motivo.trim()} className={classeBotaoPrimario}>
+            {enviando ? "Estornando..." : "Estornar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

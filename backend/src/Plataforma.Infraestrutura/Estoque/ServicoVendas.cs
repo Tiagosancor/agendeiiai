@@ -4,6 +4,7 @@ using Plataforma.Aplicacao.Auditoria;
 using Plataforma.Aplicacao.Estoque;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Clientes;
+using Plataforma.Dominio.Comissoes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Estoque;
 using Plataforma.Dominio.Usuarios;
@@ -238,6 +239,52 @@ public sealed class ServicoVendas : IServicoVendas
         return vendas.Select(v => new VendaResumo(
             v.Id, v.Data, v.ClienteId is { } c && clientes.TryGetValue(c, out var nome) ? nome : null, v.AgendamentoId, v.VendedorNome, v.Total,
             v.Itens.OrderBy(i => i.NomeProduto)
-                .Select(i => new ItemVendaResumo(i.ProdutoId, i.NomeProduto, i.Quantidade, i.ValorUnitario, i.Total)).ToList())).ToList();
+                .Select(i => new ItemVendaResumo(i.ProdutoId, i.NomeProduto, i.Quantidade, i.ValorUnitario, i.Total)).ToList(),
+            v.Estornada, v.MotivoEstorno)).ToList();
+    }
+
+    public async Task<bool> EstornarAsync(Guid vendaId, string? motivo, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(motivo))
+            throw new ArgumentException("Informe o motivo do estorno.");
+
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        return await estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            // A comissão da venda pode ter entrado no fechamento de uma quinzena: mesma trava de concluir/reabrir atendimento.
+            await _travaQuinzenas.TravarNegocioAsync(cancellationToken);
+            var venda = await _dbContext.VendasProduto.Include(v => v.Itens).FirstOrDefaultAsync(v => v.Id == vendaId, cancellationToken);
+            if (venda is null)
+                return false;
+            if (venda.VendedorProfissionalId is { } profissionalId
+                && await _travaQuinzenas.AtendimentoTravadoAsync(profissionalId, venda.Data, cancellationToken))
+                throw new QuinzenaFechadaException(
+                    "A comissão desta venda já entrou numa quinzena fechada. Para estornar, o Administrador precisa reabrir a quinzena.");
+
+            var produtos = new Dictionary<Guid, Produto>();
+            foreach (var produtoId in venda.Itens.Select(i => i.ProdutoId).Distinct().OrderBy(id => id))
+                produtos[produtoId] = await TravaProduto.TravarAsync(_dbContext, negocioId, produtoId, cancellationToken)
+                    ?? throw new InvalidOperationException("Produto da venda não encontrado.");
+
+            _dbContext.MovimentosEstoque.AddRange(venda.Estornar(produtos, motivo, _usuarioAtual.UsuarioId, DateTimeOffset.UtcNow));
+            _auditoria.Registrar(AcoesAuditoria.EstornarVenda, nameof(VendaProduto), venda.Id,
+                $"{string.Join(", ", venda.Itens.Select(i => $"{i.NomeProduto} × {i.Quantidade}"))} voltam ao estoque; "
+                + $"{FormatacaoBrasil.Reais(venda.Total)} sai do faturamento e da comissão de {venda.VendedorNome}. Motivo: {venda.MotivoEstorno}");
+
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new InvalidOperationException("Esta venda acabou de ser estornada por outra pessoa.");
+            }
+
+            await transacao.CommitAsync(cancellationToken);
+            return true;
+        });
     }
 }

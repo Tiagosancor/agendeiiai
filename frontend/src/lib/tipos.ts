@@ -268,6 +268,9 @@ export interface VendaResumo {
   vendedor: string;
   total: number;
   itens: { produtoId: string; produto: string; quantidade: number; valorUnitario: number; total: number }[];
+  /** Desfeita: fica na lista para o histórico, fora dos totais. */
+  estornada: boolean;
+  motivoEstorno: string | null;
 }
 
 export interface CategoriaResumo {

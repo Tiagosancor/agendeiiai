@@ -102,7 +102,7 @@ public sealed class ServicoComissoes : IServicoComissoes
         Expression<Func<VendaProduto, bool>> doVendedor, decimal? percentualAtual, DateTimeOffset inicioUtc, DateTimeOffset fimUtc,
         CancellationToken cancellationToken)
     {
-        var vendas = _dbContext.VendasProduto.AsNoTracking().Where(doVendedor).Where(v => v.Data >= inicioUtc && v.Data < fimUtc);
+        var vendas = _dbContext.VendasProduto.AsNoTracking().Where(doVendedor).Where(v => v.EstornadaEm == null && v.Data >= inicioUtc && v.Data < fimUtc);
 
         var totais = await vendas
             .GroupBy(_ => 1)
@@ -187,7 +187,7 @@ public sealed class ServicoComissoes : IServicoComissoes
             .ToDictionaryAsync(g => g.ProfissionalId, cancellationToken);
 
         var vendasPorProfissional = await _dbContext.VendasProduto.AsNoTracking()
-            .Where(v => v.VendedorProfissionalId != null && v.Data >= inicioUtc && v.Data < fimUtc)
+            .Where(v => v.VendedorProfissionalId != null && v.EstornadaEm == null && v.Data >= inicioUtc && v.Data < fimUtc)
             .GroupBy(v => v.VendedorProfissionalId!.Value)
             .Select(g => new { ProfissionalId = g.Key, Comissao = g.Sum(v => v.ValorComissao), Total = g.Sum(v => v.Total), Quantidade = g.Count() })
             .ToDictionaryAsync(g => g.ProfissionalId, g => new TotaisComissaoProduto(g.Comissao, g.Total, g.Quantidade), cancellationToken);
@@ -215,7 +215,7 @@ public sealed class ServicoComissoes : IServicoComissoes
         var (inicioUtc, fimUtc) = await IntervaloUtcAsync(de, ate, cancellationToken);
 
         var porUsuario = await _dbContext.VendasProduto.AsNoTracking()
-            .Where(v => v.VendedorUsuarioId != null && v.Data >= inicioUtc && v.Data < fimUtc)
+            .Where(v => v.VendedorUsuarioId != null && v.EstornadaEm == null && v.Data >= inicioUtc && v.Data < fimUtc)
             .GroupBy(v => v.VendedorUsuarioId!.Value)
             .Select(g => new { UsuarioId = g.Key, Comissao = g.Sum(v => v.ValorComissao), Total = g.Sum(v => v.Total), Quantidade = g.Count() })
             .ToDictionaryAsync(g => g.UsuarioId, g => new TotaisComissaoProduto(g.Comissao, g.Total, g.Quantidade), cancellationToken);

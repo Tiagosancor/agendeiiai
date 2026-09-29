@@ -48,6 +48,22 @@ public class VendaProdutoTestes
     }
 
     [Fact]
+    public void Estorno_devolve_cada_item_ao_estoque_exige_motivo_e_nao_repete()
+    {
+        var venda = Venda();
+        var pomada = ProdutoCom(5);
+        venda.AdicionarItem(pomada, 2, 30m);
+        var produtos = new Dictionary<Guid, Produto> { [pomada.Id] = pomada };
+
+        venda.Invoking(v => v.Estornar(produtos, " ", null, DateTimeOffset.UtcNow)).Should().Throw<ArgumentException>();
+
+        var movimentos = venda.Estornar(produtos, "Devolução", null, DateTimeOffset.UtcNow);
+        movimentos.Should().ContainSingle(m => m.Tipo == TipoMovimentoEstoque.Entrada && m.Quantidade == 2 && m.QuantidadeDepois == 5);
+        (venda.Estornada, venda.MotivoEstorno).Should().Be((true, "Devolução"));
+        venda.Invoking(v => v.Estornar(produtos, "De novo", null, DateTimeOffset.UtcNow)).Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
     public void Tem_exatamente_um_vendedor()
     {
         var semVendedor = () => VendaProduto.Criar(Negocio, DateTimeOffset.UtcNow, null, null, new Vendedor(null, null, "?", 0m), null);

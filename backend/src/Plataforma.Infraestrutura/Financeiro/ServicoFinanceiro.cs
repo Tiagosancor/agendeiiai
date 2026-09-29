@@ -80,7 +80,7 @@ public sealed class ServicoFinanceiro : IServicoFinanceiro
         List<FaturamentoPorProduto> porProduto = [];
         if (filtro.ServicoId is null)
         {
-            var vendas = _dbContext.VendasProduto.AsNoTracking().Where(v => v.Data >= inicioUtc && v.Data < fimUtc);
+            var vendas = _dbContext.VendasProduto.AsNoTracking().Where(v => v.EstornadaEm == null && v.Data >= inicioUtc && v.Data < fimUtc);
             if (filtro.ProfissionalId is not null)
                 vendas = vendas.Where(v => v.VendedorProfissionalId == filtro.ProfissionalId);
 
