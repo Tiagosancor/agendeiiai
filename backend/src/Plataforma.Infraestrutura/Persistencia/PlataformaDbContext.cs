@@ -86,6 +86,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<MovimentoEstoque> MovimentosEstoque => Set<MovimentoEstoque>();
 
+    public DbSet<VendaProduto> VendasProduto => Set<VendaProduto>();
+
     public DbSet<ProgramaFidelidade> ProgramasFidelidade => Set<ProgramaFidelidade>();
 
     public DbSet<SeloCliente> SelosCliente => Set<SeloCliente>();

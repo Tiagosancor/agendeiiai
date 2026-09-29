@@ -176,6 +176,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<INotificador, Notificador>();
         servicos.AddScoped<IGerenciadorCupons, GerenciadorCupons>();
         servicos.AddScoped<Aplicacao.Estoque.IGerenciadorEstoque, Estoque.GerenciadorEstoque>();
+        servicos.AddScoped<Aplicacao.Estoque.IServicoVendas, Estoque.ServicoVendas>();
         servicos.AddScoped<IServicoContato, ServicoContato>();
         servicos.AddScoped<IConsultaCatalogoPublico, ConsultaCatalogoPublico>();
 

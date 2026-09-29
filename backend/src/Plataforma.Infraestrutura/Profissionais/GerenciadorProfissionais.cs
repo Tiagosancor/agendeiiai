@@ -390,8 +390,10 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     }
 
     /// <summary>Qualquer agendamento (de qualquer status) já feito com ele conta como histórico (seção 7).</summary>
-    private Task<bool> TemHistoricoAsync(Guid profissionalId, CancellationToken cancellationToken) =>
-        _dbContext.Agendamentos.AnyAsync(a => a.ProfissionalId == profissionalId, cancellationToken);
+    /// <summary>Algum agendamento, ou alguma venda de produto em que foi o vendedor (tem comissão no histórico).</summary>
+    private async Task<bool> TemHistoricoAsync(Guid profissionalId, CancellationToken cancellationToken) =>
+        await _dbContext.Agendamentos.AnyAsync(a => a.ProfissionalId == profissionalId, cancellationToken)
+        || await _dbContext.VendasProduto.AnyAsync(v => v.VendedorProfissionalId == profissionalId, cancellationToken);
 
     /// <summary>Excluído não aparece mais em lugar nenhum do painel (seção 7) — 404 para qualquer ação.</summary>
     private Task<Profissional?> BuscarAsync(Guid profissionalId, CancellationToken cancellationToken) =>

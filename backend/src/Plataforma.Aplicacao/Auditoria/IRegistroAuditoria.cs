@@ -33,4 +33,6 @@ public static class AcoesAuditoria
     public const string DesativarProduto = "DesativarProduto";
     public const string EntradaEstoque = "EntradaEstoque";
     public const string AjusteEstoque = "AjusteEstoque";
+    public const string VendaProduto = "VendaProduto";
+    public const string AlterarComissaoProduto = "AlterarComissaoProduto";
 }

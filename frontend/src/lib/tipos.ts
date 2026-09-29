@@ -221,6 +221,53 @@ export interface AlertasEstoque {
   esgotados: ProdutoEmAlerta[];
 }
 
+/** Venda de produto (seção 7) — espelha `IServicoVendas`. Nunca traz preço de custo. */
+export interface ProdutoAVenda {
+  id: string;
+  nome: string;
+  categoria: string | null;
+  precoVenda: number;
+  quantidadeEstoque: number;
+}
+
+/** Exatamente um dos dois ids vem preenchido. */
+export interface VendedorOpcao {
+  profissionalId: string | null;
+  usuarioId: string | null;
+  nome: string;
+}
+
+export interface OpcoesVenda {
+  produtos: ProdutoAVenda[];
+  vendedores: VendedorOpcao[];
+  vendedorSugerido: VendedorOpcao | null;
+}
+
+export interface ItemLancarVenda {
+  produtoId: string;
+  quantidade: number;
+  valorUnitario: number;
+}
+
+export interface LancarVenda {
+  itens: ItemLancarVenda[];
+  vendedorProfissionalId: string | null;
+  vendedorUsuarioId: string | null;
+  agendamentoId?: string | null;
+  clienteId?: string | null;
+  novoCliente?: { nome: string; telefone: string | null } | null;
+}
+
+export interface VendaResumo {
+  id: string;
+  data: string;
+  cliente: string | null;
+  agendamentoId: string | null;
+  vendedor: string;
+  total: number;
+  itens: { produtoId: string; produto: string; quantidade: number; valorUnitario: number; total: number }[];
+}
+
 export interface CategoriaResumo {
   id: string;
   nome: string;
@@ -512,11 +559,16 @@ export interface FaturamentoPorServico {
   quantidade: number;
 }
 
+/** `total` = serviços + produtos; as duas parcelas vêm também separadas (seção 7). */
 export interface ResumoFinanceiro {
   total: number;
   quantidadeAtendimentos: number;
   porProfissional: FaturamentoPorProfissional[];
   porServico: FaturamentoPorServico[];
+  totalServicos: number;
+  totalProdutos: number;
+  quantidadeVendas: number;
+  porProduto: { produtoId: string; nomeProduto: string; total: number; quantidade: number }[];
 }
 
 // --- Sprint 5: fidelidade e LGPD ---
@@ -641,6 +693,29 @@ export interface ItemComissao {
   comissao: number;
 }
 
+export interface TotaisComissaoProduto {
+  totalComissao: number;
+  totalVendido: number;
+  quantidadeVendas: number;
+}
+
+export interface ItemComissaoProduto {
+  vendaId: string;
+  data: string;
+  produtos: string;
+  cliente: string | null;
+  totalVendido: number;
+  percentual: number;
+  comissao: number;
+}
+
+/** Comissão sobre venda de produto — sempre separada da de serviço (seção 7). */
+export interface ComissoesProduto {
+  percentualAtual: number | null;
+  totais: TotaisComissaoProduto;
+  itens: ItemComissaoProduto[];
+}
+
 export interface ComissoesDoProfissional {
   profissionalId: string | null;
   nomeProfissional: string | null;
@@ -650,6 +725,9 @@ export interface ComissoesDoProfissional {
   pagina: number;
   tamanhoPagina: number;
   totalItens: number;
+  produtos: ComissoesProduto;
+  /** Serviço + produto. */
+  totalGeral: number;
 }
 
 export interface ResumoComissaoProfissional {
@@ -658,6 +736,17 @@ export interface ResumoComissaoProfissional {
   ativo: boolean;
   percentualAtual: number;
   totais: TotaisComissao;
+  percentualProdutoAtual: number;
+  produtos: TotaisComissaoProduto;
+}
+
+/** Quem vende sem cadastro de profissional (ex.: Recepcionista): só comissão de produto. */
+export interface ResumoComissaoVendedor {
+  usuarioId: string;
+  nome: string;
+  ativo: boolean;
+  percentualAtual: number;
+  totais: TotaisComissaoProduto;
 }
 
 /** Quinzenas de acerto de comissões (seção 7) — espelha `IServicoQuinzenas`. */

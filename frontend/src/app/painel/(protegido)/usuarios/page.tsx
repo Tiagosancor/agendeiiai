@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
 import { ModalCriarProfissional, type ProfissionalPreenchido } from "@/components/painel/ModalCriarProfissional";
@@ -16,6 +17,8 @@ export default function PaginaUsuarios() {
   const { chamarApi, temPermissao } = useAutenticacao();
   const podeEditar = temPermissao("EditarCadastros");
   const podeExcluir = temPermissao("ExcluirCadastros");
+  const podeDefinirComissao = temPermissao("GerenciarComissoes");
+  const [comissaoDe, setComissaoDe] = useState<UsuarioResumo | null>(null);
 
   const [usuarios, setUsuarios] = useState<UsuarioResumo[] | null>(null);
   const [usuarioEditando, setUsuarioEditando] = useState<UsuarioDetalhe | null>(null);
@@ -111,6 +114,11 @@ export default function PaginaUsuarios() {
                         Editar
                       </button>
                     )}
+                    {podeDefinirComissao && (
+                      <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => setComissaoDe(usuario)}>
+                        Comissão de produto
+                      </button>
+                    )}
                     <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => alternarAtivo(usuario)}>
                       {usuario.ativo ? "Desativar" : "Ativar"}
                     </button>
@@ -165,6 +173,8 @@ export default function PaginaUsuarios() {
           }}
         />
       )}
+
+      <ModalComissaoProduto usuario={comissaoDe} aoFechar={() => setComissaoDe(null)} />
 
       <ModalExclusao
         tipo="usuario"
@@ -365,6 +375,87 @@ function ModalEditarUsuario({
           </button>
         </div>
       </form>
+    </Modal>
+  );
+}
+
+/**
+ * Comissão (%) sobre as vendas de produto de quem vende sem cadastro de profissional (seção 7). Para quem é
+ * profissional, o percentual fica na ficha do profissional.
+ */
+function ModalComissaoProduto({ usuario, aoFechar }: { usuario: UsuarioResumo | null; aoFechar: () => void }) {
+  const { chamarApi } = useAutenticacao();
+  const [dados, setDados] = useState<{ percentual: number; profissionalId: string | null } | null>(null);
+  const [percentual, setPercentual] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!usuario) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setDados(null);
+    setErro(null);
+    /* eslint-enable react-hooks/set-state-in-effect */
+    chamarApi<{ percentual: number; profissionalId: string | null }>(`/painel/usuarios/${usuario.id}/comissao-produto`)
+      .then((r) => {
+        setDados(r);
+        setPercentual(String(r.percentual).replace(".", ","));
+      })
+      .catch(() => setErro("Não foi possível carregar a comissão."));
+  }, [usuario, chamarApi]);
+
+  async function salvar(evento: FormEvent) {
+    evento.preventDefault();
+    if (!usuario) return;
+    const valor = Number(percentual.trim().replace(",", "."));
+    if (percentual.trim() === "" || Number.isNaN(valor)) {
+      setErro("Informe um número de 0 a 100.");
+      return;
+    }
+    setErro(null);
+    setSalvando(true);
+    try {
+      await chamarApi(`/painel/usuarios/${usuario.id}/comissao-produto`, { metodo: "PUT", corpo: { percentual: valor } });
+      aoFechar();
+    } catch (excecao) {
+      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal titulo={`Comissão de produto — ${usuario?.nome ?? ""}`} aberto={usuario !== null} aoFechar={aoFechar}>
+      {dados?.profissionalId ? (
+        <p className="text-sm text-gray-700 dark:text-neutral-300">
+          Este usuário é um profissional: a comissão de produto dele fica na{" "}
+          <Link href={`/painel/profissionais/${dados.profissionalId}`} className="text-marca-primaria hover:underline dark:text-marca-acento">
+            ficha do profissional
+          </Link>
+          .
+        </p>
+      ) : dados ? (
+        <form onSubmit={salvar} className="space-y-3">
+          <p className="text-sm text-gray-500 dark:text-neutral-400">
+            Percentual sobre as vendas de produto em que esta pessoa for escolhida como vendedora. Mudar não altera vendas já feitas.
+          </p>
+          <label>
+            <span className={classeLabel}>Comissão de produto (%)</span>
+            <input inputMode="decimal" className={`${classeInput} w-32`} value={percentual} onChange={(e) => setPercentual(e.target.value)} />
+          </label>
+          {erro && <p className="text-sm text-red-600">{erro}</p>}
+          <div className="flex justify-end gap-2">
+            <button type="button" className={classeBotaoSecundario} onClick={aoFechar}>
+              Cancelar
+            </button>
+            <button type="submit" disabled={salvando} className={classeBotaoPrimario}>
+              {salvando ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <p className="text-sm text-gray-500 dark:text-neutral-400">{erro ?? "Carregando..."}</p>
+      )}
     </Modal>
   );
 }

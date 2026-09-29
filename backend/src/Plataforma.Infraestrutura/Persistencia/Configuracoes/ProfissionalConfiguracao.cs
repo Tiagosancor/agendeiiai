@@ -20,6 +20,9 @@ public sealed class ProfissionalConfiguracao : IEntityTypeConfiguration<Profissi
         builder.Property(p => p.AcertoPorQuinzena).HasDefaultValue(false).IsRequired();
         builder.Property(p => p.PercentualComissao).HasColumnType("numeric(5,2)").HasDefaultValue(0m).IsRequired();
         builder.ToTable(t => t.HasCheckConstraint("ck_profissionais_percentual_comissao", "percentual_comissao >= 0 AND percentual_comissao <= 100"));
+        builder.Property(p => p.PercentualComissaoProdutoVenda).HasColumnType("numeric(5,2)").HasDefaultValue(0m).IsRequired();
+        builder.ToTable(t => t.HasCheckConstraint(
+            "ck_profissionais_percentual_comissao_produto_venda", "percentual_comissao_produto_venda >= 0 AND percentual_comissao_produto_venda <= 100"));
 
         builder.OwnsOne(p => p.Endereco, endereco =>
         {

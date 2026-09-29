@@ -40,3 +40,38 @@ public sealed class MovimentoEstoqueConfiguracao : IEntityTypeConfiguration<Movi
         builder.HasIndex(m => new { m.ProdutoId, m.Data });
     }
 }
+
+public sealed class VendaProdutoConfiguracao : IEntityTypeConfiguration<VendaProduto>
+{
+    public void Configure(EntityTypeBuilder<VendaProduto> builder)
+    {
+        builder.ToTable("vendas_produto", tabela =>
+            tabela.HasCheckConstraint("ck_vendas_produto_um_vendedor", "(vendedor_profissional_id IS NULL) <> (vendedor_usuario_id IS NULL)"));
+        builder.HasKey(v => v.Id);
+        builder.Property(v => v.VendedorNome).HasMaxLength(200).IsRequired();
+        builder.Property(v => v.Total).HasColumnType("numeric(10,2)");
+        builder.Property(v => v.PercentualComissao).HasColumnType("numeric(5,2)");
+        builder.Property(v => v.ValorComissao).HasColumnType("numeric(10,2)");
+        builder.HasMany(v => v.Itens).WithOne().HasForeignKey(i => i.VendaId).OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(v => v.Itens).UsePropertyAccessMode(PropertyAccessMode.Field);
+        builder.HasIndex(v => new { v.NegocioId, v.Data });
+        builder.HasIndex(v => v.AgendamentoId);
+        builder.HasIndex(v => new { v.VendedorProfissionalId, v.Data });
+        builder.HasIndex(v => new { v.VendedorUsuarioId, v.Data });
+    }
+}
+
+public sealed class ItemVendaProdutoConfiguracao : IEntityTypeConfiguration<ItemVendaProduto>
+{
+    public void Configure(EntityTypeBuilder<ItemVendaProduto> builder)
+    {
+        builder.ToTable("itens_venda_produto");
+        builder.HasKey(i => i.Id);
+        builder.Property(i => i.NomeProduto).HasMaxLength(200).IsRequired();
+        builder.Property(i => i.ValorUnitario).HasColumnType("numeric(10,2)");
+        builder.Property(i => i.Total).HasColumnType("numeric(10,2)");
+        builder.HasOne<Produto>().WithMany().HasForeignKey(i => i.ProdutoId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<MovimentoEstoque>().WithMany().HasForeignKey(i => i.MovimentoEstoqueId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(i => i.ProdutoId);
+    }
+}
