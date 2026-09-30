@@ -43,6 +43,8 @@ public sealed class NegocioConfiguracao : IEntityTypeConfiguration<Negocio>
         builder.Property(n => n.LogoUrl).HasMaxLength(500);
         builder.Property(n => n.CorPrimaria).HasMaxLength(20);
         builder.Property(n => n.CorSecundaria).HasMaxLength(20);
+        builder.Property(n => n.CorFundo).HasMaxLength(7);
+        builder.Property(n => n.ImagemFundo).HasMaxLength(64);
         builder.Property(n => n.TituloPagina).HasMaxLength(200);
         builder.Property(n => n.SubtituloPagina).HasMaxLength(300);
         builder.Property(n => n.TextoSobre).HasMaxLength(4000);

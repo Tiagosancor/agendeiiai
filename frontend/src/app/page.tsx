@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { extrairSlugDoHost } from "@/lib/dominio";
 import { buscarNegocioPorSlug, buscarPlanos } from "@/lib/api-servidor";
 import { PaginaNegocio } from "@/components/publico/PaginaNegocio";
@@ -22,7 +22,13 @@ import { SiteProduto } from "@/components/site/SiteProduto";
 export const dynamic = "force-dynamic";
 export async function generateMetadata(): Promise<Metadata> {
   const negocio = await obterNegocioDoHostAtual();
-  if (negocio) return { title: negocio.nomeExibido };
+  if (negocio) {
+    // Ícone do negócio, nunca o do produto (seção 5) — o iOS usa o apple-touch-icon ao "Adicionar à Tela de Início".
+    return {
+      title: negocio.nomeExibido,
+      icons: { icon: [{ url: "/icone/192", type: "image/png" }], apple: "/icone/180" },
+    };
+  }
 
   // Site do produto (seção 6.4): SEO e imagem de compartilhamento só aqui — a página de
   // cada negócio nunca leva a marca do produto (white-label, seção 5).
@@ -50,6 +56,11 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: { card: "summary_large_image", title: titulo, description: descricao, images: ["/site/og.png"] },
   };
+}
+
+export async function generateViewport(): Promise<Viewport> {
+  const negocio = await obterNegocioDoHostAtual();
+  return { themeColor: negocio ? (negocio.corPrimaria ?? negocio.corFundo ?? "#2563eb") : "#1e2a38" };
 }
 
 export default async function Home() {

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { ErroApi } from "@/lib/api";
 import { classeBotaoPrimario, classeInput, classeLabel } from "@/components/estilos";
+import { CamposFundoPagina } from "@/components/painel/CamposFundoPagina";
 import { NOMES_DIAS_SEMANA, type HorarioFuncionamentoDia, type PerfilNegocio } from "@/lib/tipos";
 
 function horarioPadrao(): HorarioFuncionamentoDia[] {
@@ -77,11 +79,12 @@ export default function PaginaPerfilNegocio() {
           whatsAppAtivoParaConfirmacoes: perfil.whatsAppAtivoParaConfirmacoes,
           horarioFuncionamento: horario,
           whatsAppAvisoProfissional: perfil.whatsAppAvisoProfissional,
+          corFundo: perfil.corFundo || null,
         },
       });
       setMensagemSucesso("Perfil atualizado.");
-    } catch {
-      setErro("Não foi possível salvar o perfil do negócio.");
+    } catch (e) {
+      setErro(e instanceof ErroApi && e.status === 400 ? e.message : "Não foi possível salvar o perfil do negócio.");
     } finally {
       setSalvando(false);
     }
@@ -126,6 +129,17 @@ export default function PaginaPerfilNegocio() {
           <span className={classeLabel}>Texto &quot;sobre&quot;</span>
           <textarea className={classeInput} rows={3} value={perfil.textoSobre ?? ""} onChange={(e) => atualizarCampo("textoSobre", e.target.value)} />
         </label>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Fundo da página</h2>
+        <CamposFundoPagina
+          corFundo={perfil.corFundo}
+          imagemFundoUrl={perfil.imagemFundoUrl}
+          nomeExibido={perfil.nomeExibido}
+          aoMudarCor={(cor) => atualizarCampo("corFundo", cor)}
+          aoMudarImagem={(url) => atualizarCampo("imagemFundoUrl", url)}
+        />
       </section>
 
       <section className="space-y-3">

@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Plataforma.Aplicacao.Arquivos;
 using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Negocios;
 using Plataforma.Dominio.Negocios;
@@ -10,11 +11,14 @@ public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
 {
     private readonly PlataformaDbContext _dbContext;
     private readonly IConsultaSituacaoAssinatura _situacaoAssinatura;
+    private readonly IArmazenamentoArquivos _arquivos;
 
-    public ConsultaNegocioPublico(PlataformaDbContext dbContext, IConsultaSituacaoAssinatura situacaoAssinatura)
+    public ConsultaNegocioPublico(
+        PlataformaDbContext dbContext, IConsultaSituacaoAssinatura situacaoAssinatura, IArmazenamentoArquivos arquivos)
     {
         _dbContext = dbContext;
         _situacaoAssinatura = situacaoAssinatura;
+        _arquivos = arquivos;
     }
 
     public async Task<NegocioResumo?> ObterPorSlugAsync(Slug slug, CancellationToken cancellationToken = default)
@@ -31,10 +35,11 @@ public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
             return null;
 
         var situacao = await _situacaoAssinatura.ObterAsync(negocio.Id, cancellationToken);
-        return Mapear(negocio, aceitaAgendamentoOnline: situacao?.PermiteOperar ?? true);
+        return Mapear(negocio, aceitaAgendamentoOnline: situacao?.PermiteOperar ?? true,
+            imagemFundoUrl: negocio.ImagemFundo is null ? null : _arquivos.UrlPublica(negocio.ImagemFundo));
     }
 
-    private static NegocioResumo Mapear(Negocio negocio, bool aceitaAgendamentoOnline) => new(
+    private static NegocioResumo Mapear(Negocio negocio, bool aceitaAgendamentoOnline, string? imagemFundoUrl) => new(
         negocio.Id, negocio.Slug.Valor, negocio.NomeExibido, negocio.Tipo.ToString(), negocio.Fuso,
         negocio.LogoUrl, negocio.CorPrimaria, negocio.CorSecundaria,
         negocio.TituloPagina, negocio.SubtituloPagina, negocio.TextoSobre,
@@ -43,5 +48,5 @@ public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
         negocio.HorarioFuncionamento
             .Select(h => new HorarioFuncionamentoDiaDto((int)h.DiaSemana, h.Abertura, h.Fechamento, h.Fechado))
             .ToList(),
-        aceitaAgendamentoOnline);
+        aceitaAgendamentoOnline, negocio.CorFundo, imagemFundoUrl);
 }

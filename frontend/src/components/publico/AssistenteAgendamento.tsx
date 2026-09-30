@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { requisicaoApiPublica, ErroApi } from "@/lib/api";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
+import { fundoDoNegocio } from "@/lib/fundo";
 import type {
   CategoriaComServicosPublicos,
   ConfirmarAgendamentoPublico,
@@ -321,8 +322,33 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   const podeEnviarCodigo = telefone.replace(/\D/g, "").length >= 10 && nome.trim().length > 0 && aceite;
   const podeConfirmar = tokenVerificacao !== null;
 
+  // Mesma identidade da página (seção 5): logo e fundo do negócio em volta; os passos num painel do tema, legíveis.
+  const fundo = fundoDoNegocio(negocio);
+
   return (
-    <div data-testid="assistente-agendamento" className="fixed inset-0 z-40 flex flex-col bg-white dark:bg-neutral-950">
+    <div
+      data-testid="assistente-agendamento"
+      className={`fixed inset-0 z-40 flex flex-col ${fundo.temFundo ? "" : "bg-white dark:bg-neutral-950"}`}
+      style={fundo.estilo}
+    >
+      <div data-testid="assistente-marca" className="flex items-center gap-2 px-4 pt-3 pb-1">
+        {negocio.logoUrl && <img src={negocio.logoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />}
+        <span
+          className={`text-sm font-semibold ${
+            fundo.temFundo ? (fundo.textoClaro ? "text-white" : "text-gray-900") : "text-gray-900 dark:text-neutral-50"
+          }`}
+        >
+          {negocio.nomeExibido}
+        </span>
+      </div>
+
+      <div
+        className={
+          fundo.temFundo
+            ? "mx-2 mt-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-sm sm:mx-auto sm:w-full sm:max-w-xl dark:bg-neutral-950"
+            : "flex min-h-0 flex-1 flex-col"
+        }
+      >
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-neutral-800">
         {etapa !== primeiraEtapa && etapa !== "sucesso" ? (
           <button onClick={() => setEtapa((e) => (typeof e === "number" ? ((e - 1) as Etapa) : e))} className="text-sm text-gray-500">
@@ -711,6 +737,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

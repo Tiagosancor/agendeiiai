@@ -7,6 +7,7 @@ import { NOMES_DIAS_SEMANA } from "@/lib/tipos";
 import { AssistenteAgendamento } from "@/components/publico/AssistenteAgendamento";
 import { BotaoTema } from "@/components/BotaoTema";
 import { formatarReais } from "@/lib/formatacao";
+import { fundoDoNegocio } from "@/lib/fundo";
 
 function iniciaisNome(nome: string): string {
   return nome
@@ -46,6 +47,10 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
 
   const corPrimaria = negocio.corPrimaria ?? "#2563eb";
   const corSecundaria = negocio.corSecundaria ?? "#1d4ed8";
+  // Cor/imagem de fundo (seção 5): o topo fica sobre o fundo; o resto vai num painel do tema, para o texto seguir legível.
+  const fundo = fundoDoNegocio(negocio);
+  const classeTituloTopo = fundo.temFundo ? (fundo.textoClaro ? "text-white" : "text-gray-900") : "text-gray-900 dark:text-neutral-50";
+  const classeTextoTopo = fundo.temFundo ? (fundo.textoClaro ? "text-white/90" : "text-gray-700") : "text-gray-600 dark:text-neutral-400";
 
   function abrirAssistente(servicoId?: string) {
     setServicoInicialId(servicoId ?? null);
@@ -70,7 +75,11 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
   const aceitaAgendamento = negocio.aceitaAgendamentoOnline;
 
   return (
-    <div style={{ "--cor-primaria": corPrimaria, "--cor-secundaria": corSecundaria } as React.CSSProperties}>
+    <div
+      data-testid="pagina-negocio"
+      className={fundo.temFundo ? "min-h-screen" : undefined}
+      style={{ "--cor-primaria": corPrimaria, "--cor-secundaria": corSecundaria, ...fundo.estilo } as React.CSSProperties}
+    >
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-gray-100 bg-white/90 px-4 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
         <div className="flex items-center gap-2">
           {negocio.logoUrl && <img src={negocio.logoUrl} alt="" className="h-8 w-8 rounded-full object-cover" />}
@@ -91,11 +100,11 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
 
       <main>
         <section className="px-4 py-12 text-center">
-          <h1 className="mx-auto max-w-md text-2xl font-bold text-gray-900 dark:text-neutral-50">
+          <h1 className={`mx-auto max-w-md text-2xl font-bold ${classeTituloTopo}`}>
             {negocio.tituloPagina ?? `Bem-vindo à ${negocio.nomeExibido}`}
           </h1>
           {negocio.subtituloPagina && (
-            <p className="mx-auto mt-2 max-w-sm text-sm text-gray-600 dark:text-neutral-400">{negocio.subtituloPagina}</p>
+            <p className={`mx-auto mt-2 max-w-sm text-sm ${classeTextoTopo}`}>{negocio.subtituloPagina}</p>
           )}
           {aceitaAgendamento ? (
             <button
@@ -105,7 +114,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
               Agendar Agora
             </button>
           ) : (
-            <p data-testid="agendamento-por-telefone" className="mx-auto mt-6 max-w-sm text-sm text-gray-700 dark:text-neutral-300">
+            <p data-testid="agendamento-por-telefone" className={`mx-auto mt-6 max-w-sm text-sm ${classeTextoTopo}`}>
               No momento, os agendamentos são feitos por telefone
               {negocio.telefone ? (
                 <>
@@ -121,6 +130,10 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           )}
         </section>
 
+        <div
+          data-testid="conteudo-pagina"
+          className={fundo.temFundo ? "mx-3 mb-6 overflow-hidden rounded-2xl bg-white shadow-sm sm:mx-auto sm:max-w-2xl dark:bg-neutral-950" : undefined}
+        >
         {profissionais && profissionais.length > 0 && (
           <section className="border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
             <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-50">Equipe</h2>
@@ -226,9 +239,14 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
         </section>
 
         <FormularioContato />
+        </div>
       </main>
 
-      <footer className="border-t border-gray-100 px-4 py-6 text-center text-xs text-gray-400 dark:border-neutral-800 dark:text-neutral-500">
+      <footer
+        className={`px-4 py-6 text-center text-xs ${
+          fundo.temFundo ? classeTextoTopo : "border-t border-gray-100 text-gray-400 dark:border-neutral-800 dark:text-neutral-500"
+        }`}
+      >
         <p>{negocio.nomeExibido}</p>
         <a href="/privacidade" className="mt-1 inline-block underline">
           Política de privacidade
