@@ -16,6 +16,14 @@ public partial class Negocio : EntidadeBase
 
     public Slug Slug { get; private set; } = null!;
 
+    /// <summary>No máximo uma troca de link a cada tantos dias (seção 5): não confunde os clientes nem abre brecha para "reservar e soltar".</summary>
+    public const int DiasEntreTrocasDeSlug = 30;
+
+    /// <summary>Última troca de link feita no painel (nulo = nunca trocou; o slug do cadastro não conta como troca).</summary>
+    public DateTimeOffset? SlugAlteradoEm { get; private set; }
+
+    public DateTimeOffset? ProximaTrocaDeSlugEm => SlugAlteradoEm?.AddDays(DiasEntreTrocasDeSlug);
+
     public string NomeExibido { get; private set; } = string.Empty;
 
     public TipoNegocio Tipo { get; private set; }
@@ -132,6 +140,27 @@ public partial class Negocio : EntidadeBase
     }
 
     public void DefinirAvisoProfissionalPorWhatsApp(bool ativo) => WhatsAppAvisoProfissional = ativo;
+
+    /// <summary>
+    /// Troca o link público e devolve o <see cref="SlugAnterior"/> que passa a redirecionar para o novo. Disponibilidade (em uso
+    /// por outro negócio, link antigo de outro ainda ativo) é conferida por quem chama, que enxerga os outros negócios.
+    /// Lança <see cref="TrocaDeSlugRecenteException"/> antes de 30 dias da última troca e <see cref="ArgumentException"/> se for o mesmo.
+    /// </summary>
+    public SlugAnterior TrocarSlug(Slug novo, DateTimeOffset agora)
+    {
+        ArgumentNullException.ThrowIfNull(novo);
+
+        if (novo.Equals(Slug))
+            throw new ArgumentException("Este já é o link atual.", nameof(novo));
+
+        if (ProximaTrocaDeSlugEm is { } proxima && agora < proxima)
+            throw new TrocaDeSlugRecenteException(proxima);
+
+        var anterior = new SlugAnterior(Id, Slug, agora);
+        Slug = novo;
+        SlugAlteradoEm = agora;
+        return anterior;
+    }
 
     /// <summary>Vazio tira a cor. Lança <see cref="ArgumentException"/> fora do formato <c>#RRGGBB</c>.</summary>
     public void DefinirCorFundo(string? cor)

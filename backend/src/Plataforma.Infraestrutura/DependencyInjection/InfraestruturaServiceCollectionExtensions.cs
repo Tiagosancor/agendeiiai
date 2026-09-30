@@ -161,6 +161,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGerenciadorServicos, GerenciadorServicos>();
         servicos.AddScoped<IGerenciadorClientes, GerenciadorClientes>();
         servicos.AddScoped<IGerenciadorPerfilNegocio, GerenciadorPerfilNegocio>();
+        servicos.AddScoped<IGerenciadorLinkNegocio, GerenciadorLinkNegocio>();
 
         // Arquivos enviados (seção 8.5: nada no disco): no Postgres até existir um bucket; imagem sempre reprocessada (8.4).
         servicos.AddScoped<IArmazenamentoArquivos, ArmazenamentoArquivosBanco>();

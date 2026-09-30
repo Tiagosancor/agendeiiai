@@ -52,4 +52,20 @@ public sealed class NegocioPublicoController : ControllerBase
 
         return negocio is null ? NotFound() : Ok(negocio);
     }
+
+    public sealed record RedirecionamentoSlug(string SlugAtual);
+
+    /// <summary>
+    /// Link antigo de um negócio que trocou de slug há menos de 90 dias (seção 5): o <c>proxy.ts</c> do Next.js chama isto
+    /// quando <see cref="ObterPorSlug"/> dá 404 e responde 301 para o endereço novo. Depois do prazo, 404 como qualquer outro.
+    /// </summary>
+    [HttpGet("/publico/slugs-anteriores/{slug}")]
+    public async Task<ActionResult<RedirecionamentoSlug>> ObterRedirecionamento(string slug, CancellationToken cancellationToken)
+    {
+        if (!Slug.TentarCriar(slug, out var slugValido))
+            return NotFound();
+
+        var atual = await _consultaNegocio.SlugAtualDoAnteriorAsync(slugValido!, cancellationToken);
+        return atual is null ? NotFound() : Ok(new RedirecionamentoSlug(atual));
+    }
 }

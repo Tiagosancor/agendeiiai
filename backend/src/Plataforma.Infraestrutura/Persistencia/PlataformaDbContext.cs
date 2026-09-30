@@ -125,6 +125,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<ArquivoBanco> Arquivos => Set<ArquivoBanco>();
 
+    public DbSet<SlugAnterior> SlugsAnteriores => Set<SlugAnterior>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Pré-requisito da exclusion constraint de horários (seção 8.2.1) — confirmado
