@@ -19,6 +19,7 @@ using Plataforma.Dominio.Notificacoes;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.Servicos;
 using Plataforma.Dominio.Usuarios;
+using Plataforma.Infraestrutura.Arquivos;
 using Plataforma.Dominio.Verificacao;
 
 namespace Plataforma.Infraestrutura.Persistencia;
@@ -121,6 +122,8 @@ public class PlataformaDbContext : DbContext
     public DbSet<ChaveIdempotencia> ChavesIdempotencia => Set<ChaveIdempotencia>();
 
     public DbSet<AdministradorPlataforma> AdministradoresPlataforma => Set<AdministradorPlataforma>();
+
+    public DbSet<ArquivoBanco> Arquivos => Set<ArquivoBanco>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

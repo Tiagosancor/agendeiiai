@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Administracao;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Arquivos;
 using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Autenticacao;
 using Plataforma.Aplicacao.Cadastro;
@@ -25,6 +26,7 @@ using Plataforma.Aplicacao.Usuarios;
 using Plataforma.Aplicacao.Verificacao;
 using Plataforma.Infraestrutura.Administracao;
 using Plataforma.Infraestrutura.Agendamentos;
+using Plataforma.Infraestrutura.Arquivos;
 using Plataforma.Infraestrutura.Assinaturas;
 using Plataforma.Infraestrutura.Autenticacao;
 using Plataforma.Infraestrutura.Cadastro;
@@ -159,6 +161,10 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGerenciadorServicos, GerenciadorServicos>();
         servicos.AddScoped<IGerenciadorClientes, GerenciadorClientes>();
         servicos.AddScoped<IGerenciadorPerfilNegocio, GerenciadorPerfilNegocio>();
+
+        // Arquivos enviados (seção 8.5: nada no disco): no Postgres até existir um bucket; imagem sempre reprocessada (8.4).
+        servicos.AddScoped<IArmazenamentoArquivos, ArmazenamentoArquivosBanco>();
+        servicos.AddSingleton<IProcessadorImagem, ProcessadorImagemSkia>();
 
         // Agenda e disponibilidade (Sprint 2 — seção 8.2).
         servicos.AddScoped<IGerenciadorHorariosTrabalho, GerenciadorHorariosTrabalho>();

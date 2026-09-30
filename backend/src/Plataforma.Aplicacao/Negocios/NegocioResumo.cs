@@ -15,4 +15,6 @@ public sealed record NegocioResumo(
     string? Telefone, string? Instagram, string? Facebook, string? WhatsApp,
     IReadOnlyCollection<HorarioFuncionamentoDiaDto> HorarioFuncionamento,
     // Falso com a assinatura suspensa (seção 7) — a página mostra só o telefone, sem dizer por quê.
-    bool AceitaAgendamentoOnline);
+    bool AceitaAgendamentoOnline,
+    // Fundo da página e do assistente (seção 5); a URL da imagem é relativa à API quando começa com "/".
+    string? CorFundo, string? ImagemFundoUrl);

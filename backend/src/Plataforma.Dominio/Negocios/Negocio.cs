@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Plataforma.Dominio.Comum;
 
 namespace Plataforma.Dominio.Negocios;
@@ -9,7 +10,7 @@ namespace Plataforma.Dominio.Negocios;
 /// funcionamento) entraram na Sprint 1 — na Sprint 0 só existia o essencial para a
 /// resolução por subdomínio.
 /// </summary>
-public class Negocio : EntidadeBase
+public partial class Negocio : EntidadeBase
 {
     private readonly List<HorarioFuncionamentoDia> _horarioFuncionamento = [];
 
@@ -29,6 +30,15 @@ public class Negocio : EntidadeBase
     public string? CorPrimaria { get; private set; }
 
     public string? CorSecundaria { get; private set; }
+
+    /// <summary>
+    /// Cor de fundo da página pública e do assistente (seção 5, "Cada negócio configura"), sempre <c>#RRGGBB</c>.
+    /// Sem imagem de fundo, é só ela; com imagem, fica por baixo enquanto a imagem carrega.
+    /// </summary>
+    public string? CorFundo { get; private set; }
+
+    /// <summary>Chave da imagem de fundo no <c>IArmazenamentoArquivos</c> (nunca uma URL de fora): só entra imagem enviada e reprocessada.</summary>
+    public string? ImagemFundo { get; private set; }
 
     public string? TituloPagina { get; private set; }
 
@@ -123,6 +133,30 @@ public class Negocio : EntidadeBase
 
     public void DefinirAvisoProfissionalPorWhatsApp(bool ativo) => WhatsAppAvisoProfissional = ativo;
 
+    /// <summary>Vazio tira a cor. Lança <see cref="ArgumentException"/> fora do formato <c>#RRGGBB</c>.</summary>
+    public void DefinirCorFundo(string? cor)
+    {
+        if (string.IsNullOrWhiteSpace(cor))
+        {
+            CorFundo = null;
+            return;
+        }
+
+        cor = cor.Trim();
+        if (!CorHex().IsMatch(cor))
+            throw new ArgumentException("A cor de fundo precisa estar no formato #RRGGBB.", nameof(cor));
+
+        CorFundo = cor.ToLowerInvariant();
+    }
+
+    /// <summary>Troca (ou tira, com nulo) a imagem de fundo e devolve a chave anterior, para o arquivo antigo ser apagado.</summary>
+    public string? DefinirImagemFundo(string? chave)
+    {
+        var anterior = ImagemFundo;
+        ImagemFundo = string.IsNullOrWhiteSpace(chave) ? null : chave;
+        return anterior;
+    }
+
     /// <summary>Substitui o horário de funcionamento inteiro — sempre os 7 dias da semana, um registro cada.</summary>
     public void DefinirHorarioFuncionamento(IEnumerable<HorarioFuncionamentoDia> horario)
     {
@@ -138,4 +172,7 @@ public class Negocio : EntidadeBase
     public void Desativar() => Ativo = false;
 
     public void Ativar() => Ativo = true;
+
+    [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
+    private static partial Regex CorHex();
 }
