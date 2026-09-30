@@ -33,15 +33,17 @@ interface OpcoesRequisicao {
  * a API nem olha o cookie, só o header Authorization.
  */
 export async function requisicaoApi<T>(caminho: string, opcoes: OpcoesRequisicao = {}): Promise<T> {
+  // Upload (FormData): o navegador monta o Content-Type com o boundary do multipart sozinho.
+  const formulario = opcoes.corpo instanceof FormData;
   const resposta = await fetch(`${URL_BASE_API}${caminho}`, {
     method: opcoes.metodo ?? "GET",
     credentials: "include",
     headers: {
-      ...(opcoes.corpo !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(opcoes.corpo !== undefined && !formulario ? { "Content-Type": "application/json" } : {}),
       ...(opcoes.tokenAcesso ? { Authorization: `Bearer ${opcoes.tokenAcesso}` } : {}),
       ...opcoes.cabecalhos,
     },
-    body: opcoes.corpo !== undefined ? JSON.stringify(opcoes.corpo) : undefined,
+    body: formulario ? (opcoes.corpo as FormData) : opcoes.corpo !== undefined ? JSON.stringify(opcoes.corpo) : undefined,
   });
 
   if (!resposta.ok) {

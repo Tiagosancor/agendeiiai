@@ -351,6 +351,10 @@ export interface PerfilNegocio {
   horarioFuncionamento: HorarioFuncionamentoDia[];
   /** Avisar o profissional também por WhatsApp (novo/remarcado/cancelado). O e-mail sai sempre. */
   whatsAppAvisoProfissional: boolean;
+  /** Fundo da página pública e do assistente (#rrggbb). */
+  corFundo: string | null;
+  /** Relativa à API quando começa com "/" — use `urlArquivo` (lib/fundo.ts). */
+  imagemFundoUrl: string | null;
 }
 
 /** Saúde da conexão do WhatsApp (administração da plataforma). */
@@ -486,6 +490,8 @@ export interface NegocioPublico {
   whatsApp: string | null;
   horarioFuncionamento: HorarioFuncionamentoDia[];
   aceitaAgendamentoOnline: boolean;
+  corFundo: string | null;
+  imagemFundoUrl: string | null;
 }
 
 export interface ServicoPublico {

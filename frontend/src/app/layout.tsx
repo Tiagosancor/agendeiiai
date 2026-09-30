@@ -27,6 +27,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Painel",
   description: "Agendamento online para barbearias, salões e clínicas de estética.",
+  // Um manifesto por host (app/manifest.webmanifest/route.ts): o do painel ou o do negócio (seção 5).
+  manifest: "/manifest.webmanifest",
+  // Ícones do produto por padrão. Ficam em public/ (e não como app/icon.svg, app/apple-icon.png) porque ícone por
+  // arquivo em app/ tem prioridade sobre o metadata — a página do negócio não conseguiria trocar pelo dela.
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "any" },
+      { url: "/brand/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: "/brand/apple-icon.png",
+  },
 };
 
 export const viewport: Viewport = {

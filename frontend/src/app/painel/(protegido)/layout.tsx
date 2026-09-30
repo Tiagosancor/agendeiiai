@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
 import { BotaoTema } from "@/components/BotaoTema";
 import { AvisoAssinatura } from "@/components/painel/AvisoAssinatura";
+import { guardarUltimaRota } from "@/lib/ultima-rota";
 
 const ITENS_MENU = [
   { href: "/painel", rotulo: "Início" },
@@ -34,6 +35,10 @@ export default function LayoutProtegido({ children }: { children: React.ReactNod
       roteador.replace("/painel/login");
     }
   }, [carregando, autenticado, roteador]);
+
+  useEffect(() => {
+    if (autenticado) guardarUltimaRota(caminhoAtual);
+  }, [autenticado, caminhoAtual]);
 
   if (carregando) {
     return (

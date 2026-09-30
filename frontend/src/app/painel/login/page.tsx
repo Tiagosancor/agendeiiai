@@ -1,15 +1,23 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { BotaoTema } from "@/components/BotaoTema";
 import { CampoSenha } from "@/components/CampoSenha";
+import { lerUltimaRota } from "@/lib/ultima-rota";
 
 export default function PaginaLogin() {
-  const { entrar } = useAutenticacao();
+  const { entrar, autenticado, carregando } = useAutenticacao();
   const roteador = useRouter();
+
+  // O PWA do painel abre aqui (manifest, seção 5): com a sessão ainda válida, volta para a última tela aberta.
+  // Quem acabou de entrar pelo formulário segue para o início (aoEnviar), não para a tela de uma sessão anterior.
+  const entrandoAgora = useRef(false);
+  useEffect(() => {
+    if (!carregando && autenticado && !entrandoAgora.current) roteador.replace(lerUltimaRota());
+  }, [carregando, autenticado, roteador]);
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
@@ -21,10 +29,12 @@ export default function PaginaLogin() {
     setErro(null);
     setEnviando(true);
 
+    entrandoAgora.current = true;
     try {
       await entrar(email, senha);
       roteador.push("/painel");
     } catch (excecao) {
+      entrandoAgora.current = false;
       if (excecao instanceof ErroApi && excecao.status === 401) {
         setErro("E-mail ou senha incorretos.");
       } else {
