@@ -31,6 +31,32 @@ function formatoDeSlugValido(candidato: string): boolean {
   );
 }
 
+/**
+ * Link antigo de um negócio que trocou de slug (seção 5): por 90 dias, 301 para o mesmo caminho no endereço novo (links de
+ * e-mail como /agendamentos/{token} continuam funcionando). Cache curto de propósito: um 301 fica guardado no navegador, e
+ * depois do prazo o slug pode ser de outro negócio.
+ */
+async function redirecionarLinkAntigo(request: NextRequest, slug: string): Promise<NextResponse | null> {
+  try {
+    const resposta = await fetch(`${urlApiInterna}/publico/slugs-anteriores/${slug}`, {
+      headers: { accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!resposta.ok) return null;
+
+    const { slugAtual } = (await resposta.json()) as { slugAtual: string };
+    if (!formatoDeSlugValido(slugAtual) || slugAtual === slug) return null;
+
+    const destino = request.nextUrl.clone();
+    destino.hostname = `${slugAtual}.${dominioBase}`;
+    const redirecionamento = NextResponse.redirect(destino, 301);
+    redirecionamento.headers.set("Cache-Control", "private, max-age=3600");
+    return redirecionamento;
+  } catch {
+    return null;
+  }
+}
+
 export async function proxy(request: NextRequest) {
   if (!dominioBase) {
     return NextResponse.next();
@@ -59,7 +85,7 @@ export async function proxy(request: NextRequest) {
     });
 
     if (resposta.status === 404) {
-      return NextResponse.rewrite(new URL("/negocio-nao-encontrado", request.url));
+      return (await redirecionarLinkAntigo(request, slugCandidato)) ?? NextResponse.rewrite(new URL("/negocio-nao-encontrado", request.url));
     }
   } catch {
     // API indisponível: não derruba o site inteiro por uma falha temporária de infra —
