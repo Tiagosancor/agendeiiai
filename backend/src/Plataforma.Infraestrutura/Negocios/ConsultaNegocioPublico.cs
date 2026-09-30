@@ -39,6 +39,17 @@ public sealed class ConsultaNegocioPublico : IConsultaNegocioPublico
             imagemFundoUrl: negocio.ImagemFundo is null ? null : _arquivos.UrlPublica(negocio.ImagemFundo));
     }
 
+    public async Task<string?> SlugAtualDoAnteriorAsync(Slug antigo, CancellationToken cancellationToken = default)
+    {
+        var agora = DateTimeOffset.UtcNow;
+        var atual = await _dbContext.SlugsAnteriores.AsNoTracking()
+            .Where(s => s.Slug == antigo && s.RedirecionaAte > agora)
+            .OrderByDescending(s => s.TrocadoEm)
+            .Join(_dbContext.Negocios.Where(n => n.Ativo), s => s.NegocioId, n => n.Id, (s, n) => n.Slug)
+            .FirstOrDefaultAsync(cancellationToken);
+        return atual?.Valor;
+    }
+
     private static NegocioResumo Mapear(Negocio negocio, bool aceitaAgendamentoOnline, string? imagemFundoUrl) => new(
         negocio.Id, negocio.Slug.Valor, negocio.NomeExibido, negocio.Tipo.ToString(), negocio.Fuso,
         negocio.LogoUrl, negocio.CorPrimaria, negocio.CorSecundaria,

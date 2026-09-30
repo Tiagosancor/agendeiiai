@@ -5,6 +5,7 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { ErroApi } from "@/lib/api";
 import { classeBotaoPrimario, classeInput, classeLabel } from "@/components/estilos";
 import { CamposFundoPagina } from "@/components/painel/CamposFundoPagina";
+import { CampoLinkNegocio } from "@/components/painel/CampoLinkNegocio";
 import { NOMES_DIAS_SEMANA, type HorarioFuncionamentoDia, type PerfilNegocio } from "@/lib/tipos";
 
 function horarioPadrao(): HorarioFuncionamentoDia[] {
@@ -94,8 +95,13 @@ export default function PaginaPerfilNegocio() {
   if (!perfil) return <p className="text-sm text-gray-500 dark:text-neutral-400">Carregando...</p>;
 
   return (
-    <form onSubmit={salvar} className="max-w-2xl space-y-8">
+    <div className="max-w-2xl space-y-8">
       <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Meu negócio</h1>
+
+      {/* Fora do formulário: tem a própria confirmação e salva sozinho (seção 5, "Editar o link"). */}
+      <CampoLinkNegocio />
+
+    <form onSubmit={salvar} className="space-y-8">
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Marca</h2>
@@ -256,5 +262,6 @@ export default function PaginaPerfilNegocio() {
         {salvando ? "Salvando..." : "Salvar alterações"}
       </button>
     </form>
+    </div>
   );
 }

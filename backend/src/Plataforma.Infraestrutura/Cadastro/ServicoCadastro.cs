@@ -54,21 +54,9 @@ public sealed class ServicoCadastro : IServicoCadastro
             .Select(p => new PlanoPublico(p.Id, p.Nome, p.MinimoProfissionais, p.MaximoProfissionais, p.PrecoMensal, p.PrecoAnualPorMes, p.Destaque))
             .ToListAsync(cancellationToken);
 
-    public async Task<DisponibilidadeSlug> VerificarSlugAsync(string slug, CancellationToken cancellationToken = default)
-    {
-        var normalizado = (slug ?? string.Empty).Trim().ToLowerInvariant();
-
-        if (Slug.Reservados.Contains(normalizado))
-            return new DisponibilidadeSlug(false, "Este endereço é reservado. Escolha outro.");
-
-        if (!Slug.TentarCriar(normalizado, out var slugValido))
-            return new DisponibilidadeSlug(false,
-                $"Use de {Slug.TamanhoMinimo} a {Slug.TamanhoMaximo} letras minúsculas, números ou hífen, sem hífen no começo ou no fim.");
-
-        return await _dbContext.Negocios.AnyAsync(n => n.Slug == slugValido!, cancellationToken)
-            ? new DisponibilidadeSlug(false, "Este endereço já está em uso. Escolha outro.")
-            : new DisponibilidadeSlug(true, null);
-    }
+    // Mesmas regras da troca de link no painel — inclusive o link antigo de outro negócio, que fica ocupado por 90 dias.
+    public Task<DisponibilidadeSlug> VerificarSlugAsync(string slug, CancellationToken cancellationToken = default) =>
+        DisponibilidadeSlugs.VerificarAsync(_dbContext, slug, negocioId: null, DateTimeOffset.UtcNow, cancellationToken);
 
     public async Task<ResultadoSolicitarCodigoCadastro> SolicitarCodigoAsync(string email, CancellationToken cancellationToken = default)
     {
@@ -252,8 +240,9 @@ public sealed class ServicoCadastro : IServicoCadastro
 
     private async Task<ResultadoCadastro?> ProcurarConflitoAsync(Slug slug, string email, TelefoneE164 telefone, CancellationToken cancellationToken)
     {
-        if (await _dbContext.Negocios.AnyAsync(n => n.Slug == slug, cancellationToken))
-            return ResultadoCadastro.Falha(ErroCadastro.SlugEmUso, "Este endereço já está em uso. Escolha outro.");
+        await DisponibilidadeSlugs.TravarAsync(_dbContext, slug, cancellationToken);
+        if (await DisponibilidadeSlugs.EmUsoAsync(_dbContext, slug, negocioId: null, DateTimeOffset.UtcNow, cancellationToken))
+            return ResultadoCadastro.Falha(ErroCadastro.SlugEmUso, DisponibilidadeSlugs.MensagemEmUso);
 
         if (await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email && !u.Excluido, cancellationToken))
             return ResultadoCadastro.Falha(ErroCadastro.EmailJaCadastrado, "Este e-mail já tem uma conta. Entre pelo painel.");

@@ -69,6 +69,36 @@ public sealed class NegocioTestes
     }
 
     [Fact]
+    public void Trocar_o_link_guarda_o_anterior_redirecionando_por_90_dias()
+    {
+        var negocio = Negocio.Criar(Slug.Criar("acme"), "Acme", TipoNegocio.Salao);
+        var agora = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+
+        var anterior = negocio.TrocarSlug(Slug.Criar("acme-novo"), agora);
+
+        negocio.Slug.Valor.Should().Be("acme-novo");
+        negocio.SlugAlteradoEm.Should().Be(agora);
+        (anterior.NegocioId, anterior.Slug.Valor, anterior.RedirecionaAte).Should().Be((negocio.Id, "acme", agora.AddDays(90)));
+        anterior.Ativo(agora.AddDays(89)).Should().BeTrue();
+        anterior.Ativo(agora.AddDays(90)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Segunda_troca_so_depois_de_30_dias_e_nunca_para_o_mesmo_link()
+    {
+        var negocio = Negocio.Criar(Slug.Criar("acme"), "Acme", TipoNegocio.Salao);
+        var agora = new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+        negocio.TrocarSlug(Slug.Criar("acme-2"), agora);
+
+        FluentActions.Invoking(() => negocio.TrocarSlug(Slug.Criar("acme-3"), agora.AddDays(29)))
+            .Should().Throw<TrocaDeSlugRecenteException>().Which.PodeTrocarEm.Should().Be(agora.AddDays(30));
+        FluentActions.Invoking(() => negocio.TrocarSlug(Slug.Criar("acme-2"), agora.AddDays(31))).Should().Throw<ArgumentException>();
+
+        negocio.TrocarSlug(Slug.Criar("acme-3"), agora.AddDays(30));
+        negocio.Slug.Valor.Should().Be("acme-3");
+    }
+
+    [Fact]
     public void Trocar_a_imagem_de_fundo_devolve_a_chave_anterior()
     {
         var negocio = Negocio.Criar(Slug.Criar("acme"), "Acme", TipoNegocio.Salao);
