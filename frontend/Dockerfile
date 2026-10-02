@@ -32,4 +32,7 @@ USER nextjs
 
 EXPOSE 3000
 ENV PORT=3000
+# O server.js do modo standalone escuta em HOSTNAME; o Docker põe ali o nome do container, e numa plataforma como o
+# Railway isso pode não ser a interface que recebe o tráfego. 0.0.0.0 = todas.
+ENV HOSTNAME=0.0.0.0
 ENTRYPOINT ["node", "server.js"]

@@ -46,6 +46,7 @@ test("administrador define a comissão na ficha e vê a equipe em Comissões", a
   await expect(linha).toContainText("12,5%");
 
   await linha.click();
-  await expect(page.getByText("Percentual atual:")).toContainText("12,5%");
+  // O quadro "Comissão de produtos" (quando o profissional já vendeu) repete o texto; o de serviços vem primeiro.
+  await expect(page.getByText("Percentual atual:").first()).toContainText("12,5%");
   await expect(page.getByText("Comissão no período")).toBeVisible();
 });

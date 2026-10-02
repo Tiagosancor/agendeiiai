@@ -65,6 +65,14 @@ export async function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const sufixo = `.${dominioBase}`;
 
+  // www → domínio raiz, mesmo caminho. Na Vercel isso era configuração do painel dela; em qualquer outra hospedagem
+  // (Railway, VPS) sem esta linha o "www" cairia como slug de negócio e daria "negócio não encontrado".
+  if (host === `www.${dominioBase}`) {
+    const destino = request.nextUrl.clone();
+    destino.hostname = dominioBase;
+    return NextResponse.redirect(destino, 308);
+  }
+
   const semSubdominioDeNegocio =
     host === dominioBase || host === `app.${dominioBase}` || !host.endsWith(sufixo);
 

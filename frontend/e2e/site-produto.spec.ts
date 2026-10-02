@@ -52,6 +52,13 @@ test("SEO e Open Graph do produto só no domínio raiz, nunca na página do neg�
   await expect(page.getByTestId("card-plano")).toHaveCount(0);
 });
 
+test("www leva ao domínio raiz no mesmo caminho (antes era configuração da Vercel)", async ({ page }) => {
+  const resposta = await page.goto("http://www.agendeiiai.localhost:3000/termos?origem=teste");
+
+  expect(page.url()).toBe(`${RAIZ}/termos?origem=teste`);
+  expect((await resposta!.request().redirectedFrom()!.response())!.status()).toBe(308);
+});
+
 test("Termos e Privacidade do produto aparecem marcados como rascunho", async ({ page }) => {
   await page.goto(RAIZ);
   await page.getByRole("contentinfo").getByRole("link", { name: "Termos de Uso" }).click();
