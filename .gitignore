@@ -37,3 +37,6 @@ mobile/.expo/
 *.swp
 Thumbs.db
 .DS_Store
+
+# Instruções locais para o Codex
+AGENTS.md
