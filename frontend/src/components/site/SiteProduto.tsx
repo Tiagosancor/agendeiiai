@@ -1,4 +1,5 @@
 import Link from "next/link";
+import "./site-produto.css";
 import { preload } from "react-dom";
 import type { ReactNode } from "react";
 import type { PlanoPublico } from "@/lib/tipos";
@@ -23,11 +24,19 @@ const ANCORAS = [
   { href: "#duvidas", rotulo: "Dúvidas" },
 ];
 
-const classeCta =
-  "inline-flex items-center justify-center rounded-xl bg-marca-acento px-5 py-3 text-sm font-semibold text-marca-primaria shadow-sm transition hover:brightness-110 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-marca-acento";
+const classeCta = "site-cta";
+const classeTitulo = "site-titulo";
+const classeTexto = "site-texto";
 
-const classeTitulo = "font-display text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl dark:text-neutral-50";
-const classeTexto = "text-gray-700 dark:text-neutral-300";
+function Logo({ nomeProduto, final = false }: { nomeProduto: string; final?: boolean }) {
+  return <span className="site-logo">
+    {final ? <>
+      <img src="/brand/calendario-confirmado.svg" width={46} height={46} alt="" data-testid="logo-claro" className="dark:hidden" />
+      <img src="/brand/calendario-confirmado.svg" width={46} height={46} alt="" data-testid="logo-escuro" className="hidden dark:block" />
+    </> : <img src="/brand/calendario-confirmado.svg" width={46} height={46} alt="" />}
+    <span><strong>{nomeProduto}</strong><small>Agendou, tá confirmado!</small></span>
+  </span>;
+}
 
 function Icone({ children }: { children: ReactNode }) {
   return (
@@ -40,7 +49,7 @@ function Icone({ children }: { children: ReactNode }) {
 /** Moldura de celular em volta de uma captura real do assistente (390×780 lógicos). */
 function Celular({ src, alt, prioridade = false, className = "" }: { src: string; alt: string; prioridade?: boolean; className?: string }) {
   return (
-    <div className={`rounded-[2.2rem] border-[7px] border-marca-primaria bg-marca-primaria shadow-2xl dark:border-neutral-700 dark:bg-neutral-700 ${className}`}>
+    <div className={`site-celular ${className}`}>
       <img
         src={src}
         alt={alt}
@@ -72,8 +81,8 @@ const PUBLICO = [
     frase: "Serviços de durações diferentes encaixados sem buraco na agenda.",
     icone: (
       <Icone>
-        <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" />
-        <circle cx="12" cy="12" r="3" />
+        <path d="M12 3C6 8 7 14 12 19c5-5 6-11 0-16Z" />
+        <path d="M8 8 3 6c-1 7 3 12 9 13M16 8l5-2c1 7-3 12-9 13M5 14l-3 1c3 6 8 7 10 4 2 3 7 2 10-4l-3-1" />
       </Icone>
     ),
   },
@@ -105,7 +114,7 @@ const PASSOS = [
 ];
 
 const OUTROS_RECURSOS = [
-  { titulo: "Lembretes automáticos", texto: "O cliente é lembrado um dia antes e poucas horas antes do horário." },
+  { titulo: "Lembretes automáticos", texto: "O cliente recebe um lembrete antes do horário do atendimento." },
   { titulo: "Financeiro do mês", texto: "Quanto entrou, por profissional e por serviço, sem planilha." },
   { titulo: "Programa de fidelidade", texto: "Selos por atendimento e recompensa quando o cliente completa o cartão." },
   { titulo: "Cupons de desconto", texto: "Crie códigos com validade e limite de uso para campanhas." },
@@ -148,264 +157,94 @@ export function SiteProduto({ nomeProduto, planos, whatsApp }: { nomeProduto: st
   const linkWhatsApp = whatsApp ? `https://wa.me/${whatsApp}?text=${encodeURIComponent(`Olá! Quero saber mais sobre o ${nomeProduto}.`)}` : null;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <a href="#conteudo" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:px-3 focus:py-2">
-        Pular para o conteúdo
-      </a>
-
-      {/* 1. Cabeçalho fixo */}
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-gray-200/70 bg-(--background)/90 backdrop-blur dark:border-neutral-800/70">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
-          <Link href="/" className="flex min-w-0 items-center gap-2" aria-label={`${nomeProduto}, início`}>
-            <img src="/brand/agendeiiai-icone-reduzido.svg" alt="" width={32} height={32} className="rounded-lg" />
-            <span className="font-display text-lg font-bold text-gray-900 dark:text-neutral-50">{nomeProduto}</span>
-          </Link>
-          <nav aria-label="Seções" className="hidden items-center gap-6 text-sm text-gray-700 lg:flex dark:text-neutral-300">
-            {ANCORAS.map((a) => (
-              <a key={a.href} href={a.href} className="hover:text-gray-900 dark:hover:text-neutral-50">
-                {a.rotulo}
-              </a>
-            ))}
+    <div className="site-produto">
+      <a href="#conteudo" className="site-pular">Pular para o conteúdo</a>
+      <header className="site-header">
+        <div className="site-container site-navbar">
+          <Link href="/" aria-label={`${nomeProduto}, início`}><Logo nomeProduto={nomeProduto} /></Link>
+          <nav aria-label="Seções" className="site-nav">
+            {ANCORAS.map(a => <a key={a.href} href={a.href}>{a.rotulo}</a>)}
           </nav>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <BotaoTema />
-            <Link href="/painel/login" className="rounded-lg px-2 py-2 text-sm font-medium text-gray-800 sm:px-3 hover:bg-gray-100 dark:text-neutral-100 dark:hover:bg-neutral-800">
-              Entrar
-            </Link>
-            <Link href="/cadastro" className={`${classeCta} whitespace-nowrap px-3 py-2 sm:px-4`}>
-              <span className="sm:hidden">Testar grátis</span>
-              <span className="hidden sm:inline">{CTA}</span>
-            </Link>
+          <div className="site-acoes">
+            <BotaoTema className="site-tema" />
+            <Link href="/painel/login" className="site-entrar">Entrar</Link>
+            <Link href="/cadastro" className={classeCta}><span className="sm:hidden">Testar grátis</span><span className="hidden sm:inline">{CTA}</span><span aria-hidden="true"> →</span></Link>
           </div>
         </div>
       </header>
-
-      <main id="conteudo" className="flex-1 pt-16">
-        {/* 2. Hero */}
-        <section className="relative overflow-hidden">
-          <div
-            aria-hidden="true"
-            className="absolute inset-x-0 top-0 -z-10 h-130 bg-[radial-gradient(60%_60%_at_75%_30%,rgba(217,142,59,0.18),transparent_70%)] dark:bg-[radial-gradient(60%_60%_at_75%_30%,rgba(217,142,59,0.12),transparent_70%)]"
-          />
-          <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-14 md:grid-cols-[1.15fr_1fr] md:py-20">
-            <div>
-              <p className="text-sm font-semibold text-marca-madeira dark:text-marca-acento">Agendamento online para barbearias, salões e clínicas</p>
-              <h1 className="mt-3 font-display text-4xl leading-tight font-bold tracking-tight text-gray-900 sm:text-5xl dark:text-neutral-50">
-                Sua agenda cheia, sem precisar parar para atender o WhatsApp
-              </h1>
-              <p className={`mt-5 max-w-xl text-lg ${classeTexto}`}>
-                Seus clientes marcam sozinhos pelo link do seu negócio e confirmam com um código. Você recebe o horário pronto na agenda e só se preocupa em atender.
-              </p>
-              <div className="mt-8 flex flex-col items-start gap-2">
-                <Link href="/cadastro" className={`${classeCta} px-6 py-3.5 text-base`}>
-                  {CTA}
-                </Link>
-                <p className="text-sm text-gray-600 dark:text-neutral-400">Sem cartão de crédito.</p>
+      <main id="conteudo">
+        <section className="site-hero">
+          <div className="site-container site-hero-grid">
+            <div className="site-hero-texto">
+              <p className="site-badge">Agendamento online para barbearias, salões e clínicas</p>
+              <h1>Sua agenda cheia,<br /><span className="site-gradiente">sem precisar parar<br className="site-quebra" /> para atender o WhatsApp.</span></h1>
+              <p className={classeTexto}>Seus clientes marcam sozinhos pelo link do seu negócio e confirmam com um código. Você recebe o horário pronto na agenda e só se preocupa em atender.</p>
+              <div className="site-hero-ctas">
+                <Link href="/cadastro" className={classeCta}>{CTA}<span aria-hidden="true">→</span></Link>
+                <Link href="/painel/login" className="site-cta-secundario">Já tenho uma conta</Link>
               </div>
+              <ul className="site-micro"><li><span aria-hidden="true">✓</span> Sem cartão de crédito.</li><li><span aria-hidden="true">◷</span> Setup em minutos</li><li><span aria-hidden="true">✓</span> Cancele quando quiser</li></ul>
             </div>
-            <div className="relative mx-auto w-full max-w-75 md:max-w-80">
-              <Celular src={IMAGEM_HERO} alt="Assistente de agendamento no celular: escolha de data e horário" prioridade />
+            <div className="site-hero-celulares">
+              <Celular src={IMAGEM_HERO} alt="Assistente de agendamento no celular: escolha de data e horário" prioridade className="site-celular-frente" />
+              <Celular src="/site/assistente-servicos.webp" alt="Escolha os serviços no assistente de agendamento real" className="site-celular-atras" />
             </div>
           </div>
         </section>
-
-        {/* 3. Para quem é */}
-        <section aria-labelledby="titulo-publico" className="border-y border-gray-200 bg-white/60 dark:border-neutral-800 dark:bg-neutral-900/40">
-          <div className="mx-auto max-w-6xl px-4 py-14">
-            <h2 id="titulo-publico" className={classeTitulo}>
-              Feito para quem vive de horário marcado
-            </h2>
-            <ul className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-              {PUBLICO.map((item) => (
-                <li key={item.titulo}>
-                  <span className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-marca-primaria text-marca-acento dark:bg-neutral-800">
-                    {item.icone}
-                  </span>
-                  <h3 className="mt-4 font-semibold text-gray-900 dark:text-neutral-50">{item.titulo}</h3>
-                  <p className={`mt-1 text-sm ${classeTexto}`}>{item.frase}</p>
-                </li>
-              ))}
+        <section aria-labelledby="titulo-publico" className="site-secao">
+          <div className="site-container">
+            <h2 id="titulo-publico" className={classeTitulo}>Feito para quem vive de <span className="site-gradiente">horário marcado</span></h2>
+            <p className="site-subtitulo">Ideal para quem valoriza o tempo do cliente e a organização do dia a dia.</p>
+            <ul className="site-segmentos">
+              {PUBLICO.map(item => <li key={item.titulo} className="site-card"><span className="site-icone">{item.icone}</span><h3>{item.titulo}</h3><p>{item.frase}</p></li>)}
             </ul>
           </div>
         </section>
-
-        {/* 4. Como funciona */}
-        <section id="como-funciona" aria-labelledby="titulo-como-funciona" className="scroll-mt-20">
-          <div className="mx-auto max-w-6xl px-4 py-16">
-            <h2 id="titulo-como-funciona" className={classeTitulo}>
-              Pronto para receber agendamentos em minutos
-            </h2>
-            <ol className="mt-10 grid gap-10 md:grid-cols-3">
-              {PASSOS.map((passo, i) => (
-                <li key={passo.titulo} className="relative border-l-2 border-marca-acento pl-5">
-                  <span className="font-display text-5xl font-bold text-marca-primaria/15 dark:text-neutral-50/15" aria-hidden="true">
-                    {i + 1}
-                  </span>
-                  <h3 className="mt-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">{passo.titulo}</h3>
-                  <p className={`mt-2 text-sm ${classeTexto}`}>{passo.texto}</p>
-                </li>
-              ))}
+        <section id="como-funciona" aria-labelledby="titulo-como-funciona" className="site-secao">
+          <div className="site-container">
+            <h2 id="titulo-como-funciona" className={classeTitulo}>Pronto para receber agendamentos <span className="site-gradiente">em minutos</span></h2>
+            <p className="site-subtitulo">Receba agendamentos em minutos, com um processo simples.</p>
+            <ol className="site-passos">
+              {PASSOS.map((passo, i) => <li key={passo.titulo}><div className="site-passo-topo"><span className="site-numero" aria-hidden="true">{i + 1}</span><span className="site-icone"><Icone>{i === 0 ? <><circle cx="8" cy="7" r="3" /><path d="M2 21v-3a6 6 0 0 1 12 0v3M16 5h6M19 2v6M17 13h5M17 17h5" /></> : i === 1 ? <><path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" /></> : <><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 2v6M17 2v6M3 10h18m-13 5 3 3 5-5" /></>}</Icone></span></div><h3>{passo.titulo}</h3><p>{passo.texto}</p>{i < 2 && <span className="site-seta" aria-hidden="true">→</span>}</li>)}
             </ol>
           </div>
         </section>
-
-        {/* 5. Recursos */}
-        <section id="recursos" aria-labelledby="titulo-recursos" className="scroll-mt-20 bg-marca-primaria text-white">
-          <div className="mx-auto max-w-6xl px-4 py-16">
-            <h2 id="titulo-recursos" className="font-display text-3xl font-bold tracking-tight sm:text-4xl">
-              Tudo o que o dia a dia pede, num lugar só
-            </h2>
-
-            <div className="mt-12 grid items-center gap-10 md:grid-cols-[1.3fr_1fr]">
-              <img
-                src="/site/painel-agenda.webp"
-                alt="Agenda do dia de um profissional no painel, com os atendimentos marcados"
-                width={1100}
-                height={560}
-                loading="lazy"
-                decoding="async"
-                className="h-auto w-full rounded-xl shadow-2xl ring-1 ring-white/10"
-              />
-              <div>
-                <h3 className="font-display text-2xl font-bold">Agenda por profissional</h3>
-                <p className="mt-3 text-white/80">
-                  Cada profissional com seus horários, intervalo de almoço, folgas e bloqueios. Encaixe manual quando precisar, e o sistema nunca deixa dois clientes no mesmo horário.
-                </p>
+        <section id="recursos" aria-labelledby="titulo-recursos" className="site-secao">
+          <div className="site-container">
+            <h2 id="titulo-recursos" className={classeTitulo}>Tudo o que o dia a dia pede, <span className="site-gradiente">num lugar só</span></h2>
+            <div className="site-demonstracao">
+              <img src="/site/painel-agenda.webp" alt="Agenda do dia de um profissional no painel, com os atendimentos marcados" width={1100} height={560} loading="lazy" decoding="async" className="site-painel" />
+              <div className="site-recurso-texto"><span className="site-icone"><Icone><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 2v6M17 2v6M3 10h18M8 14h3M8 17h7" /></Icone></span><div><h3>Agenda por profissional</h3><p>Cada profissional com seus horários, intervalo de almoço, folgas e bloqueios. Encaixe manual quando precisar, e o sistema nunca deixa dois clientes no mesmo horário.</p></div></div>
+            </div>
+            <div className="site-demonstracao site-demonstracao-mobile">
+              <div className="site-recurso-lista">
+                <div className="site-recurso-texto"><span className="site-icone"><Icone><path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" /></Icone></span><div><h3>Link de agendamento sem app</h3><p>Seu cliente abre o link, escolhe serviços, profissional e horário. Sem baixar nada e sem cadastro com senha.</p></div></div>
+                <div className="site-recurso-texto"><span className="site-icone"><Icone><path d="m12 2 9 4v6c0 5-5 8-9 10-4-2-9-5-9-10V6l9-4Z" /><path d="m8 12 3 3 5-6" /></Icone></span><div><h3>Confirmação por código</h3><p>Cada agendamento é confirmado com um código de 6 dígitos enviado ao cliente. Menos faltas, e nenhum horário preso por um número de telefone errado.</p></div></div>
               </div>
+              <div className="site-telas-mobile"><Celular src="/site/assistente-servicos.webp" alt="Escolha de serviços no link de agendamento" /><Celular src="/site/assistente-resumo.webp" alt="Resumo do agendamento confirmado por código" /></div>
             </div>
-
-            <div className="mt-16 grid items-center gap-10 md:grid-cols-2">
-              <div className="flex items-start justify-center gap-4 md:order-2">
-                <Celular src="/site/assistente-servicos.webp" alt="Escolha de serviços no link de agendamento" className="w-[46%] max-w-57.5" />
-                <Celular src="/site/assistente-resumo.webp" alt="Resumo do agendamento confirmado por código" className="mt-10 w-[46%] max-w-57.5" />
-              </div>
-              <div className="space-y-8 md:order-1">
-                <div>
-                  <h3 className="font-display text-2xl font-bold">Link de agendamento sem app</h3>
-                  <p className="mt-3 text-white/80">
-                    Seu cliente abre o link, escolhe serviços, profissional e horário. Sem baixar nada e sem cadastro com senha.
-                  </p>
-                </div>
-                <div>
-                  <h3 className="font-display text-2xl font-bold">Confirmação por código</h3>
-                  <p className="mt-3 text-white/80">
-                    Cada agendamento é confirmado com um código de 6 dígitos enviado ao cliente. Menos faltas, e nenhum horário preso por um número de telefone errado.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <ul className="mt-16 grid gap-x-10 gap-y-8 border-t border-white/15 pt-12 sm:grid-cols-2 lg:grid-cols-3">
-              {OUTROS_RECURSOS.map((r) => (
-                <li key={r.titulo} className="flex gap-3">
-                  <svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true" className="mt-0.5 shrink-0 text-marca-acento">
-                    <path fill="currentColor" d="M8.2 13.6 4.6 10l-1.2 1.2 4.8 4.8 9-9-1.2-1.2z" />
-                  </svg>
-                  <div>
-                    <h3 className="font-semibold">{r.titulo}</h3>
-                    <p className="mt-1 text-sm text-white/75">{r.texto}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
-
-        {/* 6. Planos */}
-        <section id="planos" aria-labelledby="titulo-planos" className="scroll-mt-20">
-          <div className="mx-auto max-w-5xl px-4 py-16">
-            <div className="text-center">
-              <h2 id="titulo-planos" className={classeTitulo}>
-                Um preço pelo tamanho da sua equipe
-              </h2>
-              <p className={`mx-auto mt-3 max-w-xl ${classeTexto}`}>
-                Todos os planos têm os mesmos recursos. O que muda é só quantos profissionais atendem pela agenda. 30 dias grátis em qualquer um.
-              </p>
-            </div>
-            <div className="mt-10">
-              <PlanosSite planos={planos} whatsApp={whatsApp} />
+            <div className="site-beneficios">
+              <h2 className={classeTitulo}>Mais benefícios <span className="site-gradiente">para o seu negócio</span></h2>
+              <ul className="site-beneficios-grid">{OUTROS_RECURSOS.map((r, i) => <li key={r.titulo} className="site-card"><span className="site-icone"><Icone>{[
+                <path key="lembrete" d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M9 21h6" />,
+                <path key="financeiro" d="M3 21h18M5 17v-5M11 17V8M17 17V4M3 9l6-5 5 2 7-5" />,
+                <g key="fidelidade"><rect x="3" y="8" width="18" height="13" rx="2" /><path d="M12 8v13M3 12h18M12 8H7a3 3 0 1 1 3-3l2 3Zm0 0h5a3 3 0 1 0-3-3l-2 3Z" /></g>,
+                <g key="cupom"><path d="M3 3h9l9 9-9 9-9-9V3Z" /><circle cx="8" cy="8" r="1" /></g>,
+                <g key="permissoes"><circle cx="9" cy="7" r="3" /><path d="M2 21v-3a7 7 0 0 1 14 0v3M17 3a4 4 0 0 1 0 8M19 15a6 6 0 0 1 3 6" /></g>,
+                <path key="remarcar" d="M20 7a9 9 0 0 0-15-2L2 8m0-5v5h5M4 17a9 9 0 0 0 15 2l3-3m0 5v-5h-5" />
+              ][i]}</Icone></span><div><h3>{r.titulo}</h3><p>{r.texto}</p></div></li>)}</ul>
             </div>
           </div>
         </section>
-
-        {/* 7. Dúvidas frequentes */}
-        <section id="duvidas" aria-labelledby="titulo-duvidas" className="scroll-mt-20 border-t border-gray-200 dark:border-neutral-800">
-          <div className="mx-auto max-w-3xl px-4 py-16">
-            <h2 id="titulo-duvidas" className={classeTitulo}>
-              Dúvidas frequentes
-            </h2>
-            <div className="mt-8 divide-y divide-gray-200 border-y border-gray-200 dark:divide-neutral-800 dark:border-neutral-800">
-              {DUVIDAS.map((d) => (
-                <details key={d.pergunta} className="group py-4">
-                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-medium text-gray-900 dark:text-neutral-50 [&::-webkit-details-marker]:hidden">
-                    {d.pergunta}
-                    <span aria-hidden="true" className="text-xl text-marca-madeira transition group-open:rotate-45 dark:text-marca-acento">
-                      +
-                    </span>
-                  </summary>
-                  <p className={`mt-3 text-sm leading-relaxed ${classeTexto}`}>{d.resposta}</p>
-                </details>
-              ))}
-            </div>
-          </div>
+        <section id="planos" aria-labelledby="titulo-planos" className="site-secao">
+          <div className="site-container"><h2 id="titulo-planos" className={classeTitulo}>Um preço pelo tamanho <span className="site-gradiente">da sua equipe</span></h2><p className="site-subtitulo">Todos os planos têm os mesmos recursos. O que muda é só quantos profissionais atendem pela agenda. 30 dias grátis em qualquer um.</p><PlanosSite planos={planos} whatsApp={whatsApp} /></div>
         </section>
-
-        {/* 8. Chamada final — o logotipo completo (seção 5.1) aparece aqui, grande. */}
-        <section aria-labelledby="titulo-final" className="border-t border-gray-200 bg-white/60 dark:border-neutral-800 dark:bg-neutral-900/40">
-          <div className="mx-auto flex max-w-3xl flex-col items-center px-4 py-16 text-center">
-            {/* Variante escolhida pela `dark:`, que lê o mesmo data-theme do fundo (lib/tema.tsx). */}
-            <img
-              src="/brand/agendeiiai-logotipo-completo-texto-escuro-enquadrado.svg"
-              alt={nomeProduto}
-              width={440}
-              height={440}
-              loading="lazy"
-              data-testid="logo-claro"
-              className="h-auto w-full max-w-55 dark:hidden"
-            />
-            <img
-              src="/brand/agendeiiai-logotipo-completo-enquadrado.svg"
-              alt={nomeProduto}
-              width={440}
-              height={440}
-              loading="lazy"
-              data-testid="logo-escuro"
-              className="hidden h-auto w-full max-w-55 dark:block"
-            />
-            <h2 id="titulo-final" className={`mt-6 ${classeTitulo}`}>
-              Comece hoje e veja sua agenda se organizar
-            </h2>
-            <Link href="/cadastro" className={`${classeCta} mt-8 px-6 py-3.5 text-base`}>
-              {CTA}
-            </Link>
-            <p className="mt-2 text-sm text-gray-600 dark:text-neutral-400">Sem cartão de crédito.</p>
-          </div>
+        <section id="duvidas" aria-labelledby="titulo-duvidas" className="site-secao">
+          <div className="site-container"><h2 id="titulo-duvidas" className={`${classeTitulo} site-titulo-faq`}>Dúvidas frequentes</h2><div className="site-faq">{DUVIDAS.map(d => <details key={d.pergunta}><summary>{d.pergunta}<span aria-hidden="true">+</span></summary><p>{d.resposta}</p></details>)}</div></div>
         </section>
+        <section aria-labelledby="titulo-final" className="site-final"><div className="site-container site-final-grid"><Logo nomeProduto={nomeProduto} final /><div><h2 id="titulo-final">Comece hoje e veja sua agenda se organizar.</h2><p>Teste grátis por 30 dias. Sem cartão de crédito.</p></div><Link href="/cadastro" className={classeCta}>{CTA}<span aria-hidden="true">→</span></Link></div></section>
       </main>
-
-      <footer id="contato" className="border-t border-gray-200 dark:border-neutral-800">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-gray-600 sm:flex-row sm:items-center sm:justify-between dark:text-neutral-400">
-          <p>
-            © {new Date().getFullYear()} {nomeProduto}
-          </p>
-          <nav aria-label="Rodapé" className="flex flex-wrap gap-x-6 gap-y-2">
-            {linkWhatsApp && (
-              <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer" className="hover:text-gray-900 dark:hover:text-neutral-100">
-                Contato pelo WhatsApp
-              </a>
-            )}
-            <Link href="/termos" className="hover:text-gray-900 dark:hover:text-neutral-100">
-              Termos de Uso
-            </Link>
-            <Link href="/privacidade" className="hover:text-gray-900 dark:hover:text-neutral-100">
-              Política de Privacidade
-            </Link>
-            <Link href="/painel/login" className="hover:text-gray-900 dark:hover:text-neutral-100">
-              Entrar no painel
-            </Link>
-          </nav>
-        </div>
-      </footer>
+      <footer id="contato"><div className="site-container site-rodape"><nav aria-label="Rodapé">{ANCORAS.map(a => <a key={a.href} href={a.href}>{a.rotulo}</a>)}{linkWhatsApp && <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer">Contato pelo WhatsApp</a>}<Link href="/termos">Termos de Uso</Link><Link href="/privacidade">Política de Privacidade</Link><Link href="/painel/login">Entrar no painel</Link></nav><p>© {new Date().getFullYear()} {nomeProduto}. Todos os direitos reservados.</p></div></footer>
     </div>
   );
 }
