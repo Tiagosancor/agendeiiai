@@ -4,12 +4,15 @@ import { preload } from "react-dom";
 import type { ReactNode } from "react";
 import type { PlanoPublico } from "@/lib/tipos";
 import { BotaoTema } from "@/components/BotaoTema";
+import { AgendaDemonstracao } from "@/components/site/AgendaDemonstracao";
+import { HeroMicrodemo } from "@/components/site/HeroMicrodemo";
+import { HeroMovimento } from "@/components/site/HeroMovimento";
 import { PlanosSite } from "@/components/site/PlanosSite";
 
 /**
  * Site do produto no domínio raiz (seção 6.4): uma página só, com um objetivo — levar ao
- * teste grátis. Server Component; só o alternador de planos (PlanosSite) e o botão de tema
- * rodam no navegador. As imagens são capturas reais do produto (negócio de demonstração),
+ * teste grátis. Server Component; alternador de planos, botão de tema e controlador leve
+ * de movimento do Hero rodam no navegador. As imagens são capturas reais do produto (negócio de demonstração),
  * em WebP em /public/site — nunca banco de imagens. Nada de depoimento, logo de cliente ou
  * número inventado (regra de conteúdo da seção 6.4).
  */
@@ -28,13 +31,18 @@ const classeCta = "site-cta";
 const classeTitulo = "site-titulo";
 const classeTexto = "site-texto";
 
+// Alias apenas visual desta landing; nomes internos e marcas white-label permanecem configuráveis.
+function nomeVisualDaMarca(nomeProduto: string) {
+  return nomeProduto.toLowerCase() === "agendeiiai" ? "agendei ai" : nomeProduto;
+}
+
 function Logo({ nomeProduto, final = false }: { nomeProduto: string; final?: boolean }) {
   return <span className="site-logo">
     {final ? <>
       <img src="/brand/calendario-confirmado.svg" width={46} height={46} alt="" data-testid="logo-claro" className="dark:hidden" />
       <img src="/brand/calendario-confirmado.svg" width={46} height={46} alt="" data-testid="logo-escuro" className="hidden dark:block" />
     </> : <img src="/brand/calendario-confirmado.svg" width={46} height={46} alt="" />}
-    <span><strong>{nomeProduto}</strong><small>Agendou, tá confirmado!</small></span>
+    <span><strong>{nomeVisualDaMarca(nomeProduto)}</strong><small>Agendou, tá confirmado!</small></span>
   </span>;
 }
 
@@ -144,9 +152,9 @@ const DUVIDAS = [
       "Sim, a qualquer momento, pela tela Assinatura do painel, desde que o número de profissionais ativos caiba na nova faixa. Todos os planos têm os mesmos recursos; muda só o limite de profissionais.",
   },
   {
-    pergunta: "Como é o pagamento hoje?",
+    pergunta: "Como é o pagamento?",
     resposta:
-      "Por enquanto o pagamento é feito por PIX: no painel aparecem a chave e o contato para enviar o comprovante, e a assinatura é liberada depois da confirmação. Não há cobrança automática no cartão.",
+      "Você pode pagar sua assinatura via Pix ou cartão de crédito, escolhendo a opção que preferir no momento da contratação do plano. O pagamento é feito de forma segura e, após a confirmação, sua assinatura é ativada automaticamente.",
   },
 ];
 
@@ -173,7 +181,7 @@ export function SiteProduto({ nomeProduto, planos, whatsApp }: { nomeProduto: st
         </div>
       </header>
       <main id="conteudo">
-        <section className="site-hero">
+        <HeroMovimento>
           <div className="site-container site-hero-grid">
             <div className="site-hero-texto">
               <p className="site-badge">Agendamento online para barbearias, salões e clínicas</p>
@@ -183,14 +191,15 @@ export function SiteProduto({ nomeProduto, planos, whatsApp }: { nomeProduto: st
                 <Link href="/cadastro" className={classeCta}>{CTA}<span aria-hidden="true">→</span></Link>
                 <Link href="/painel/login" className="site-cta-secundario">Já tenho uma conta</Link>
               </div>
-              <ul className="site-micro"><li><span aria-hidden="true">✓</span> Sem cartão de crédito.</li><li><span aria-hidden="true">◷</span> Setup em minutos</li><li><span aria-hidden="true">✓</span> Cancele quando quiser</li></ul>
+              <ul className="site-micro">
+                <li><Icone><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 10h18M7 15h3" /></Icone>Sem cartão de crédito.</li>
+                <li><Icone><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Icone>Setup em minutos</li>
+                <li><Icone><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></Icone>Cancele quando quiser</li>
+              </ul>
             </div>
-            <div className="site-hero-celulares">
-              <Celular src={IMAGEM_HERO} alt="Assistente de agendamento no celular: escolha de data e horário" prioridade className="site-celular-frente" />
-              <Celular src="/site/assistente-servicos.webp" alt="Escolha os serviços no assistente de agendamento real" className="site-celular-atras" />
-            </div>
+            <HeroMicrodemo />
           </div>
-        </section>
+        </HeroMovimento>
         <section aria-labelledby="titulo-publico" className="site-secao">
           <div className="site-container">
             <h2 id="titulo-publico" className={classeTitulo}>Feito para quem vive de <span className="site-gradiente">horário marcado</span></h2>
@@ -205,7 +214,7 @@ export function SiteProduto({ nomeProduto, planos, whatsApp }: { nomeProduto: st
             <h2 id="titulo-como-funciona" className={classeTitulo}>Pronto para receber agendamentos <span className="site-gradiente">em minutos</span></h2>
             <p className="site-subtitulo">Receba agendamentos em minutos, com um processo simples.</p>
             <ol className="site-passos">
-              {PASSOS.map((passo, i) => <li key={passo.titulo}><div className="site-passo-topo"><span className="site-numero" aria-hidden="true">{i + 1}</span><span className="site-icone"><Icone>{i === 0 ? <><circle cx="8" cy="7" r="3" /><path d="M2 21v-3a6 6 0 0 1 12 0v3M16 5h6M19 2v6M17 13h5M17 17h5" /></> : i === 1 ? <><path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" /></> : <><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 2v6M17 2v6M3 10h18m-13 5 3 3 5-5" /></>}</Icone></span></div><h3>{passo.titulo}</h3><p>{passo.texto}</p>{i < 2 && <span className="site-seta" aria-hidden="true">→</span>}</li>)}
+              {PASSOS.map((passo, i) => <li key={passo.titulo}><div className="site-passo-topo"><span className="site-numero" aria-hidden="true">{String(i + 1).padStart(2, "0")}</span><span className="site-icone"><Icone>{i === 0 ? <><circle cx="8" cy="7" r="3" /><path d="M2 21v-3a6 6 0 0 1 12 0v3M16 5h6M19 2v6M17 13h5M17 17h5" /></> : i === 1 ? <><path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" /></> : <><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 2v6M17 2v6M3 10h18m-13 5 3 3 5-5" /></>}</Icone></span></div><h3>{passo.titulo}</h3><p>{passo.texto}</p>{i < 2 && <span className="site-seta" aria-hidden="true">→</span>}</li>)}
             </ol>
           </div>
         </section>
@@ -213,14 +222,14 @@ export function SiteProduto({ nomeProduto, planos, whatsApp }: { nomeProduto: st
           <div className="site-container">
             <h2 id="titulo-recursos" className={classeTitulo}>Tudo o que o dia a dia pede, <span className="site-gradiente">num lugar só</span></h2>
             <div className="site-demonstracao">
-              <img src="/site/painel-agenda.webp" alt="Agenda do dia de um profissional no painel, com os atendimentos marcados" width={1100} height={560} loading="lazy" decoding="async" className="site-painel" />
-              <div className="site-recurso-texto"><span className="site-icone"><Icone><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 2v6M17 2v6M3 10h18M8 14h3M8 17h7" /></Icone></span><div><h3>Agenda por profissional</h3><p>Cada profissional com seus horários, intervalo de almoço, folgas e bloqueios. Encaixe manual quando precisar, e o sistema nunca deixa dois clientes no mesmo horário.</p></div></div>
-            </div>
-            <div className="site-demonstracao site-demonstracao-mobile">
-              <div className="site-recurso-lista">
+              <div className="site-painel-frame"><AgendaDemonstracao nomeMarca={nomeVisualDaMarca(nomeProduto)} /></div>
+              <div className="site-recurso-lista site-recurso-lista-painel">
+                <div className="site-recurso-texto"><span className="site-icone"><Icone><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M7 2v6M17 2v6M3 10h18M8 14h3M8 17h7" /></Icone></span><div><h3>Agenda por profissional</h3><p>Cada profissional com seus horários, intervalo de almoço, folgas e bloqueios. Encaixe manual quando precisar, e o sistema nunca deixa dois clientes no mesmo horário.</p></div></div>
                 <div className="site-recurso-texto"><span className="site-icone"><Icone><path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" /></Icone></span><div><h3>Link de agendamento sem app</h3><p>Seu cliente abre o link, escolhe serviços, profissional e horário. Sem baixar nada e sem cadastro com senha.</p></div></div>
                 <div className="site-recurso-texto"><span className="site-icone"><Icone><path d="m12 2 9 4v6c0 5-5 8-9 10-4-2-9-5-9-10V6l9-4Z" /><path d="m8 12 3 3 5-6" /></Icone></span><div><h3>Confirmação por código</h3><p>Cada agendamento é confirmado com um código de 6 dígitos enviado ao cliente. Menos faltas, e nenhum horário preso por um número de telefone errado.</p></div></div>
               </div>
+            </div>
+            <div className="site-demonstracao site-demonstracao-mobile">
               <div className="site-telas-mobile"><Celular src="/site/assistente-servicos.webp" alt="Escolha de serviços no link de agendamento" /><Celular src="/site/assistente-resumo.webp" alt="Resumo do agendamento confirmado por código" /></div>
             </div>
             <div className="site-beneficios">
@@ -242,9 +251,9 @@ export function SiteProduto({ nomeProduto, planos, whatsApp }: { nomeProduto: st
         <section id="duvidas" aria-labelledby="titulo-duvidas" className="site-secao">
           <div className="site-container"><h2 id="titulo-duvidas" className={`${classeTitulo} site-titulo-faq`}>Dúvidas frequentes</h2><div className="site-faq">{DUVIDAS.map(d => <details key={d.pergunta}><summary>{d.pergunta}<span aria-hidden="true">+</span></summary><p>{d.resposta}</p></details>)}</div></div>
         </section>
-        <section aria-labelledby="titulo-final" className="site-final"><div className="site-container site-final-grid"><Logo nomeProduto={nomeProduto} final /><div><h2 id="titulo-final">Comece hoje e veja sua agenda se organizar.</h2><p>Teste grátis por 30 dias. Sem cartão de crédito.</p></div><Link href="/cadastro" className={classeCta}>{CTA}<span aria-hidden="true">→</span></Link></div></section>
+        <section aria-labelledby="titulo-final" className="site-final"><div className="site-container site-final-grid"><div className="site-final-mensagem"><Logo nomeProduto={nomeProduto} final /><div><h2 id="titulo-final">Comece hoje e veja sua agenda se organizar.</h2><p>Teste grátis por 30 dias. Sem cartão de crédito.</p></div></div><Link href="/cadastro" className={classeCta}>{CTA}<span aria-hidden="true">→</span></Link></div></section>
       </main>
-      <footer id="contato"><div className="site-container site-rodape"><nav aria-label="Rodapé">{ANCORAS.map(a => <a key={a.href} href={a.href}>{a.rotulo}</a>)}{linkWhatsApp && <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer">Contato pelo WhatsApp</a>}<Link href="/termos">Termos de Uso</Link><Link href="/privacidade">Política de Privacidade</Link><Link href="/painel/login">Entrar no painel</Link></nav><p>© {new Date().getFullYear()} {nomeProduto}. Todos os direitos reservados.</p></div></footer>
+      <footer id="contato"><div className="site-container site-rodape"><nav aria-label="Rodapé">{ANCORAS.map(a => <a key={a.href} href={a.href}>{a.rotulo}</a>)}{linkWhatsApp && <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer">Contato pelo WhatsApp</a>}<Link href="/termos">Termos de Uso</Link><Link href="/privacidade">Política de Privacidade</Link><Link href="/painel/login">Entrar no painel</Link></nav><p>© {new Date().getFullYear()} {nomeVisualDaMarca(nomeProduto)}. Todos os direitos reservados.</p></div></footer>
     </div>
   );
 }

@@ -53,7 +53,7 @@ export function PlanosSite({ planos, whatsApp }: { planos: PlanoPublico[]; whats
         )}
       </div>
 
-      <div className="mt-8 grid gap-4 md:grid-cols-3 md:items-stretch">
+      <div className="site-planos-grid">
         {planos.map((p) => {
           const porMes = periodicidade === "Anual" ? p.precoAnualPorMes : p.precoMensal;
           return (
