@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { CabecalhoOperacional } from "@/components/painel/OperacionaisVisuais";
 import { ErroApi } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
@@ -75,15 +76,15 @@ export default function PaginaEstoque() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Estoque</h1>
+    <div className="painel-operacional">
+      <CabecalhoOperacional titulo="Estoque" descricao="Acompanhe produtos, quantidades e movimentações do estoque.">
         <button className={classeBotaoPrimario} onClick={() => setNovoAberto(true)}>
           Novo produto
         </button>
-      </div>
+      </CabecalhoOperacional>
 
       {erro && <p className="text-sm text-red-600">{erro}</p>}
+      {!produtos && !erro && <p role="status" className="painel-operacional-carregando">Carregando...</p>}
 
       {esgotados.length > 0 && (
         <section aria-label="Esgotado" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm dark:border-red-800 dark:bg-red-950/40">
@@ -102,36 +103,36 @@ export default function PaginaEstoque() {
 
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-175">
-            <thead className="border-b border-gray-200 dark:border-neutral-800">
-              <tr>
-                <th className={classeTh}>Produto</th>
-                <th className={classeTh}>Em estoque</th>
-                <th className={classeTh}>Custo</th>
-                <th className={classeTh}>Venda</th>
-                <th className={classeTh}>Situação</th>
-                <th className={classeTh}>Ações</th>
+          <table role="table" aria-label="Produtos em estoque" className="painel-operacional-cards w-full min-w-175">
+            <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+              <tr role="row">
+                <th role="columnheader" scope="col" data-label="Produto" className={classeTh}>Produto</th>
+                <th role="columnheader" scope="col" data-label="Em estoque" className={classeTh}>Em estoque</th>
+                <th role="columnheader" scope="col" data-label="Custo" className={classeTh}>Custo</th>
+                <th role="columnheader" scope="col" data-label="Venda" className={classeTh}>Venda</th>
+                <th role="columnheader" scope="col" data-label="Situação" className={classeTh}>Situação</th>
+                <th role="columnheader" scope="col" data-label="Ações" className={classeTh}>Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+            <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
               {produtos?.map((produto) => (
-                <tr key={produto.id}>
-                  <td className={classeTd}>
+                <tr role="row" key={produto.id}>
+                  <td role="cell" data-label="Produto" className={classeTd}>
                     {produto.nome}
                     {produto.categoria && <span className="block text-xs text-gray-500 dark:text-neutral-400">{produto.categoria}</span>}
                   </td>
-                  <td className={classeTd}>
+                  <td role="cell" data-label="Em estoque" className={classeTd}>
                     {produto.quantidadeEstoque}
                     <span className="block text-xs text-gray-500 dark:text-neutral-400">mínimo {produto.quantidadeMinima}</span>
                   </td>
-                  <td className={classeTd}>{formatarReais(produto.precoCusto)}</td>
-                  <td className={classeTd}>{formatarReais(produto.precoVenda)}</td>
-                  <td className={classeTd}>
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${ROTULO_SITUACAO[produto.situacao].classe}`}>
+                  <td role="cell" data-label="Custo" className={classeTd}>{formatarReais(produto.precoCusto)}</td>
+                  <td role="cell" data-label="Venda" className={classeTd}>{formatarReais(produto.precoVenda)}</td>
+                  <td role="cell" data-label="Situação" className={classeTd}>
+                    <span className={`painel-operacional-situacao ${ROTULO_SITUACAO[produto.situacao].classe}`}>
                       {ROTULO_SITUACAO[produto.situacao].texto}
                     </span>
                   </td>
-                  <td className={`${classeTd} space-x-3 whitespace-nowrap`}>
+                  <td role="cell" data-label="Ações" className={`${classeTd} space-x-3 whitespace-nowrap`}>
                     <BotaoLink onClick={() => setAcao({ tipo: "entrada", produto })}>Entrada</BotaoLink>
                     <BotaoLink onClick={() => setAcao({ tipo: "ajuste", produto })}>Ajuste</BotaoLink>
                     {produto.ativo && <BotaoLink onClick={() => setAcao({ tipo: "consumo", produto })}>Consumo</BotaoLink>}
@@ -147,8 +148,8 @@ export default function PaginaEstoque() {
                 </tr>
               ))}
               {produtos?.length === 0 && (
-                <tr>
-                  <td className={classeTd} colSpan={6}>
+                <tr role="row">
+                  <td role="cell" className={classeTd} colSpan={6}>
                     Nenhum produto cadastrado ainda.
                   </td>
                 </tr>

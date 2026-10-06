@@ -1,0 +1,103 @@
+/* Somente Financeiro, Comissões, Vendas e Estoque. Tokens aprovados do AppShell. */
+.painel-operacional { display: grid; gap: 24px; min-width: 0; color: var(--painel-texto); }
+.painel-operacional > *, .painel-operacional :is(section, fieldset, form, label) { min-width: 0; }
+.painel-operacional-cabecalho { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.painel-operacional-cabecalho h1 { font-size: clamp(28px, 2.4vw, 36px); line-height: 1.2; font-weight: 700; letter-spacing: -.8px; }
+.painel-operacional-cabecalho p { margin-top: 8px; font-size: 15px; line-height: 1.6; color: var(--painel-secundario); }
+.painel-operacional-acoes { flex: none; }
+.painel-operacional-carregando { padding: 16px; border: 1px solid var(--painel-borda); border-radius: 12px; background: var(--painel-superficie); color: var(--painel-secundario); font-size: 14px; }
+.painel-operacional :is(h1, h2, h3, strong, [class~="text-gray-900"], [class~="text-gray-800"], [class~="text-gray-700"]) { color: var(--painel-texto); }
+.painel-operacional h2 { font-size: 17px; line-height: 1.5; }
+.painel-operacional :is([class~="text-gray-500"], [class~="text-gray-600"], [class~="text-gray-400"]) { color: var(--painel-secundario); }
+.painel-operacional [class~="text-marca-primaria"] { color: var(--painel-accent); }
+.painel-operacional [class~="text-xs"] { font-size: 13px; line-height: 1.5; }
+.painel-operacional :is([class~="bg-white"], [class~="bg-gray-50"], [class~="bg-gray-100"]) { background: var(--painel-superficie); }
+.painel-operacional :is([class~="border"], [class~="divide-y"], td, th, fieldset) { border-color: var(--painel-borda); }
+.painel-operacional [class~="rounded-xl"][class~="border"] { border-radius: 16px; box-shadow: 0 4px 20px #05244b06; }
+.painel-operacional :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { min-width: 0; max-width: 100%; min-height: 46px; padding: 11px 13px; border: 1px solid var(--painel-borda); border-radius: 9px; background: var(--painel-superficie); color: var(--painel-texto); font-size: 15px; box-shadow: none; }
+.painel-operacional :is(input, select, textarea):hover:not(:disabled) { border-color: color-mix(in srgb, var(--painel-accent) 45%, var(--painel-borda)); }
+.painel-operacional :is(input, select, textarea):focus { border-color: var(--painel-accent); }
+.painel-operacional :is(input[type="checkbox"], input[type="radio"]) { width: 18px; height: 18px; accent-color: var(--painel-accent); }
+.painel-operacional button { cursor: pointer; }
+.painel-operacional button:disabled { cursor: default; }
+.painel-operacional button[class~="bg-marca-primaria"] { min-height: 46px; padding: 11px 18px; border-radius: 9px; color: #06162d; font-weight: 600; background: linear-gradient(110deg, #10cbe5, #5397fa 60%, #c057e9); box-shadow: 0 4px 16px #008ed417; }
+.painel-operacional button[class~="bg-marca-primaria"]:hover:not(:disabled) { filter: brightness(1.05); }
+.painel-operacional button[class~="border-gray-300"] { min-height: 44px; padding: 10px 15px; border-color: var(--painel-borda); color: var(--painel-texto); background: var(--painel-superficie); }
+.painel-operacional :is(button, a)[class~="hover:underline"] { display: inline-flex; align-items: center; min-height: 38px; padding-inline: 5px; border-radius: 6px; font-size: 14px; }
+.painel-operacional :is(button, a)[class~="hover:underline"]:hover { background: var(--painel-elevado); }
+.painel-operacional [role="tablist"] { padding: 6px; border: 1px solid var(--painel-borda); border-radius: 12px; background: var(--painel-superficie); }
+.painel-operacional button[role="tab"], .painel-operacional button[aria-pressed] { min-height: 44px; }
+.painel-operacional button[role="tab"][aria-selected="true"] { background: color-mix(in srgb, var(--painel-accent) 14%, var(--painel-superficie)); color: var(--painel-accent); box-shadow: none; }
+.painel-operacional button[aria-pressed="true"] { border-color: var(--painel-accent); color: var(--painel-accent); background: color-mix(in srgb, var(--painel-accent) 10%, var(--painel-superficie)); }
+.painel-operacional-toolbar { display: flex; flex-wrap: wrap; gap: 16px; padding: 20px; border: 1px solid var(--painel-borda); border-radius: 16px; background: var(--painel-superficie); }
+.painel-operacional-toolbar > label { flex: 1 1 170px; }
+.painel-operacional-indicadores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.painel-operacional-indicador { min-width: 0; padding: 24px; border: 1px solid var(--painel-borda); border-radius: 16px; background: var(--painel-superficie); }
+.painel-operacional-indicador-destaque { border-color: color-mix(in srgb, var(--painel-accent) 35%, var(--painel-borda)); background: linear-gradient(125deg, color-mix(in srgb, var(--painel-accent) 7%, var(--painel-superficie)), var(--painel-superficie)); }
+.painel-operacional-indicador-rotulo { font-size: 14px; line-height: 1.5; color: var(--painel-secundario); }
+.painel-operacional-indicador-valor { margin-top: 10px; font-size: clamp(24px, 2.2vw, 32px); font-weight: 700; letter-spacing: -.6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.painel-operacional-indicador-destaque .painel-operacional-indicador-valor { color: var(--painel-accent); }
+.painel-operacional div:has(> table) { min-width: 0; max-width: 100%; overflow-x: auto; }
+.painel-operacional table { width: 100%; border-collapse: collapse; }
+.painel-operacional thead { background: var(--painel-elevado); }
+.painel-operacional th { padding: 13px 16px; color: var(--painel-secundario); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.painel-operacional td { padding: 12px 16px; font-size: 14px; line-height: 1.5; }
+.painel-operacional tbody tr:hover { background: color-mix(in srgb, var(--painel-elevado) 55%, transparent); }
+.painel-operacional td:first-child:not([colspan]) { font-weight: 600; }
+.painel-operacional :is(td, th)[data-label] { font-variant-numeric: tabular-nums; }
+.painel-operacional td:is([data-label="Total"], [data-label="Custo"], [data-label="Venda"]) { white-space: nowrap; font-weight: 600; }
+.painel-operacional td[data-label="Ações"] { min-width: 270px; white-space: normal; }
+.painel-operacional td[colspan] { padding: 28px 20px; color: var(--painel-secundario); text-align: center; }
+.painel-operacional-situacao { display: inline-flex; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+.painel-operacional :is([class~="text-red-600"], [class~="text-red-700"], [class~="text-red-800"]) { color: #b91c1c; }
+[data-theme="dark"] .painel-operacional :is([class~="text-red-600"], [class~="text-red-700"], [class~="text-red-800"]) { color: #fda4af; }
+.painel-operacional [class~="bg-amber-50"] { background: color-mix(in srgb, #e5b855 9%, var(--painel-superficie)); }
+.painel-operacional [class~="bg-red-50"] { background: color-mix(in srgb, #e66e95 8%, var(--painel-superficie)); }
+.painel-operacional [class~="text-amber-900"] { color: #80580c; }
+[data-theme="dark"] .painel-operacional [class~="text-amber-900"] { color: #f5d693; }
+.painel-operacional-lista > [role="article"] { padding: 20px 24px; gap: 16px; }
+.painel-operacional-lista > [role="article"][data-estornada="true"] { background: color-mix(in srgb, #e66e95 5%, var(--painel-superficie)); }
+.painel-operacional .painel-operacional-informacao { border-inline-start: 3px solid color-mix(in srgb, var(--painel-accent) 55%, var(--painel-borda)); background: color-mix(in srgb, var(--painel-accent) 5%, var(--painel-superficie)); line-height: 1.6; }
+.painel-operacional td[data-label="Em estoque"] { font-weight: 600; }
+.painel-operacional td[data-label="Em estoque"] > span { font-weight: 400; }
+.painel-operacional-lista > [role="article"] > div { min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
+.painel-operacional-lista > [role="article"] > div > p:first-child { font-size: 16px; font-weight: 600; }
+.painel-operacional-lista > [role="article"] > span > span:first-child { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.painel-operacional-lista > p:last-child { padding: 20px 24px; background: var(--painel-elevado); font-size: 18px; }
+.painel-operacional button[class~="text-left"][class~="w-full"] { padding: 18px; flex-wrap: wrap; }
+.painel-operacional button[class~="text-left"][class~="w-full"]:hover { background: var(--painel-elevado); }
+.painel-operacional button[class~="text-left"][class~="w-full"] > span:first-child { flex: 1 1 200px; min-width: 0; }
+.painel-operacional button[class~="text-left"][class~="w-full"] > span:last-child { font-variant-numeric: tabular-nums; }
+@media (min-width: 768px) {
+  .painel-operacional :is(td, th)[data-label]:not([data-label="Produto"]):not([data-label="Profissional"]):not([data-label="Serviço"]):not([data-label="Situação"]):not([data-label="Ações"]) { text-align: right; }
+  .painel-operacional-toolbar > label:only-child { max-width: 260px; }
+}
+@media (max-width: 767px) {
+  .painel-operacional { gap: 20px; }
+  .painel-operacional-cabecalho { flex-direction: column; align-items: stretch; gap: 16px; }
+  .painel-operacional-acoes > button { width: 100%; }
+  .painel-operacional-toolbar { padding: 16px; gap: 12px; }
+  .painel-operacional-toolbar > label { flex-basis: 100%; }
+  .painel-operacional :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { font-size: 16px; }
+  .painel-operacional :is(button, a)[class~="hover:underline"] { min-height: 44px; padding-inline: 8px; }
+  .painel-operacional-indicadores { grid-template-columns: 1fr; gap: 12px; }
+  .painel-operacional-indicador { padding: 20px; }
+  .painel-operacional .painel-operacional-cards { display: block; min-width: 0; }
+  .painel-operacional-cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .painel-operacional-cards tbody { display: block; padding: 4px 16px; }
+  .painel-operacional-cards tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; padding: 16px 0; }
+  .painel-operacional .painel-operacional-cards td { display: block; padding: 0; min-width: 0; text-align: left; overflow-wrap: anywhere; }
+  .painel-operacional-cards td::before { content: attr(data-label); display: block; margin-bottom: 4px; font-size: 12px; font-weight: 500; color: var(--painel-secundario); }
+  .painel-operacional-cards td:first-child, .painel-operacional-cards td[data-label="Ações"], .painel-operacional-cards td[colspan] { grid-column: 1 / -1; }
+  .painel-operacional-cards td:first-child { font-size: 17px; }
+  .painel-operacional-cards td:first-child::before, .painel-operacional-cards td[data-label="Ações"]::before, .painel-operacional-cards td[colspan]::before { display: none; }
+  .painel-operacional-cards td[data-label="Ações"] { padding-top: 8px; border-top: 1px solid var(--painel-borda); }
+  .painel-operacional-lista > [role="article"] { padding: 18px; }
+  .painel-operacional-lista > [role="article"] > span { width: 100%; flex-direction: row; align-items: center; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--painel-borda); }
+  .painel-operacional form [class~="grid-cols-2"], .painel-operacional dialog [class~="grid-cols-2"] { grid-template-columns: 1fr; }
+  .painel-operacional form :is([class~="flex"], [class~="justify-end"]) { flex-wrap: wrap; }
+  .painel-operacional form label { max-width: 100%; }
+  .painel-operacional li[class~="flex"] { flex-wrap: wrap; }
+  .painel-operacional li[class~="flex"] > :first-child { min-width: 0; flex: 1 1 200px; }
+  .painel-operacional :is(span, div)[class~="flex"][class~="items-center"] { flex-wrap: wrap; }
+}
