@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useCallback, useEffect, useState, type FormEvent } from "react";
+import { CabecalhoCadastro } from "@/components/painel/CadastrosVisuais";
 import Link from "next/link";
 import { useAutenticacao } from "@/lib/auth-context";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
@@ -27,10 +28,12 @@ export default function PaginaDetalheProfissional({ params }: { params: Promise<
         ← Voltar para profissionais
       </Link>
 
-      <SecaoAcesso profissionalId={id} />
-      <SecaoHorariosTrabalho profissionalId={id} />
-      <SecaoBloqueios profissionalId={id} />
-      <SecaoServicosVinculados profissionalId={id} />
+      <div className="painel-cadastro painel-cadastro-ficha">
+        <SecaoAcesso profissionalId={id} />
+        <SecaoHorariosTrabalho profissionalId={id} />
+        <SecaoBloqueios profissionalId={id} />
+        <SecaoServicosVinculados profissionalId={id} />
+      </div>
       {podeVerComissao && <SecaoComissao profissionalId={id} podeAlterar={temPermissao("GerenciarComissoes")} />}
     </div>
   );
@@ -86,7 +89,7 @@ function SecaoAcesso({ profissionalId }: { profissionalId: string }) {
 
   return (
     <section className="space-y-3">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">{profissional.nome}</h1>
+      <CabecalhoCadastro titulo={profissional.nome} descricao="Configure o acesso, os horários e os serviços deste profissional." />
       <div className={`${classeCartao} space-y-3 p-4 text-sm`}>
         <h2 className="font-semibold text-gray-900 dark:text-neutral-50">Acesso ao sistema</h2>
         {profissional.acesso ? (

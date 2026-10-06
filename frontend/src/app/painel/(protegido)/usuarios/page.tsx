@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
 import { ModalCriarProfissional, type ProfissionalPreenchido } from "@/components/painel/ModalCriarProfissional";
 import { ErroApi } from "@/lib/api";
+import { CabecalhoCadastro, StatusCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
 import { Modal } from "@/components/Modal";
 import { ModalExclusao } from "@/components/painel/ModalExclusao";
 import { CamposEndereco } from "@/components/painel/CamposEndereco";
@@ -73,36 +74,36 @@ export default function PaginaUsuarios() {
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Usuários</h1>
+    <div className="painel-cadastro">
+      <CabecalhoCadastro titulo="Usuários" descricao="Gerencie os usuários e seus acessos ao painel.">
         <button className={classeBotaoPrimario} onClick={() => setModalCriarAberto(true)}>
           Novo usuário
         </button>
-      </div>
+      </CabecalhoCadastro>
 
-      {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
+      {erro && <p role="alert" className="mb-4 text-sm text-red-600">{erro}</p>}
 
+      {!usuarios && !erro && <CarregandoCadastro />}
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[600px]">
-            <thead className="border-b border-gray-200 dark:border-neutral-800">
-              <tr>
-                <th className={classeTh}>Nome</th>
-                <th className={classeTh}>E-mail</th>
-                <th className={classeTh}>Perfil</th>
-                <th className={classeTh}>Status</th>
-                <th className={classeTh}>Ações</th>
+          <table role="table" aria-label="Usuários cadastrados" className="painel-cadastro-tabela w-full min-w-[600px]">
+            <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+              <tr role="row">
+                <th role="columnheader" scope="col" className={classeTh}>Nome</th>
+                <th role="columnheader" scope="col" className={classeTh}>E-mail</th>
+                <th role="columnheader" scope="col" className={classeTh}>Perfil</th>
+                <th role="columnheader" scope="col" className={classeTh}>Status</th>
+                <th role="columnheader" scope="col" className={classeTh}>Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+            <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
               {usuarios?.map((usuario) => (
-                <tr key={usuario.id}>
-                  <td className={classeTd}>{usuario.nome}</td>
-                  <td className={classeTd}>{usuario.email}</td>
-                  <td className={classeTd}>{usuario.perfil}</td>
-                  <td className={classeTd}>{usuario.ativo ? "Ativo" : "Inativo"}</td>
-                  <td className={`${classeTd} space-x-3`}>
+                <tr role="row" key={usuario.id}>
+                  <td role="cell" data-label="Nome" className={classeTd}>{usuario.nome}</td>
+                  <td role="cell" data-label="E-mail" className={classeTd}>{usuario.email}</td>
+                  <td role="cell" data-label="Perfil" className={classeTd}>{usuario.perfil}</td>
+                  <td role="cell" data-label="Status" className={classeTd}><StatusCadastro ativo={usuario.ativo} /></td>
+                  <td role="cell" data-label="Ações" className={`${classeTd} space-x-3`}>
                     <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => abrirPermissoes(usuario.id)}>
                       Permissões
                     </button>
@@ -131,7 +132,7 @@ export default function PaginaUsuarios() {
                 </tr>
               ))}
               {usuarios?.length === 0 && (
-                <tr>
+                <tr role="row">
                   <td className={classeTd} colSpan={5}>
                     Nenhum usuário cadastrado ainda.
                   </td>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
+import { CabecalhoCadastro, StatusCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
 import { Modal } from "@/components/Modal";
 import { ModalExclusao } from "@/components/painel/ModalExclusao";
 import { CamposEndereco } from "@/components/painel/CamposEndereco";
@@ -51,33 +52,33 @@ export default function PaginaProfissionais() {
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Profissionais</h1>
+    <div className="painel-cadastro">
+      <CabecalhoCadastro titulo="Profissionais" descricao="Gerencie os profissionais, horários e serviços do seu negócio.">
         <button className={classeBotaoPrimario} onClick={() => setModalAberto(true)}>
           Novo profissional
         </button>
-      </div>
+      </CabecalhoCadastro>
 
-      {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
+      {erro && <p role="alert" className="mb-4 text-sm text-red-600">{erro}</p>}
       {limiteAtingido && <AvisoLimitePlano mensagem={limiteAtingido} />}
 
+      {!profissionais && !erro && <CarregandoCadastro />}
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-125">
-            <thead className="border-b border-gray-200 dark:border-neutral-800">
-              <tr>
-                <th className={classeTh}>Nome</th>
-                <th className={classeTh}>Status</th>
-                <th className={classeTh}>Ações</th>
+          <table role="table" aria-label="Profissionais cadastrados" className="painel-cadastro-tabela w-full min-w-125">
+            <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+              <tr role="row">
+                <th role="columnheader" scope="col" className={classeTh}>Nome</th>
+                <th role="columnheader" scope="col" className={classeTh}>Status</th>
+                <th role="columnheader" scope="col" className={classeTh}>Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+            <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
               {profissionais?.map((profissional) => (
-                <tr key={profissional.id}>
-                  <td className={classeTd}>{profissional.nome}</td>
-                  <td className={classeTd}>{profissional.ativo ? "Ativo" : "Inativo"}</td>
-                  <td className={`${classeTd} space-x-3`}>
+                <tr role="row" key={profissional.id}>
+                  <td role="cell" data-label="Nome" className={classeTd}>{profissional.nome}</td>
+                  <td role="cell" data-label="Status" className={classeTd}><StatusCadastro ativo={profissional.ativo} /></td>
+                  <td role="cell" data-label="Ações" className={`${classeTd} space-x-3`}>
                     <Link href={`/painel/profissionais/${profissional.id}`} className="text-marca-primaria hover:underline dark:text-marca-acento">
                       Horários e serviços
                     </Link>
@@ -101,7 +102,7 @@ export default function PaginaProfissionais() {
                 </tr>
               ))}
               {profissionais?.length === 0 && (
-                <tr>
+                <tr role="row">
                   <td className={classeTd} colSpan={3}>
                     Nenhum profissional cadastrado ainda.
                   </td>
