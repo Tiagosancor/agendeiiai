@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import { ErroApi } from "@/lib/api";
 import { classeBotaoPrimario, classeInput, classeLabel } from "@/components/estilos";
+import { CabecalhoCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
+import "@/components/painel/painel-negocio.css";
 import { CamposFundoPagina } from "@/components/painel/CamposFundoPagina";
 import { CampoLinkNegocio } from "@/components/painel/CampoLinkNegocio";
 import { NOMES_DIAS_SEMANA, type HorarioFuncionamentoDia, type PerfilNegocio } from "@/lib/tipos";
@@ -91,19 +93,19 @@ export default function PaginaPerfilNegocio() {
     }
   }
 
-  if (erro && !perfil) return <p className="text-sm text-red-600">{erro}</p>;
-  if (!perfil) return <p className="text-sm text-gray-500 dark:text-neutral-400">Carregando...</p>;
+  if (erro && !perfil) return <div className="painel-cadastro painel-negocio"><p role="alert" className="text-sm text-red-600">{erro}</p></div>;
+  if (!perfil) return <div className="painel-cadastro painel-negocio"><CarregandoCadastro /></div>;
 
   return (
-    <div className="max-w-2xl space-y-8">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Meu negócio</h1>
+    <div className="painel-cadastro painel-negocio">
+      <CabecalhoCadastro titulo="Meu negócio" descricao="Gerencie a identidade, os contatos e as informações da página do seu negócio." />
 
       {/* Fora do formulário: tem a própria confirmação e salva sozinho (seção 5, "Editar o link"). */}
       <CampoLinkNegocio />
 
-    <form onSubmit={salvar} className="space-y-8">
+    <form onSubmit={salvar} className="painel-negocio-formulario">
 
-      <section className="space-y-3">
+      <section className="painel-negocio-secao space-y-4">
         <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Marca</h2>
         <label>
           <span className={classeLabel}>Nome exibido</span>
@@ -137,7 +139,7 @@ export default function PaginaPerfilNegocio() {
         </label>
       </section>
 
-      <section className="space-y-3">
+      <section className="painel-negocio-secao space-y-4">
         <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Fundo da página</h2>
         <CamposFundoPagina
           corFundo={perfil.corFundo}
@@ -148,8 +150,8 @@ export default function PaginaPerfilNegocio() {
         />
       </section>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Endereço e contato</h2>
+      <section className="painel-negocio-secao space-y-4">
+        <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Endereço</h2>
         <div className="flex gap-3">
           <label className="flex-1">
             <span className={classeLabel}>Bairro</span>
@@ -174,6 +176,10 @@ export default function PaginaPerfilNegocio() {
             <input className={classeInput} value={perfil.cep ?? ""} onChange={(e) => atualizarCampo("cep", e.target.value)} />
           </label>
         </div>
+      </section>
+
+      <section className="painel-negocio-secao space-y-4">
+        <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Contato e redes sociais</h2>
         <div className="flex gap-3">
           <label className="flex-1">
             <span className={classeLabel}>Telefone</span>
@@ -203,6 +209,10 @@ export default function PaginaPerfilNegocio() {
             <input className={classeInput} value={perfil.whatsApp ?? ""} onChange={(e) => atualizarCampo("whatsApp", e.target.value)} />
           </label>
         </div>
+      </section>
+
+      <section className="painel-negocio-secao painel-negocio-larga space-y-4">
+        <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Notificações por WhatsApp</h2>
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-neutral-300">
           <input
             type="checkbox"
@@ -221,7 +231,7 @@ export default function PaginaPerfilNegocio() {
         </label>
       </section>
 
-      <section className="space-y-2">
+      <section className="painel-negocio-secao painel-negocio-larga painel-negocio-horarios space-y-2">
         <h2 className="text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Horário de funcionamento</h2>
         {horario.map((dia) => (
           <div key={dia.diaSemana} className="flex flex-wrap items-center gap-3 text-sm">
@@ -238,6 +248,7 @@ export default function PaginaPerfilNegocio() {
               <>
                 <input
                   type="time"
+                  aria-label={`Abertura — ${NOMES_DIAS_SEMANA[dia.diaSemana]}`}
                   className={`${classeInput} w-32`}
                   value={dia.abertura ?? ""}
                   onChange={(e) => atualizarDia(dia.diaSemana, { abertura: e.target.value })}
@@ -245,6 +256,7 @@ export default function PaginaPerfilNegocio() {
                 <span>até</span>
                 <input
                   type="time"
+                  aria-label={`Fechamento — ${NOMES_DIAS_SEMANA[dia.diaSemana]}`}
                   className={`${classeInput} w-32`}
                   value={dia.fechamento ?? ""}
                   onChange={(e) => atualizarDia(dia.diaSemana, { fechamento: e.target.value })}
@@ -255,12 +267,14 @@ export default function PaginaPerfilNegocio() {
         ))}
       </section>
 
-      {erro && <p className="text-sm text-red-600">{erro}</p>}
-      {mensagemSucesso && <p className="text-sm text-green-600">{mensagemSucesso}</p>}
+      <div className="painel-negocio-larga painel-negocio-salvar">
+      {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
+      {mensagemSucesso && <p role="status" className="text-sm text-green-600">{mensagemSucesso}</p>}
 
       <button type="submit" disabled={salvando} className={classeBotaoPrimario}>
         {salvando ? "Salvando..." : "Salvar alterações"}
       </button>
+      </div>
     </form>
     </div>
   );

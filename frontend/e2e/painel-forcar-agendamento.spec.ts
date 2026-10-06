@@ -26,9 +26,21 @@ test("administrador força um agendamento fora do expediente e a agenda marca co
   const clienteId: string = await cliente.json();
 
   // Um dia útil bem à frente, às 23:15 — fora de qualquer expediente de exemplo.
-  const dia = new Date(Date.now() + (60 + Math.floor(Math.random() * 30)) * 86400000);
-  while (dia.getDay() === 0 || dia.getDay() === 6) dia.setDate(dia.getDate() + 1);
-  const data = dia.toISOString().slice(0, 10);
+  // Um dia útil pode ser folga desse profissional. Confere o expediente real antes
+  // de testar especificamente a regra "fora do expediente", sem mudar a regra testada.
+  let data = "";
+  const primeiroDia = 60 + Math.floor(Math.random() * 30);
+  for (let dias = primeiroDia; dias < primeiroDia + 30; dias++) {
+    const dia = new Date(Date.now() + dias * 86400000);
+    if (dia.getDay() === 0 || dia.getDay() === 6) continue;
+    const candidata = dia.toISOString().slice(0, 10);
+    const livres = await (await request.get(
+      `${API}/painel/profissionais/${profissional.id}/horarios-livres?data=${candidata}&duracaoMinutos=${servico.duracaoMinutos}`,
+      { headers: auth },
+    )).json();
+    if (livres.length) { data = candidata; break; }
+  }
+  expect(data).toBeTruthy();
 
   await page.goto(`${PAINEL_BASE}/painel/login`);
   await page.getByLabel("E-mail").fill("admin@acme.dev");

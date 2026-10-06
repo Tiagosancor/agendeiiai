@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import type { AgendamentoNaGrade, CelulaGrade, ColunaGrade, GradeAgenda } from "@/lib/tipos";
 
@@ -42,6 +42,20 @@ export function GradeDoDia({
   const [erro, setErro] = useState<string | null>(null);
   const [esconderFolga, setEsconderFolga] = useState(false);
   const ultimaBusca = useRef(0);
+  const rolagem = useRef<HTMLDivElement>(null);
+
+  function navegarAteProfissional(id: string) {
+    const area = rolagem.current;
+    const cabecalho = area?.querySelector("thead tr");
+    const coluna = Array.from(cabecalho?.children ?? []).find((elemento) =>
+      elemento instanceof HTMLElement && elemento.dataset.profissionalId === id,
+    );
+    const horario = cabecalho?.firstElementChild;
+    if (!area || !coluna || !horario) return;
+    const destino = coluna.getBoundingClientRect().left - area.getBoundingClientRect().left
+      + area.scrollLeft - horario.getBoundingClientRect().width;
+    area.scrollTo({ left: Math.max(0, destino), behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }
 
   useEffect(() => {
     // Trocar a data depressa dispara várias buscas; só a última escreve na tela.
@@ -61,7 +75,7 @@ export function GradeDoDia({
   const colunas = grade.profissionais.filter((p) => !esconderFolga || !p.deFolga);
 
   return (
-    <div className="space-y-2">
+    <div className="painel-grade space-y-2">
       <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-neutral-300">
         <input type="checkbox" checked={esconderFolga} onChange={(e) => setEsconderFolga(e.target.checked)} />
         Esconder quem está de folga
@@ -70,8 +84,19 @@ export function GradeDoDia({
       {colunas.length === 0 ? (
         <p className="text-sm text-gray-500 dark:text-neutral-400">Ninguém trabalha neste dia.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-neutral-800">
-          <table className="w-full border-collapse text-xs" aria-label="Agenda do dia">
+        <>
+        {colunas.length > 1 && <div className="painel-grade-navegacao">
+          <label>
+            <span>Profissional</span>
+            <select key={colunas.map((p) => p.profissionalId).join(",")} defaultValue={colunas[0].profissionalId} onChange={(evento) => navegarAteProfissional(evento.target.value)}>
+              {colunas.map((p) => <option key={p.profissionalId} value={p.profissionalId}>{p.nome}{p.deFolga ? " (folga)" : ""}</option>)}
+            </select>
+          </label>
+          <p>Deslize para ver outros profissionais <span aria-hidden="true">↔</span></p>
+        </div>}
+        <div ref={rolagem} className="painel-grade-scroll overflow-x-auto rounded-lg border border-gray-200 dark:border-neutral-800" role="region" aria-label="Grade de profissionais" tabIndex={0}>
+          <table className="w-full border-collapse text-xs" aria-label="Agenda do dia" style={{ "--painel-grade-colunas": colunas.length } as CSSProperties}>
+            <colgroup><col className="painel-grade-coluna-horas" />{colunas.map((coluna) => <col key={coluna.profissionalId} />)}</colgroup>
             <thead className="sticky top-0 bg-white dark:bg-neutral-900">
               <tr>
                 <th className="w-14 border-b border-gray-200 px-2 py-2 text-left font-medium text-gray-500 dark:border-neutral-800 dark:text-neutral-400">
@@ -80,6 +105,7 @@ export function GradeDoDia({
                 {colunas.map((coluna) => (
                   <th
                     key={coluna.profissionalId}
+                    data-profissional-id={coluna.profissionalId}
                     className="min-w-32 border-b border-l border-gray-200 px-2 py-2 text-left font-semibold text-gray-900 dark:border-neutral-800 dark:text-neutral-50"
                   >
                     {coluna.nome}
@@ -113,6 +139,7 @@ export function GradeDoDia({
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   );

@@ -1,0 +1,9 @@
+/* Complementos exclusivos da recuperação; a composição vem do Login aprovado. */
+.painel-recuperacao .painel-login-card { min-width: 0; overflow-wrap: anywhere; }
+.painel-recuperacao p:not([role="alert"]) { color: var(--painel-secundario); line-height: 1.6; }
+.painel-recuperacao label > span { color: var(--painel-secundario); }
+.painel-recuperacao a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding-block: 8px; border-radius: 8px; }
+.painel-recuperacao .painel-recuperacao-acao { display: flex; color: #06162d; }
+.painel-recuperacao [role="alert"] { color: #b23c54; background: #cf456210; border: 1px solid #cf456230; line-height: 1.6; }
+[data-theme="dark"] .painel-recuperacao [role="alert"] { color: #fda4af; }
+.painel-recuperacao button:disabled { cursor: default; }

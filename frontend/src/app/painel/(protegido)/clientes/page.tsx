@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { CabecalhoCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { ClienteResumo, ExportacaoCliente, ProgressoFidelidade } from "@/lib/tipos";
@@ -52,34 +53,34 @@ export default function PaginaClientes() {
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Clientes</h1>
+    <div className="painel-cadastro">
+      <CabecalhoCadastro titulo="Clientes" descricao="Gerencie os clientes cadastrados no seu negócio.">
         <button className={classeBotaoPrimario} onClick={() => setModalAberto(true)}>
           Novo cliente
         </button>
-      </div>
+      </CabecalhoCadastro>
 
-      {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
+      {erro && <p role="alert" className="mb-4 text-sm text-red-600">{erro}</p>}
 
+      {!clientes && !erro && <CarregandoCadastro />}
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-137.5">
-            <thead className="border-b border-gray-200 dark:border-neutral-800">
-              <tr>
-                <th className={classeTh}>Nome</th>
-                <th className={classeTh}>Telefone</th>
-                <th className={classeTh}>E-mail</th>
-                <th className={classeTh}>Ações</th>
+          <table role="table" aria-label="Clientes cadastrados" className="painel-cadastro-tabela w-full min-w-137.5">
+            <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+              <tr role="row">
+                <th role="columnheader" scope="col" className={classeTh}>Nome</th>
+                <th role="columnheader" scope="col" className={classeTh}>Telefone</th>
+                <th role="columnheader" scope="col" className={classeTh}>E-mail</th>
+                <th role="columnheader" scope="col" className={classeTh}>Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+            <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
               {clientes?.map((cliente) => (
-                <tr key={cliente.id} className={cliente.excluido ? "opacity-50" : ""}>
-                  <td className={classeTd}>{cliente.nome}</td>
-                  <td className={classeTd}>{cliente.telefone ?? "—"}</td>
-                  <td className={classeTd}>{cliente.email ?? "—"}</td>
-                  <td className={`${classeTd} space-x-3`}>
+                <tr role="row" key={cliente.id} className={cliente.excluido ? "opacity-50" : ""}>
+                  <td role="cell" data-label="Nome" className={classeTd}>{cliente.nome}</td>
+                  <td role="cell" data-label="Telefone" className={classeTd}>{cliente.telefone ?? "—"}</td>
+                  <td role="cell" data-label="E-mail" className={classeTd}>{cliente.email ?? "—"}</td>
+                  <td role="cell" data-label="Ações" className={`${classeTd} space-x-3`}>
                     {cliente.excluido ? (
                       <span className="text-xs text-gray-400">Dados excluídos</span>
                     ) : (
@@ -102,7 +103,7 @@ export default function PaginaClientes() {
                 </tr>
               ))}
               {clientes?.length === 0 && (
-                <tr>
+                <tr role="row">
                   <td className={classeTd} colSpan={4}>
                     Nenhum cliente cadastrado ainda.
                   </td>

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { CabecalhoOperacional, IndicadorOperacional } from "@/components/painel/OperacionaisVisuais";
 import { classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { ProfissionalResumo, ResumoFinanceiro, ServicoResumo } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
@@ -60,10 +61,10 @@ export default function PaginaFinanceiro() {
   }, [carregarResumo]);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Financeiro</h1>
+    <div className="painel-operacional">
+      <CabecalhoOperacional titulo="Financeiro" descricao="Acompanhe o faturamento de serviços e produtos no período." />
 
-      <div className="flex flex-wrap gap-3">
+      <div className="painel-operacional-toolbar">
         <label>
           <span className={classeLabel}>De</span>
           <input type="date" className={classeInput} value={inicio} onChange={(e) => setInicio(e.target.value)} />
@@ -97,29 +98,15 @@ export default function PaginaFinanceiro() {
       </div>
 
       {erro && <p className="text-sm text-red-600">{erro}</p>}
+      {!resumo && !erro && <p role="status" className="painel-operacional-carregando">Carregando...</p>}
 
       {resumo && (
         <>
           {/* Serviços e produtos sempre separados, além do total (seção 7). */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className={`${classeCartao} p-4`}>
-              <p className="text-xs text-gray-500 dark:text-neutral-400">Faturamento no período</p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50" aria-label="Faturamento total">
-                {formatarReais(resumo.total)}
-              </p>
-            </div>
-            <div className={`${classeCartao} p-4`}>
-              <p className="text-xs text-gray-500 dark:text-neutral-400">Serviços · {resumo.quantidadeAtendimentos} atendimento(s) pago(s)</p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50" aria-label="Faturamento de serviços">
-                {formatarReais(resumo.totalServicos)}
-              </p>
-            </div>
-            <div className={`${classeCartao} p-4`}>
-              <p className="text-xs text-gray-500 dark:text-neutral-400">Produtos · {resumo.quantidadeVendas} venda(s)</p>
-              <p className="text-2xl font-semibold text-gray-900 dark:text-neutral-50" aria-label="Faturamento de produtos">
-                {formatarReais(resumo.totalProdutos)}
-              </p>
-            </div>
+          <div className="painel-operacional-indicadores">
+            <IndicadorOperacional rotulo="Faturamento no período" valor={formatarReais(resumo.total)} nomeAcessivel="Faturamento total" destaque />
+            <IndicadorOperacional rotulo={<>Serviços · {resumo.quantidadeAtendimentos} atendimento(s) pago(s)</>} valor={formatarReais(resumo.totalServicos)} nomeAcessivel="Faturamento de serviços" />
+            <IndicadorOperacional rotulo={<>Produtos · {resumo.quantidadeVendas} venda(s)</>} valor={formatarReais(resumo.totalProdutos)} nomeAcessivel="Faturamento de produtos" />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -128,25 +115,25 @@ export default function PaginaFinanceiro() {
                 Por profissional
               </h2>
               <div className={classeCartao}>
-                <table className="w-full">
-                  <thead className="border-b border-gray-200 dark:border-neutral-800">
-                    <tr>
-                      <th className={classeTh}>Profissional</th>
-                      <th className={classeTh}>Atendimentos</th>
-                      <th className={classeTh}>Total</th>
+                <table role="table" aria-label="Faturamento por profissional" className="painel-operacional-cards w-full">
+                  <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+                    <tr role="row">
+                      <th role="columnheader" scope="col" data-label="Profissional" className={classeTh}>Profissional</th>
+                      <th role="columnheader" scope="col" data-label="Atendimentos" className={classeTh}>Atendimentos</th>
+                      <th role="columnheader" scope="col" data-label="Total" className={classeTh}>Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+                  <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
                     {resumo.porProfissional.map((linha) => (
-                      <tr key={linha.profissionalId}>
-                        <td className={classeTd}>{linha.nomeProfissional}</td>
-                        <td className={classeTd}>{linha.quantidade}</td>
-                        <td className={classeTd}>{formatarReais(linha.total)}</td>
+                      <tr role="row" key={linha.profissionalId}>
+                        <td role="cell" data-label="Profissional" className={classeTd}>{linha.nomeProfissional}</td>
+                        <td role="cell" data-label="Atendimentos" className={classeTd}>{linha.quantidade}</td>
+                        <td role="cell" data-label="Total" className={classeTd}>{formatarReais(linha.total)}</td>
                       </tr>
                     ))}
                     {resumo.porProfissional.length === 0 && (
-                      <tr>
-                        <td className={classeTd} colSpan={3}>
+                      <tr role="row">
+                        <td role="cell" className={classeTd} colSpan={3}>
                           Nenhum pagamento no período.
                         </td>
                       </tr>
@@ -159,25 +146,25 @@ export default function PaginaFinanceiro() {
             <section>
               <h2 className="mb-2 text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Por serviço</h2>
               <div className={classeCartao}>
-                <table className="w-full">
-                  <thead className="border-b border-gray-200 dark:border-neutral-800">
-                    <tr>
-                      <th className={classeTh}>Serviço</th>
-                      <th className={classeTh}>Qtd.</th>
-                      <th className={classeTh}>Total</th>
+                <table role="table" aria-label="Faturamento por serviço" className="painel-operacional-cards w-full">
+                  <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+                    <tr role="row">
+                      <th role="columnheader" scope="col" data-label="Serviço" className={classeTh}>Serviço</th>
+                      <th role="columnheader" scope="col" data-label="Qtd." className={classeTh}>Qtd.</th>
+                      <th role="columnheader" scope="col" data-label="Total" className={classeTh}>Total</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+                  <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
                     {resumo.porServico.map((linha) => (
-                      <tr key={linha.servicoId}>
-                        <td className={classeTd}>{linha.nomeServico}</td>
-                        <td className={classeTd}>{linha.quantidade}</td>
-                        <td className={classeTd}>{formatarReais(linha.total)}</td>
+                      <tr role="row" key={linha.servicoId}>
+                        <td role="cell" data-label="Serviço" className={classeTd}>{linha.nomeServico}</td>
+                        <td role="cell" data-label="Qtd." className={classeTd}>{linha.quantidade}</td>
+                        <td role="cell" data-label="Total" className={classeTd}>{formatarReais(linha.total)}</td>
                       </tr>
                     ))}
                     {resumo.porServico.length === 0 && (
-                      <tr>
-                        <td className={classeTd} colSpan={3}>
+                      <tr role="row">
+                        <td role="cell" className={classeTd} colSpan={3}>
                           Nenhum pagamento no período.
                         </td>
                       </tr>
@@ -191,20 +178,20 @@ export default function PaginaFinanceiro() {
               <section>
                 <h2 className="mb-2 text-sm font-semibold tracking-wide text-gray-500 uppercase dark:text-neutral-400">Por produto</h2>
                 <div className={classeCartao}>
-                  <table className="w-full">
-                    <thead className="border-b border-gray-200 dark:border-neutral-800">
-                      <tr>
-                        <th className={classeTh}>Produto</th>
-                        <th className={classeTh}>Qtd.</th>
-                        <th className={classeTh}>Total</th>
+                  <table role="table" aria-label="Faturamento por produto" className="painel-operacional-cards w-full">
+                    <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+                      <tr role="row">
+                        <th role="columnheader" scope="col" data-label="Produto" className={classeTh}>Produto</th>
+                        <th role="columnheader" scope="col" data-label="Qtd." className={classeTh}>Qtd.</th>
+                        <th role="columnheader" scope="col" data-label="Total" className={classeTh}>Total</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+                    <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
                       {resumo.porProduto.map((linha) => (
-                        <tr key={linha.produtoId}>
-                          <td className={classeTd}>{linha.nomeProduto}</td>
-                          <td className={classeTd}>{linha.quantidade}</td>
-                          <td className={classeTd}>{formatarReais(linha.total)}</td>
+                        <tr role="row" key={linha.produtoId}>
+                          <td role="cell" data-label="Produto" className={classeTd}>{linha.nomeProduto}</td>
+                          <td role="cell" data-label="Qtd." className={classeTd}>{linha.quantidade}</td>
+                          <td role="cell" data-label="Total" className={classeTd}>{formatarReais(linha.total)}</td>
                         </tr>
                       ))}
                     </tbody>

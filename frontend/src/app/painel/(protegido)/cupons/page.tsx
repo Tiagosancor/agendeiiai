@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { CabecalhoCadastro, StatusCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
+import "@/components/painel/painel-beneficios.css";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { CupomResumo } from "@/lib/tipos";
@@ -33,41 +35,41 @@ export default function PaginaCupons() {
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Cupons</h1>
+    <div className="painel-cadastro painel-beneficios">
+      <CabecalhoCadastro titulo="Cupons" descricao="Gerencie descontos, validade e utilização dos cupons.">
         <button className={classeBotaoPrimario} onClick={() => setModalAberto(true)}>
           Novo cupom
         </button>
-      </div>
+      </CabecalhoCadastro>
 
+      {!cupons && !erro && <CarregandoCadastro />}
       {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
 
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[650px]">
-            <thead className="border-b border-gray-200 dark:border-neutral-800">
-              <tr>
-                <th className={classeTh}>Código</th>
-                <th className={classeTh}>Desconto</th>
-                <th className={classeTh}>Validade</th>
-                <th className={classeTh}>Usos</th>
-                <th className={classeTh}>Status</th>
-                <th className={classeTh}>Ações</th>
+          <table role="table" aria-label="Cupons cadastrados" className="painel-cadastro-tabela w-full min-w-[650px]">
+            <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+              <tr role="row">
+                <th role="columnheader" scope="col" data-label="Código" className={classeTh}>Código</th>
+                <th role="columnheader" scope="col" data-label="Desconto" className={classeTh}>Desconto</th>
+                <th role="columnheader" scope="col" data-label="Validade" className={classeTh}>Validade</th>
+                <th role="columnheader" scope="col" data-label="Usos" className={classeTh}>Usos</th>
+                <th role="columnheader" scope="col" data-label="Status" className={classeTh}>Status</th>
+                <th role="columnheader" scope="col" data-label="Ações" className={classeTh}>Ações</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+            <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
               {cupons?.map((cupom) => (
-                <tr key={cupom.id}>
-                  <td className={classeTd}>{cupom.codigo}</td>
-                  <td className={classeTd}>{cupom.tipo === "Percentual" ? `${cupom.valor}%` : formatarReais(cupom.valor)}</td>
-                  <td className={classeTd}>{cupom.validoAte ? new Date(cupom.validoAte).toLocaleDateString("pt-BR") : "Sem validade"}</td>
-                  <td className={classeTd}>
+                <tr role="row" key={cupom.id}>
+                  <td role="cell" data-label="Código" className={classeTd}>{cupom.codigo}</td>
+                  <td role="cell" data-label="Desconto" className={classeTd}>{cupom.tipo === "Percentual" ? `${cupom.valor}%` : formatarReais(cupom.valor)}</td>
+                  <td role="cell" data-label="Validade" className={classeTd}>{cupom.validoAte ? new Date(cupom.validoAte).toLocaleDateString("pt-BR") : "Sem validade"}</td>
+                  <td role="cell" data-label="Usos" className={classeTd}>
                     {cupom.usosAtuais}
                     {cupom.limiteUsos ? ` / ${cupom.limiteUsos}` : ""}
                   </td>
-                  <td className={classeTd}>{cupom.ativo ? "Ativo" : "Inativo"}</td>
-                  <td className={classeTd}>
+                  <td role="cell" data-label="Status" className={classeTd}><StatusCadastro ativo={cupom.ativo} /></td>
+                  <td role="cell" data-label="Ações" className={classeTd}>
                     <button className="text-gray-600 hover:underline dark:text-neutral-300" onClick={() => alternarAtivo(cupom)}>
                       {cupom.ativo ? "Desativar" : "Ativar"}
                     </button>
@@ -75,8 +77,8 @@ export default function PaginaCupons() {
                 </tr>
               ))}
               {cupons?.length === 0 && (
-                <tr>
-                  <td className={classeTd} colSpan={6}>
+                <tr role="row">
+                  <td role="cell" className={classeTd} colSpan={6}>
                     Nenhum cupom cadastrado ainda.
                   </td>
                 </tr>

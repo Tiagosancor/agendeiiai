@@ -1,0 +1,18 @@
+/* Ajustes exclusivos de Cupons e Fidelidade; base visual dos cadastros aprovada. */
+.painel-beneficios .painel-cadastro-cabecalho p { max-width: 72ch; }
+.painel-beneficios td[data-label="Desconto"] { color: var(--painel-texto); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.painel-beneficios td[data-label="Usos"] { font-variant-numeric: tabular-nums; }
+.painel-beneficios td[data-label="Ações"] { min-width: 120px; }
+.painel-beneficios-programa { width: 100%; max-width: 760px; min-width: 0; padding: 28px; border: 1px solid var(--painel-borda); border-radius: 16px; background: var(--painel-superficie); box-shadow: 0 4px 20px #05244b05; }
+.painel-beneficios-programa > label:first-child { max-width: 320px; }
+.painel-beneficios form label { display: block; }
+.painel-beneficios form > .flex:not(.justify-end) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.painel-beneficios-sucesso { padding: 12px 16px; border: 1px solid color-mix(in srgb, #15803d 25%, var(--painel-borda)); border-radius: 9px; background: color-mix(in srgb, #15803d 5%, var(--painel-superficie)); color: #166534; }
+[data-theme="dark"] .painel-beneficios-sucesso { color: #86efac; }
+@media (max-width: 767px) {
+  .painel-beneficios-programa { padding: 20px; }
+  .painel-beneficios-programa > label:first-child { max-width: none; }
+  .painel-beneficios form > .flex:not(.justify-end) { grid-template-columns: 1fr; }
+  .painel-beneficios form > .justify-end { flex-wrap: wrap; }
+  .painel-beneficios .painel-cadastro-tabela td[colspan]::before { display: none; }
+}

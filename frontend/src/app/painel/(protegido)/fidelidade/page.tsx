@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { classeBotaoPrimario, classeInput, classeLabel } from "@/components/estilos";
+import { CabecalhoCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
+import "@/components/painel/painel-beneficios.css";
 import type { ProgramaFidelidadeResumo } from "@/lib/tipos";
 
 export default function PaginaFidelidade() {
@@ -54,14 +56,11 @@ export default function PaginaFidelidade() {
   }
 
   return (
-    <div className="max-w-lg space-y-4">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Fidelidade</h1>
-      <p className="text-sm text-gray-500 dark:text-neutral-400">
-        Cartão de selos: a cada atendimento concluído, o cliente ganha um selo. Ao atingir o número
-        configurado abaixo, a recepção pode resgatar a recompensa na ficha do cliente.
-      </p>
+    <div className="painel-cadastro painel-beneficios">
+      <CabecalhoCadastro titulo="Fidelidade" descricao="Cartão de selos: a cada atendimento concluído, o cliente ganha um selo. Ao atingir o número configurado abaixo, a recepção pode resgatar a recompensa na ficha do cliente." />
+      {ativo === null && !erro && <CarregandoCadastro />}
 
-      <form onSubmit={salvar} className="space-y-3">
+      <form onSubmit={salvar} className="painel-beneficios-programa space-y-5">
         <label>
           <span className={classeLabel}>Selos necessários para resgatar</span>
           <input
@@ -88,7 +87,7 @@ export default function PaginaFidelidade() {
           <p className="text-xs text-gray-500 dark:text-neutral-400">Nenhum programa configurado ainda.</p>
         )}
         {erro && <p className="text-sm text-red-600">{erro}</p>}
-        {mensagemSucesso && <p className="text-sm text-green-600">{mensagemSucesso}</p>}
+        {mensagemSucesso && <p role="status" className="painel-beneficios-sucesso text-sm text-green-600">{mensagemSucesso}</p>}
 
         <button type="submit" disabled={salvando} className={classeBotaoPrimario}>
           {salvando ? "Salvando..." : "Salvar"}

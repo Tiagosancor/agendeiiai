@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { CabecalhoCadastro, StatusCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
 import { Modal } from "@/components/Modal";
 import { ModalExclusao } from "@/components/painel/ModalExclusao";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
@@ -19,6 +20,7 @@ export default function PaginaServicos() {
   const [erro, setErro] = useState<string | null>(null);
   const [modalCategoriaAberto, setModalCategoriaAberto] = useState(false);
   const [modalServicoAberto, setModalServicoAberto] = useState(false);
+  const [categoriasExpandidas, setCategoriasExpandidas] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -53,18 +55,27 @@ export default function PaginaServicos() {
   const nomeCategoria = (categoriaId: string) => categorias?.find((c) => c.id === categoriaId)?.nome ?? "—";
 
   return (
-    <div className="space-y-8">
-      {erro && <p className="text-sm text-red-600">{erro}</p>}
+    <div className="painel-cadastro">
+      <CabecalhoCadastro titulo="Serviços" descricao="Organize as categorias, os preços e a duração dos serviços.">
+        <button
+          className={classeBotaoPrimario}
+          disabled={!categorias?.length}
+          onClick={() => setModalServicoAberto(true)}
+        >
+          Novo serviço
+        </button>
+      </CabecalhoCadastro>
+      {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
 
-      <section>
+      <section className="painel-cadastro-categorias">
         <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Categorias</h1>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Categorias</h2>
           <button className={classeBotaoPrimario} onClick={() => setModalCategoriaAberto(true)}>
             Nova categoria
           </button>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {categorias?.map((categoria) => (
+        <div id="categorias-cadastro" className="flex flex-wrap gap-2">
+          {(categoriasExpandidas ? categorias : categorias?.slice(0, 6))?.map((categoria) => (
             <button
               key={categoria.id}
               onClick={() => alternarCategoria(categoria)}
@@ -80,46 +91,49 @@ export default function PaginaServicos() {
           ))}
           {categorias?.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Nenhuma categoria ainda.</p>}
         </div>
+        {categorias && categorias.length > 6 && (
+          <button
+            type="button"
+            className="painel-cadastro-expandir"
+            aria-expanded={categoriasExpandidas}
+            aria-controls="categorias-cadastro"
+            onClick={() => setCategoriasExpandidas(!categoriasExpandidas)}
+          >
+            {categoriasExpandidas ? "Recolher categorias" : `Ver todas as categorias (${categorias.length})`}
+          </button>
+        )}
       </section>
 
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Serviços</h2>
-          <button
-            className={classeBotaoPrimario}
-            disabled={!categorias?.length}
-            onClick={() => setModalServicoAberto(true)}
-          >
-            Novo serviço
-          </button>
-        </div>
+        <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Serviços cadastrados</h2>
 
+        {!servicos && !erro && <CarregandoCadastro />}
         <div className={classeCartao}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-162.5">
-              <thead className="border-b border-gray-200 dark:border-neutral-800">
-                <tr>
-                  <th className={classeTh}>Nome</th>
-                  <th className={classeTh}>Categoria</th>
-                  <th className={classeTh}>Preço</th>
-                  <th className={classeTh}>Duração</th>
-                  <th className={classeTh}>Popular</th>
-                  <th className={classeTh}>Na página</th>
-                  <th className={classeTh}>Status</th>
-                  <th className={classeTh}>Ações</th>
+            <table role="table" aria-label="Serviços cadastrados" className="painel-cadastro-tabela w-full min-w-162.5">
+              <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
+                <tr role="row">
+                  <th role="columnheader" scope="col" className={classeTh}>Nome</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Categoria</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Preço</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Duração</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Popular</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Na página</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Status</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+              <tbody role="rowgroup" className="divide-y divide-gray-100 dark:divide-neutral-800">
                 {servicos?.map((servico) => (
-                  <tr key={servico.id}>
-                    <td className={classeTd}>{servico.nome}</td>
-                    <td className={classeTd}>{nomeCategoria(servico.categoriaId)}</td>
-                    <td className={classeTd}>{formatarReais(servico.preco)}</td>
-                    <td className={classeTd}>{servico.duracaoMinutos} min</td>
-                    <td className={classeTd}>{servico.popular ? "Sim" : "Não"}</td>
-                    <td className={classeTd}>{servico.exibirNaPaginaInicial ? "Sim" : "Não"}</td>
-                    <td className={classeTd}>{servico.ativo ? "Ativo" : "Inativo"}</td>
-                    <td className={`${classeTd} space-x-3 whitespace-nowrap`}>
+                  <tr role="row" key={servico.id}>
+                    <td role="cell" data-label="Nome" className={classeTd}>{servico.nome}</td>
+                    <td role="cell" data-label="Categoria" className={classeTd}>{nomeCategoria(servico.categoriaId)}</td>
+                    <td role="cell" data-label="Preço" className={classeTd}>{formatarReais(servico.preco)}</td>
+                    <td role="cell" data-label="Duração" className={classeTd}>{servico.duracaoMinutos} min</td>
+                    <td role="cell" data-label="Popular" className={classeTd}>{servico.popular ? "Sim" : "Não"}</td>
+                    <td role="cell" data-label="Na página" className={classeTd}>{servico.exibirNaPaginaInicial ? "Sim" : "Não"}</td>
+                    <td role="cell" data-label="Status" className={classeTd}><StatusCadastro ativo={servico.ativo} /></td>
+                    <td role="cell" data-label="Ações" className={`${classeTd} space-x-3 whitespace-nowrap`}>
                       {podeEditar && (
                         <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => setServicoEditando(servico)}>
                           Editar
@@ -137,8 +151,8 @@ export default function PaginaServicos() {
                   </tr>
                 ))}
                 {servicos?.length === 0 && (
-                  <tr>
-                    <td className={classeTd} colSpan={7}>
+                  <tr role="row">
+                    <td className={classeTd} colSpan={8}>
                       Nenhum serviço cadastrado ainda.
                     </td>
                   </tr>

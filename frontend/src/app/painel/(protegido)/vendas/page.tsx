@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
+import { CabecalhoOperacional } from "@/components/painel/OperacionaisVisuais";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import { CamposVenda, chaveVendedor, corpoVendedor, itensDaVenda, type LinhaVenda } from "@/components/painel/CamposVenda";
@@ -44,26 +45,26 @@ export default function PaginaVendas() {
   const totalDia = vendas?.filter((v) => !v.estornada).reduce((soma, v) => soma + v.total, 0) ?? 0;
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-neutral-50">Vendas</h1>
-          <label className="mt-2 block">
-            <span className={classeLabel}>Data</span>
-            <input type="date" className={classeInput} value={data} onChange={(e) => setData(e.target.value)} />
-          </label>
-        </div>
+    <div className="painel-operacional">
+      <CabecalhoOperacional titulo="Vendas" descricao="Consulte as vendas do dia e registre vendas de produtos.">
         <button className={classeBotaoPrimario} onClick={() => setNovaAberta(true)}>
           Nova venda
         </button>
+      </CabecalhoOperacional>
+      <div className="painel-operacional-toolbar">
+        <label>
+          <span className={classeLabel}>Data</span>
+          <input type="date" className={classeInput} value={data} onChange={(e) => setData(e.target.value)} />
+        </label>
       </div>
 
       {erro && <p className="mb-4 text-sm text-red-600">{erro}</p>}
+      {!vendas && !erro && <p role="status" className="painel-operacional-carregando">Carregando...</p>}
 
-      <div className={`${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800`}>
+      <div className={`${classeCartao} painel-operacional-lista divide-y divide-gray-100 dark:divide-neutral-800`}>
         {vendas?.length === 0 && <p className="px-4 py-6 text-sm text-gray-500 dark:text-neutral-400">Nenhuma venda neste dia.</p>}
         {vendas?.map((venda) => (
-          <div key={venda.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3" role="article" aria-label={`Venda das ${formatarHora(venda.data)}`}>
+          <div key={venda.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-3" role="article" data-estornada={venda.estornada} aria-label={`Venda das ${formatarHora(venda.data)}`}>
             <div>
               <p className={`text-sm font-medium text-gray-900 dark:text-neutral-50 ${venda.estornada ? "line-through opacity-60" : ""}`}>
                 {formatarHora(venda.data)} · {venda.itens.map((i) => (i.quantidade === 1 ? i.produto : `${i.produto} × ${i.quantidade}`)).join(", ")}

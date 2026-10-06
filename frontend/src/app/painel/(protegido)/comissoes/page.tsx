@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
+import { CabecalhoOperacional, IndicadorOperacional } from "@/components/painel/OperacionaisVisuais";
 import { classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type {
   ComissoesDoProfissional,
@@ -68,8 +69,8 @@ export default function PaginaComissoes() {
   const [periodo, setPeriodo] = useState<Periodo>(esteMes);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Comissões</h1>
+    <div className="painel-operacional">
+      <CabecalhoOperacional titulo="Comissões" descricao="Consulte comissões, períodos e acertos disponíveis para o seu acesso." />
 
       {abas.length > 1 && (
         <div role="tablist" className="flex flex-wrap gap-2">
@@ -107,7 +108,7 @@ export default function PaginaComissoes() {
 
 function FiltroPeriodo({ periodo, aoMudar }: { periodo: Periodo; aoMudar: (p: Periodo) => void }) {
   return (
-    <div className="space-y-3">
+    <div className="painel-operacional-toolbar flex-col">
       <div className="flex flex-wrap gap-2">
         {ATALHOS.map((atalho) => {
           const alvo = atalho.periodo();
@@ -201,7 +202,7 @@ function ListaComissoes({ periodo, caminho, caminhoSaldo }: { periodo: Periodo; 
   if (!dados.profissionalId) {
     return (
       <div className="space-y-4">
-        <p className="rounded-lg border border-gray-200 p-4 text-sm text-gray-600 dark:border-neutral-800 dark:text-neutral-300">
+        <p className="painel-operacional-informacao rounded-lg border border-gray-200 p-4 text-sm text-gray-600 dark:border-neutral-800 dark:text-neutral-300">
           Seu acesso não está ligado a um cadastro de profissional, então não há comissão de serviço — só a de produtos que você vende.
         </p>
         <SecaoComissaoProdutos produtos={dados.produtos} />
@@ -389,18 +390,9 @@ function CartoesTotais({ totais }: { totais: TotaisComissao }) {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div className="painel-operacional-indicadores">
       {cartoes.map((cartao) => (
-        <div key={cartao.rotulo} className={`${classeCartao} p-4`}>
-          <div className="text-xs text-gray-500 dark:text-neutral-400">{cartao.rotulo}</div>
-          <div
-            className={`mt-1 font-semibold ${
-              cartao.destaque ? "text-2xl text-marca-primaria dark:text-marca-acento" : "text-lg text-gray-900 dark:text-neutral-50"
-            }`}
-          >
-            {cartao.valor}
-          </div>
-        </div>
+        <IndicadorOperacional key={cartao.rotulo} rotulo={cartao.rotulo} valor={cartao.valor} destaque={cartao.destaque} />
       ))}
     </div>
   );

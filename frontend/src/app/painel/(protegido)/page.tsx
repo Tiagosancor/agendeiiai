@@ -4,17 +4,22 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import type { AlertasEstoque, PrimeirosPassos } from "@/lib/tipos";
+import { CabecalhoCadastro } from "@/components/painel/CadastrosVisuais";
+import "@/components/painel/painel-inicio.css";
 
 export default function PaginaInicioPainel() {
   return (
-    <div className="space-y-6">
+    <div className="painel-cadastro painel-inicio">
+      <CabecalhoCadastro titulo="Início" descricao="Bem-vindo. Use o menu para gerenciar a rotina do seu negócio." />
       <IndicadorEstoque />
-      <ChecklistPrimeirosPassos />
-      <div>
-        <h1 className="mb-2 text-lg font-semibold text-gray-900 dark:text-neutral-50">Bem-vindo</h1>
-        <p className="text-sm text-gray-500 dark:text-neutral-400">
-          Use o menu acima para gerenciar usuários, profissionais, serviços, clientes e o perfil do seu negócio.
-        </p>
+      <div className="painel-inicio-grid">
+        <ChecklistPrimeirosPassos />
+        <section className="painel-inicio-agenda" aria-labelledby="inicio-agenda">
+          <svg className="painel-inicio-icone" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M5 5h14v15H5zM8 2v6M16 2v6M5 10h14M8 14h3M8 17h6" /></svg>
+          <h2 id="inicio-agenda">Agenda</h2>
+          <p>Acompanhe seus horários e atendimentos.</p>
+          <Link href="/painel/agenda" className="painel-inicio-ver-agenda">Ver agenda <span aria-hidden="true">↗</span></Link>
+        </section>
       </div>
     </div>
   );
@@ -54,7 +59,9 @@ function IndicadorEstoque() {
   );
 
   return (
-    <div role="status" className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-gray-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-neutral-200">
+    <div role="status" className="painel-inicio-alerta rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-gray-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-neutral-200">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 7l9-5 9 5v10l-9 5-9-5zM3 7l9 5 9-5M12 12v10" /></svg>
+      <div>
       {temPermissao("GerenciarEstoque") ? (
         <Link href="/painel/estoque" className="hover:underline">
           {conteudo}
@@ -62,6 +69,7 @@ function IndicadorEstoque() {
       ) : (
         conteudo
       )}
+      </div>
     </div>
   );
 }
@@ -103,10 +111,10 @@ function ChecklistPrimeirosPassos() {
   const feitos = itens.filter((i) => i.feito).length + (passos.linkCopiado ? 1 : 0);
 
   return (
-    <section data-testid="primeiros-passos" className="rounded-xl border-2 border-marca-primaria/20 p-4 dark:border-marca-acento/30">
+    <section data-testid="primeiros-passos" className="painel-inicio-passos" aria-labelledby="inicio-primeiros-passos">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="font-display text-lg font-semibold text-gray-900 dark:text-neutral-50">Primeiros passos</h2>
+          <h2 id="inicio-primeiros-passos" className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Primeiros passos</h2>
           <p className="text-sm text-gray-500 dark:text-neutral-400">{feitos} de 4 concluídos</p>
         </div>
         <button onClick={dispensar} className="text-sm text-gray-500 underline dark:text-neutral-400">
@@ -114,14 +122,15 @@ function ChecklistPrimeirosPassos() {
         </button>
       </div>
 
-      <div className="mb-3 h-1.5 rounded-full bg-gray-200 dark:bg-neutral-800">
+      <div role="progressbar" aria-label="Primeiros passos concluídos" aria-valuemin={0} aria-valuemax={4} aria-valuenow={feitos} className="painel-inicio-progresso mb-3 h-1.5 rounded-full bg-gray-200 dark:bg-neutral-800">
         <div className="h-1.5 rounded-full bg-marca-acento transition-all" style={{ width: `${(feitos / 4) * 100}%` }} />
       </div>
 
-      <ul className="space-y-2 text-sm">
+      <ul className="painel-inicio-tarefas space-y-2 text-sm">
         {itens.map((item) => (
           <li key={item.texto} className="flex items-center gap-2">
             <Marcador feito={item.feito} />
+            <span className="sr-only">{item.feito ? "Concluído: " : "Pendente: "}</span>
             {item.feito ? (
               <span className="text-gray-500 line-through dark:text-neutral-500">{item.texto}</span>
             ) : (
@@ -133,6 +142,7 @@ function ChecklistPrimeirosPassos() {
         ))}
         <li className="flex flex-wrap items-center gap-2">
           <Marcador feito={passos.linkCopiado} />
+          <span className="sr-only">{passos.linkCopiado ? "Concluído: " : "Pendente: "}</span>
           <span className={passos.linkCopiado ? "text-gray-500 line-through dark:text-neutral-500" : "text-gray-800 dark:text-neutral-200"}>
             Compartilhe seu link de agendamento
           </span>
