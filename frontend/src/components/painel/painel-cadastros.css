@@ -97,3 +97,6 @@
   .painel-cadastro-ficha [data-testid^="dia-horario-"] > div > div[class~="flex"] { flex-wrap: wrap; }
   .painel-cadastro-ficha section > div[class~="items-end"] > label { width: 100%; }
 }
+
+/* Retorno exclusivo da ficha; não modifica ações das listagens. */
+.painel-ficha-retorno { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 4px; border-radius: 6px; color: var(--painel-accent); }

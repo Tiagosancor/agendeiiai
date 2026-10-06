@@ -24,7 +24,7 @@ export default function PaginaDetalheProfissional({ params }: { params: Promise<
 
   return (
     <div className="space-y-8">
-      <Link href="/painel/profissionais" className="text-sm text-marca-primaria hover:underline dark:text-marca-acento">
+      <Link href="/painel/profissionais" className="painel-ficha-retorno text-sm text-marca-primaria hover:underline dark:text-marca-acento">
         ← Voltar para profissionais
       </Link>
 
@@ -34,7 +34,9 @@ export default function PaginaDetalheProfissional({ params }: { params: Promise<
         <SecaoBloqueios profissionalId={id} />
         <SecaoServicosVinculados profissionalId={id} />
       </div>
-      {podeVerComissao && <SecaoComissao profissionalId={id} podeAlterar={temPermissao("GerenciarComissoes")} />}
+      {podeVerComissao && <div className="painel-cadastro painel-cadastro-ficha">
+        <SecaoComissao profissionalId={id} podeAlterar={temPermissao("GerenciarComissoes")} />
+      </div>}
     </div>
   );
 }

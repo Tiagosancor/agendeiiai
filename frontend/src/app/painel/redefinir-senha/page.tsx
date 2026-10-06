@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ErroApi, requisicaoApi } from "@/lib/api";
 import { BotaoTema } from "@/components/BotaoTema";
+import { MarcaPainel } from "@/components/painel/IdentidadePainel";
+import "@/components/painel/painel-recuperacao.css";
 import { CampoSenha } from "@/components/CampoSenha";
 import { classeBotaoPrimario, classeInput } from "@/components/estilos";
 
@@ -13,10 +15,10 @@ const senhaForte = (senha: string) => senha.length >= 8 && /\p{L}/u.test(senha) 
 /** Destino do link de "esqueci minha senha" (`?token=...`, enviado por e-mail). */
 export default function PaginaRedefinirSenha() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-neutral-950">
-      <BotaoTema className="fixed right-4 top-4" />
-      <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <img src="/brand/agendeiiai-icone-reduzido.svg" alt="" width={40} height={40} className="mb-4 rounded-lg" />
+    <main className="painel-login painel-recuperacao">
+      <BotaoTema className="painel-login-tema painel-tema" />
+      <div className="painel-login-card">
+        <MarcaPainel tagline />
         <h1 className="font-display mb-1 text-xl font-bold text-gray-900 dark:text-neutral-50">Criar senha nova</h1>
         <Suspense>
           <FormularioRedefinicao />
@@ -67,7 +69,7 @@ function FormularioRedefinicao() {
         <p className="mb-6 text-sm text-gray-600 dark:text-neutral-300">
           Este link está incompleto. Abra de novo o link do e-mail ou peça um novo.
         </p>
-        <Link href="/painel/esqueci-senha" className={`${classeBotaoPrimario} block w-full text-center`}>
+        <Link href="/painel/esqueci-senha" className={`${classeBotaoPrimario} painel-botao-principal painel-recuperacao-acao w-full`}>
           Pedir um link novo
         </Link>
       </>
@@ -80,7 +82,7 @@ function FormularioRedefinicao() {
         <p className="mb-6 text-sm text-gray-600 dark:text-neutral-300">
           Senha alterada. Entre com a senha nova — por segurança, as outras sessões abertas foram encerradas.
         </p>
-        <Link href="/painel/login" className={`${classeBotaoPrimario} block w-full text-center`}>
+        <Link href="/painel/login" className={`${classeBotaoPrimario} painel-botao-principal painel-recuperacao-acao w-full`}>
           Ir para a entrada
         </Link>
       </>
@@ -110,7 +112,7 @@ function FormularioRedefinicao() {
         </p>
       )}
 
-      <button type="submit" disabled={enviando} className={`${classeBotaoPrimario} w-full`}>
+      <button type="submit" disabled={enviando} className={`${classeBotaoPrimario} painel-botao-principal w-full`}>
         {enviando ? "Salvando..." : "Salvar senha nova"}
       </button>
 

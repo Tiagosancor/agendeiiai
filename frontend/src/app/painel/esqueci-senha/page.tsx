@@ -4,6 +4,8 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ErroApi, requisicaoApi } from "@/lib/api";
 import { BotaoTema } from "@/components/BotaoTema";
+import { MarcaPainel } from "@/components/painel/IdentidadePainel";
+import "@/components/painel/painel-recuperacao.css";
 import { classeBotaoPrimario, classeInput, classeLabel } from "@/components/estilos";
 
 export default function PaginaEsqueciSenha() {
@@ -32,10 +34,10 @@ export default function PaginaEsqueciSenha() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-neutral-950">
-      <BotaoTema className="fixed right-4 top-4" />
-      <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-        <img src="/brand/agendeiiai-icone-reduzido.svg" alt="" width={40} height={40} className="mb-4 rounded-lg" />
+    <main className="painel-login painel-recuperacao">
+      <BotaoTema className="painel-login-tema painel-tema" />
+      <div className="painel-login-card">
+        <MarcaPainel tagline />
         <h1 className="font-display mb-1 text-xl font-bold text-gray-900 dark:text-neutral-50">Esqueci minha senha</h1>
 
         {enviado ? (
@@ -44,7 +46,7 @@ export default function PaginaEsqueciSenha() {
               Se <strong>{email}</strong> tiver acesso ao painel, você vai receber um e-mail com um link para criar uma
               senha nova. O link vale por 1 hora. Confira também a caixa de spam.
             </p>
-            <Link href="/painel/login" className={`${classeBotaoPrimario} block w-full text-center`}>
+            <Link href="/painel/login" className={`${classeBotaoPrimario} painel-botao-principal painel-recuperacao-acao w-full`}>
               Voltar para a entrada
             </Link>
           </>
@@ -72,7 +74,7 @@ export default function PaginaEsqueciSenha() {
               </p>
             )}
 
-            <button type="submit" disabled={enviando} className={`${classeBotaoPrimario} w-full`}>
+            <button type="submit" disabled={enviando} className={`${classeBotaoPrimario} painel-botao-principal w-full`}>
               {enviando ? "Enviando..." : "Enviar link"}
             </button>
 
