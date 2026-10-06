@@ -117,10 +117,10 @@ export function MinhaAgenda() {
             <span className={classeLabel}>Data</span>
             <input type="date" className={classeInput} value={data} onChange={(e) => setData(e.target.value)} />
           </label>
-          <div className={`${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800`}>
+          <div className={`painel-agenda-lista ${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800`}>
             {agenda?.length === 0 && <p className="px-4 py-6 text-sm text-gray-500 dark:text-neutral-400">Nada na sua agenda neste dia.</p>}
             {agenda?.map((item) => (
-              <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+              <div key={item.id} className="painel-agenda-item flex flex-wrap items-center justify-between gap-3 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-gray-900 dark:text-neutral-50">
                     {formatarHora(item.inicio)}–{formatarHora(item.fim)} · {ROTULO_STATUS[item.status] ?? item.status}

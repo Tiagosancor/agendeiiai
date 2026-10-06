@@ -30,5 +30,5 @@ test("sessão do painel sobrevive a um reload completo da página", async ({ pag
 
   await expect(page).toHaveURL(/\/painel$/);
   await expect(page.getByRole("heading", { name: "Entrar no painel" })).not.toBeVisible();
-  await expect(page.getByText("Agendeiiai")).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Menu principal" }).getByText("agendei ai", { exact: true })).toBeVisible();
 });

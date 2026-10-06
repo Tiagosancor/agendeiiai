@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { BotaoTema } from "@/components/BotaoTema";
+import { MarcaPainel } from "@/components/painel/IdentidadePainel";
 import { CampoSenha } from "@/components/CampoSenha";
 import { lerUltimaRota } from "@/lib/ultima-rota";
 
@@ -46,13 +47,13 @@ export default function PaginaLogin() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-gray-50 px-4 dark:bg-neutral-950">
-      <BotaoTema className="fixed right-4 top-4" />
+    <main className="painel-login">
+      <BotaoTema className="painel-login-tema painel-tema" />
       <form
         onSubmit={aoEnviar}
-        className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+        className="painel-login-card"
       >
-        <img src="/brand/agendeiiai-icone-reduzido.svg" alt="" width={40} height={40} className="mb-4 rounded-lg" />
+        <MarcaPainel tagline />
         <h1 className="font-display mb-1 text-xl font-bold text-gray-900 dark:text-neutral-50">Entrar no painel</h1>
         <p className="mb-6 text-sm text-gray-500 dark:text-neutral-400">Acesse com o e-mail e a senha do seu negócio.</p>
 
@@ -81,7 +82,7 @@ export default function PaginaLogin() {
         </div>
 
         {erro && (
-          <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+          <p role="alert" className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
             {erro}
           </p>
         )}
@@ -89,7 +90,7 @@ export default function PaginaLogin() {
         <button
           type="submit"
           disabled={enviando}
-          className="w-full rounded-lg bg-marca-primaria px-3 py-2 text-sm font-medium text-white transition hover:bg-marca-primaria-hover disabled:opacity-60"
+          className="painel-botao-principal w-full rounded-lg bg-marca-primaria px-3 py-2 text-sm font-medium text-white transition hover:bg-marca-primaria-hover disabled:opacity-60"
         >
           {enviando ? "Entrando..." : "Entrar"}
         </button>

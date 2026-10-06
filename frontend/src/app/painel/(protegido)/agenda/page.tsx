@@ -53,7 +53,10 @@ const RUBRICA_STATUS: Record<string, string> = {
 /** Quem gerencia a agenda vê a de todos; o Profissional logado sem essa permissão vê só a própria (seção 7). */
 export default function PaginaAgenda() {
   const { temPermissao } = useAutenticacao();
-  return temPermissao("GerenciarAgenda") ? <AgendaGeral /> : <MinhaAgenda />;
+  return <section className="painel-agenda" aria-labelledby="titulo-agenda">
+    <header className="painel-pagina-titulo"><h1 id="titulo-agenda">Agenda</h1></header>
+    {temPermissao("GerenciarAgenda") ? <AgendaGeral /> : <MinhaAgenda />}
+  </section>;
 }
 
 function AgendaGeral() {
@@ -180,7 +183,7 @@ function AgendaGeral() {
         ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div className="painel-agenda-toolbar mb-4 flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap gap-3">
           <label className={visao === "grade" ? "hidden" : undefined}>
             <span className={classeLabel}>Profissional</span>
@@ -245,10 +248,10 @@ function AgendaGeral() {
         />
       )}
 
-      <div className={`${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800 ${visao !== "lista" ? "hidden" : ""}`}>
+      <div className={`painel-agenda-lista ${classeCartao} divide-y divide-gray-100 dark:divide-neutral-800 ${visao !== "lista" ? "hidden" : ""}`}>
         {agenda?.length === 0 && <p className="px-4 py-6 text-sm text-gray-500 dark:text-neutral-400">Nada agendado neste dia.</p>}
         {agenda?.map((item) => (
-          <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+          <div key={item.id} className="painel-agenda-item flex flex-wrap items-center justify-between gap-3 px-4 py-3">
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-900 dark:text-neutral-50">

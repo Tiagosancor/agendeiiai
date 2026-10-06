@@ -47,7 +47,7 @@ export function SemanaAgenda({
   const hoje = dataLocalIso();
 
   return (
-    <div className="space-y-3">
+    <div className="painel-semana space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <button type="button" className={classeBotaoSecundario} onClick={() => aoMudarSemana(-7)}>
           ← Semana anterior
