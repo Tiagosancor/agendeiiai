@@ -31,7 +31,7 @@ export function PlanosSite({ planos, whatsApp }: { planos: PlanoPublico[]; whats
 
   return (
     <div>
-      <div className="flex flex-col items-center gap-2">
+      <div className="site-periodicidade flex flex-col items-center gap-2">
         <div role="radiogroup" aria-label="Periodicidade" className="inline-flex rounded-xl border border-gray-300 bg-white p-1 dark:border-white/15 dark:bg-white/5">
           {(["Mensal", "Anual"] as Periodicidade[]).map((p) => (
             <button
@@ -40,68 +40,62 @@ export function PlanosSite({ planos, whatsApp }: { planos: PlanoPublico[]; whats
               role="radio"
               aria-checked={periodicidade === p}
               onClick={() => setPeriodicidade(p)}
-              className={`rounded-lg px-5 py-2 text-sm font-medium transition ${
-                periodicidade === p
-                  ? "bg-marca-primaria text-white dark:bg-marca-acento dark:text-marca-primaria"
-                  : "text-gray-700 hover:text-gray-900 dark:text-neutral-300 dark:hover:text-neutral-50"
-              }`}
+              className="rounded-lg px-5 py-2 text-sm font-medium transition"
             >
               {p}
             </button>
           ))}
         </div>
         {maiorEconomia > 0 && (
-          <p className="text-sm font-medium text-marca-madeira dark:text-marca-acento">
+          <p className="site-economia text-sm font-medium">
             No anual, {economiaIgual ? "economize" : "economize até"} {formatarReais(maiorEconomia).replace(/,00$/, "")} por ano
           </p>
         )}
       </div>
 
-      <div className="mt-8 grid gap-4 md:grid-cols-3 md:items-stretch">
+      <div className="site-planos-grid">
         {planos.map((p) => {
           const porMes = periodicidade === "Anual" ? p.precoAnualPorMes : p.precoMensal;
           return (
             <div
               key={p.id}
               data-testid="card-plano"
-              className={`relative flex flex-col rounded-2xl p-6 ${
+              className={`site-plano relative flex flex-col rounded-2xl p-6 ${
                 p.destaque
-                  ? "bg-marca-primaria text-white shadow-xl ring-2 ring-marca-acento md:-my-3 md:py-9"
-                  : "border border-gray-200 bg-white dark:border-white/10 dark:bg-white/5"
+                  ? "site-plano-destaque"
+                  : ""
               }`}
             >
               {p.destaque && (
-                <span className="absolute -top-3 left-6 rounded-full bg-marca-acento px-3 py-1 text-xs font-semibold text-marca-primaria">
+                <span className="site-plano-badge absolute -top-3 left-6 rounded-full px-3 py-1 text-xs font-semibold">
                   Mais escolhido
                 </span>
               )}
-              <h3 className="font-display text-xl font-bold">{p.nome}</h3>
-              <p className={`mt-1 text-sm ${p.destaque ? "text-white/80" : "text-gray-600 dark:text-neutral-400"}`}>{faixaProfissionais(p)}</p>
+              <h3 className="text-xl font-bold">{p.nome}</h3>
+              <p className="mt-1 text-sm site-texto-suave">{faixaProfissionais(p)}</p>
 
               <p className="mt-5">
-                <span className="font-display text-4xl font-bold">{formatarReais(porMes)}</span>
-                <span className={`text-sm ${p.destaque ? "text-white/80" : "text-gray-600 dark:text-neutral-400"}`}>/mês</span>
+                <span className="site-preco">{formatarReais(porMes)}</span>
+                <span className="text-sm site-texto-suave">/mês</span>
               </p>
-              <p className={`mt-1 min-h-5 text-xs ${p.destaque ? "text-white/80" : "text-gray-600 dark:text-neutral-400"}`}>
+              <p className="mt-1 min-h-5 text-xs site-texto-suave">
                 {periodicidade === "Anual" ? `${formatarReais(p.precoAnualPorMes * 12)} cobrados por ano` : "cobrado todo mês"}
               </p>
 
-              <Link
-                href={`/cadastro?plano=${p.id}&periodicidade=${periodicidade}`}
-                className={`mt-6 rounded-xl px-4 py-3 text-center text-sm font-semibold transition ${
-                  p.destaque
-                    ? "bg-marca-acento text-marca-primaria hover:brightness-110"
-                    : "bg-marca-primaria text-white hover:bg-marca-primaria-hover dark:bg-neutral-100 dark:text-marca-primaria dark:hover:bg-white"
-                }`}
-              >
-                Começar teste grátis
-              </Link>
+              <ul className="site-plano-beneficios">
+                {['Agenda online', 'Confirmação por código', 'Lembretes automáticos', 'Programa de fidelidade'].map(recurso => <li key={recurso}><span aria-hidden="true">✓</span>{recurso}</li>)}
+              </ul>
+              <div className="site-plano-cta pt-6">
+                <Link href={`/cadastro?plano=${p.id}&periodicidade=${periodicidade}`} className={`${p.destaque ? "site-cta" : "site-cta-secundario"} w-full`}>
+                  Começar teste grátis
+                </Link>
+              </div>
             </div>
           );
         })}
       </div>
 
-      <p className="mt-8 text-center text-sm text-gray-700 dark:text-neutral-300">
+      <p className="site-planos-contato mt-8 text-center text-sm">
         Mais de {Math.max(...planos.map((p) => p.maximoProfissionais))} profissionais?{" "}
         {whatsApp ? (
           <a

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <defs><linearGradient id="marca" x1="4" y1="8" x2="43" y2="43" gradientUnits="userSpaceOnUse"><stop stop-color="#00dcf0"/><stop offset=".5" stop-color="#008cff"/><stop offset="1" stop-color="#b744ff"/></linearGradient></defs>
+  <rect x="7" y="10" width="34" height="33" rx="6" stroke="url(#marca)" stroke-width="4"/>
+  <path d="M16 5v11M32 5v11M16 28l6 6 12-13" stroke="url(#marca)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="m40 28 2 5 5 2-5 2-2 5-2-5-5-2 5-2 2-5Z" fill="url(#marca)"/>
+</svg>
