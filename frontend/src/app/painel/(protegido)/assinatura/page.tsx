@@ -8,6 +8,9 @@ import { ROTULOS_ESTADO_ASSINATURA } from "@/lib/tipos";
 import { faixaProfissionais, formatarReais } from "@/lib/formatacao";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeTd, classeTh } from "@/components/estilos";
 
+import { CabecalhoCadastro, CarregandoCadastro } from "@/components/painel/CadastrosVisuais";
+import "@/components/painel/painel-assinatura.css";
+
 function formatarData(iso: string | null): string {
   return iso ? new Date(iso).toLocaleDateString("pt-BR") : "—";
 }
@@ -109,10 +112,10 @@ export default function PaginaAssinatura() {
   }
 
   if (semAcesso) {
-    return <p className="text-sm text-gray-600 dark:text-neutral-400">Só o administrador do negócio vê e altera a assinatura.</p>;
+    return <div className="painel-cadastro painel-assinatura"><p className="painel-assinatura-vazio">Só o administrador do negócio vê e altera a assinatura.</p></div>;
   }
 
-  if (!detalhe) return <p className="text-sm text-gray-500">Carregando...</p>;
+  if (!detalhe) return <div className="painel-cadastro painel-assinatura"><CarregandoCadastro /></div>;
 
   const prazo =
     detalhe.estado === "EmTeste"
@@ -127,23 +130,14 @@ export default function PaginaAssinatura() {
   const podeContratar = detalhe.pagamentoAutomatico && (!detalhe.contratada || detalhe.cancelamentoAte !== null) && detalhe.estado !== "Cancelada";
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Assinatura</h1>
+    <div className="painel-cadastro painel-assinatura">
+      <CabecalhoCadastro titulo="Assinatura" descricao="" />
 
-      <section className="rounded-xl border-2 border-marca-primaria/20 p-4 dark:border-marca-acento/30">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="font-display text-xl font-bold text-gray-900 dark:text-neutral-50">
-              {detalhe.plano} <span className="text-sm font-normal text-gray-500">· {detalhe.periodicidade.toLowerCase()}</span>
-            </p>
-            <p className="text-sm text-gray-600 dark:text-neutral-400">
-              {formatarReais(detalhe.precoMensalTravado)}/mês
-              {detalhe.periodicidade === "Anual" && ` · ${formatarReais(detalhe.valorDoPeriodo)} por ano`}
-            </p>
-          </div>
+      <section className="painel-assinatura-resumo" aria-label="Assinatura atual">
           <span
             data-testid="estado-assinatura"
-            className={`rounded-full px-3 py-1 text-xs font-semibold ${
+            data-estado={detalhe.estado}
+            className={`painel-assinatura-status rounded-full px-3 py-1 text-xs font-semibold ${
               detalhe.estado === "Suspensa" || detalhe.estado === "Atrasada"
                 ? "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200"
                 : "bg-gray-100 text-gray-800 dark:bg-neutral-800 dark:text-neutral-200"
@@ -151,9 +145,20 @@ export default function PaginaAssinatura() {
           >
             {ROTULOS_ESTADO_ASSINATURA[detalhe.estado]}
           </span>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="painel-assinatura-plano-atual font-display text-xl font-bold text-gray-900 dark:text-neutral-50">
+              {detalhe.plano} <span className="text-sm font-normal text-gray-500">· {detalhe.periodicidade.toLowerCase()}</span>
+            </p>
+            <p className="painel-assinatura-preco text-sm text-gray-600 dark:text-neutral-400">
+              <strong>{formatarReais(detalhe.precoMensalTravado)}</strong><span>/mês</span>
+              {detalhe.periodicidade === "Anual" && ` · ${formatarReais(detalhe.valorDoPeriodo)} por ano`}
+            </p>
+          </div>
+
         </div>
 
-        <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+        <dl className="painel-assinatura-dados mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-gray-500 dark:text-neutral-400">{prazo.rotulo}</dt>
             <dd className="font-medium">{prazo.data ? formatarData(prazo.data) : "Sem vencimento"}</dd>
@@ -178,7 +183,7 @@ export default function PaginaAssinatura() {
 
         <div className="mt-4 space-y-3">
           {podeContratar && !instrucoes && (
-            <form onSubmit={contratar} className="space-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-neutral-900">
+            <form onSubmit={contratar} className="painel-assinatura-pagamento space-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-neutral-900">
               <p className="text-gray-700 dark:text-neutral-300">
                 Contratar o plano escolhido abaixo. A primeira cobrança vence
                 {primeiroVencimento ? ` em ${formatarData(primeiroVencimento)}` : " hoje"}; você paga por
@@ -212,7 +217,7 @@ export default function PaginaAssinatura() {
               </button>
             )
           ) : (
-            <div data-testid="instrucoes-pagamento" className="space-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-neutral-900">
+            <div data-testid="instrucoes-pagamento" className="painel-assinatura-pagamento space-y-2 rounded-lg bg-gray-50 p-3 text-sm dark:bg-neutral-900">
               <p>{instrucoes.texto}</p>
               {instrucoes.chavePix && (
                 <p className="flex flex-wrap items-center gap-2">
@@ -247,12 +252,12 @@ export default function PaginaAssinatura() {
         </div>
       </section>
 
-      <section className="space-y-3">
+      <section className="painel-assinatura-planos space-y-3">
         <h2 className="font-semibold text-gray-900 dark:text-neutral-50">{podeContratar ? "Plano" : "Trocar de plano"}</h2>
         {detalhe.contratada && !detalhe.cancelamentoAte && (
           <p className="text-sm text-gray-600 dark:text-neutral-400">A troca vale a partir da próxima cobrança.</p>
         )}
-        <div className="inline-flex rounded-lg border border-gray-300 p-1 dark:border-neutral-700">
+        <div className="painel-assinatura-periodicidade inline-flex rounded-lg border border-gray-300 p-1 dark:border-neutral-700">
           {(["Mensal", "Anual"] as Periodicidade[]).map((p) => (
             <button
               key={p}
@@ -264,18 +269,19 @@ export default function PaginaAssinatura() {
             </button>
           ))}
         </div>
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="painel-assinatura-opcoes grid gap-2 sm:grid-cols-3">
           {planos.map((p) => (
             <label
               key={p.id}
-              className={`cursor-pointer rounded-xl border-2 p-3 text-sm ${
+              data-selecionado={planoEscolhido === p.id}
+              className={`painel-assinatura-opcao cursor-pointer rounded-xl border-2 p-3 text-sm ${
                 planoEscolhido === p.id ? "border-marca-primaria dark:border-marca-acento" : "border-gray-200 dark:border-neutral-800"
               }`}
             >
               <input type="radio" name="plano" className="sr-only" checked={planoEscolhido === p.id} onChange={() => setPlanoEscolhido(p.id)} />
               <span className="block font-semibold">{p.nome}</span>
               <span className="block text-gray-600 dark:text-neutral-400">{faixaProfissionais(p)}</span>
-              <span className="block font-medium">
+              <span className="painel-assinatura-valor-plano block font-medium">
                 {formatarReais(periodicidade === "Anual" ? p.precoAnualPorMes : p.precoMensal)}/mês
               </span>
             </label>
@@ -293,29 +299,29 @@ export default function PaginaAssinatura() {
         )}
       </section>
 
-      <section>
+      <section className="painel-assinatura-historico">
         <h2 className="mb-2 font-semibold text-gray-900 dark:text-neutral-50">Histórico de cobranças</h2>
         {detalhe.cobrancas.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-neutral-400">Nenhuma cobrança registrada ainda.</p>
+          <p className="painel-assinatura-vazio text-sm text-gray-500 dark:text-neutral-400">Nenhuma cobrança registrada ainda.</p>
         ) : (
           <div className={classeCartao}>
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className={classeTh}>Pago em</th>
-                  <th className={classeTh}>Valor</th>
-                  <th className={classeTh}>Período</th>
+            <table role="table" aria-label="Histórico de cobranças" className="painel-cadastro-tabela w-full">
+              <thead role="rowgroup">
+                <tr role="row">
+                  <th role="columnheader" scope="col" className={classeTh}>Pago em</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Valor</th>
+                  <th role="columnheader" scope="col" className={classeTh}>Período</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody role="rowgroup">
                 {detalhe.cobrancas.map((c) => (
-                  <tr key={`${c.pagoEm}-${c.valor}`} className="border-t border-gray-100 dark:border-neutral-800">
-                    <td className={classeTd}>{formatarData(c.pagoEm)}</td>
-                    <td className={classeTd}>
+                  <tr role="row" key={`${c.pagoEm}-${c.valor}`} className="border-t border-gray-100 dark:border-neutral-800">
+                    <td role="cell" data-label="Pago em" className={classeTd}>{formatarData(c.pagoEm)}</td>
+                    <td role="cell" data-label="Valor" className={classeTd}>
                       {formatarReais(c.valor)}
                       {c.estornadaEm && <span className="ml-2 text-xs text-red-700 dark:text-red-400">estornada</span>}
                     </td>
-                    <td className={classeTd}>
+                    <td role="cell" data-label="Período" className={classeTd}>
                       {formatarData(c.periodoInicio)} a {formatarData(c.periodoFim)}
                     </td>
                   </tr>
