@@ -458,3 +458,21 @@
 @media (prefers-reduced-motion: reduce) {
   .site-microdemo .site-celular { scale: 1; }
 }
+
+/* Polimento restrito a smartphones; o desktop aprovado mantém suas medidas. */
+@media (max-width: 767px) {
+  .site-navbar { gap: 12px; }
+  .site-header .site-navbar > a { display: inline-flex; align-items: center; min-height: 44px; }
+  .site-header .site-acoes { gap: 12px; }
+  .site-header .site-logo small { font-size: 9px; }
+  .site-hero-grid { gap: 48px; padding-bottom: 60px; }
+  .site-hero-celulares { width: 94%; max-width: 348px; }
+  .site-micro { font-size: 11px; line-height: 1.5; gap: 10px 12px; }
+  .site-micro svg { width: 14px; height: 14px; }
+  .site-demo-controles button { width: 44px; }
+  .site-demo-legenda { font-size: 12px; }
+  .site-secao, #como-funciona, #recursos, #planos, #duvidas { padding-block: 70px; }
+  .site-faq summary { font-size: 16px; line-height: 1.5; }
+  .site-rodape { font-size: 13px; line-height: 1.6; }
+  .site-rodape nav a { display: inline-flex; align-items: center; min-height: 44px; }
+}

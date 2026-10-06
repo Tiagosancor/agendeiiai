@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 const RAIZ = "http://agendeiiai.localhost:3000";
 
 for (const tema of ["light", "dark"] as const) {
-  for (const largura of [375, 430, 768, 1024, 1440, 1920]) {
+  for (const largura of [375, 390, 430, 768, 1024, 1440, 1920]) {
     test(`landing ${tema} em ${largura}px preserva conteúdo, CTAs e não transborda`, async ({ page }) => {
       await page.setViewportSize({ width: largura, height: largura === 375 ? 812 : largura === 430 ? 932 : 900 });
       await page.emulateMedia({ colorScheme: tema, reducedMotion: "reduce" });
@@ -118,14 +118,19 @@ for (const tema of ["light", "dark"] as const) {
       await expect(page.locator(".site-agenda-demo")).toHaveCSS("background-color", "rgb(247, 249, 252)");
       const preview = (await page.locator(".site-agenda-demo").boundingBox())!;
       const sidebar = (await page.locator(".agenda-demo-sidebar").boundingBox())!;
-      expect(Math.abs(sidebar.height - preview.height)).toBeLessThan(1);
+      if (largura >= 768) expect(Math.abs(sidebar.height - preview.height)).toBeLessThan(1);
       if (largura >= 1024) {
         expect(sidebar.width / preview.width).toBeGreaterThanOrEqual(.18);
         expect(sidebar.width / preview.width).toBeLessThanOrEqual(.24);
         await expect(page.locator(".agenda-demo-marca strong")).toBeVisible();
       } else if (largura < 768) {
-        expect(sidebar.width).toBe(42);
-        await expect(page.locator(".agenda-demo-marca strong")).toBeHidden();
+        expect(Math.abs(sidebar.width - preview.width)).toBeLessThan(1);
+        expect(sidebar.height).toBeLessThan(110);
+        await expect(page.locator(".agenda-demo-marca strong")).toBeVisible();
+        for (const controle of await page.locator(".site-navbar button, .site-navbar a, .site-demo-controles button, .agenda-demo-acoes button, .agenda-demo-utilitarios button").all()) {
+          if (await controle.isVisible()) expect((await controle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        }
+        await expect(page.locator(".agenda-demo-campo").first()).toHaveCSS("font-size", "16px");
       }
       const painel = await page.locator(".site-painel-frame").boundingBox();
       const demonstracao = await page.locator(".site-demonstracao").first().boundingBox();

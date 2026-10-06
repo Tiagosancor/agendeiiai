@@ -55,28 +55,31 @@ test("modal mantém foco, fecha com Escape e controles funcionam com touch em am
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(RAIZ);
   const demo = page.locator(".site-agenda-demo");
-  for (const tema of ["light", "dark"] as const) {
-    await page.emulateMedia({ colorScheme: tema, reducedMotion: "reduce" });
-    await demo.getByRole("button", { name: "Novo agendamento", exact: true }).tap();
-    const modal = page.getByRole("dialog", { name: "Novo agendamento", exact: true });
-    await expect(modal.getByRole("combobox", { name: "Cliente", exact: true })).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
-    await expect(modal.getByRole("button", { name: "Criar agendamento" })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(modal.getByRole("combobox", { name: "Cliente", exact: true })).toBeFocused();
-    const area = (await modal.boundingBox())!;
-    expect(area.x).toBeGreaterThanOrEqual(0);
-    expect(area.x + area.width).toBeLessThanOrEqual(375);
-    expect(area.y).toBeGreaterThanOrEqual(0);
-    expect(area.y + area.height).toBeLessThanOrEqual(812);
-    await page.screenshot({ path: `test-results/agenda-modal-${tema}-375.png` });
-    await page.keyboard.press("Escape");
-    await expect(modal).not.toBeVisible();
-    await expect(demo.getByRole("button", { name: "Novo agendamento", exact: true })).toBeFocused();
-    await demo.locator(".agenda-demo-agendamentos > li").first().getByRole("button", { name: "Concluir" }).tap();
-    await expect(demo.locator("[data-status]").first()).toHaveText("Concluído");
-    await demo.getByRole("button", { name: "Reiniciar demo" }).tap();
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+  for (const largura of [375, 390, 430, 768]) {
+    await page.setViewportSize({ width: largura, height: 812 });
+    for (const tema of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme: tema, reducedMotion: "reduce" });
+      await demo.getByRole("button", { name: "Novo agendamento", exact: true }).tap();
+      const modal = page.getByRole("dialog", { name: "Novo agendamento", exact: true });
+      await expect(modal.getByRole("combobox", { name: "Cliente", exact: true })).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(modal.getByRole("button", { name: "Criar agendamento" })).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(modal.getByRole("combobox", { name: "Cliente", exact: true })).toBeFocused();
+      const area = (await modal.boundingBox())!;
+      expect(area.x).toBeGreaterThanOrEqual(0);
+      expect(area.x + area.width).toBeLessThanOrEqual(largura);
+      expect(area.y).toBeGreaterThanOrEqual(0);
+      expect(area.y + area.height).toBeLessThanOrEqual(812);
+      await page.screenshot({ path: `test-results/agenda-modal-${tema}-${largura}.png` });
+      await page.keyboard.press("Escape");
+      await expect(modal).not.toBeVisible();
+      await expect(demo.getByRole("button", { name: "Novo agendamento", exact: true })).toBeFocused();
+      await demo.locator(".agenda-demo-agendamentos > li").first().getByRole("button", { name: "Concluir" }).tap();
+      await expect(demo.locator("[data-status]").first()).toHaveText("Concluído");
+      await demo.getByRole("button", { name: "Reiniciar demo" }).tap();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+    }
   }
   await contexto.close();
 });

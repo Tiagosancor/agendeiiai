@@ -116,3 +116,42 @@
   .site-demonstracao:has(.site-agenda-demo) > .site-painel-frame { width: 100%; }
   .site-demonstracao:has(.site-agenda-demo) > .site-recurso-lista-painel { grid-template-columns: 1fr; }
 }
+
+/* Adaptação restrita a tablet/mobile; o desktop permanece intacto. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .agenda-demo-filtros { font-size: 15px; }
+  .agenda-demo-campo, .agenda-demo-modal select { font-size: 16px; }
+  .agenda-demo-utilitarios button { min-height: 44px; }
+  .agenda-demo-utilitarios small { font-size: 12px; }
+}
+@media (max-width: 767px) {
+  .site-painel.site-agenda-demo { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .agenda-demo-sidebar { padding: 12px; border-right: 0; border-bottom: 1px solid #d8e4f0; }
+  [data-theme="dark"] .agenda-demo-sidebar { border-bottom-color: #203a59; }
+  .agenda-demo-marca { justify-content: flex-start; min-height: 28px; margin: 0 0 10px; }
+  .agenda-demo-marca strong { display: block; font-size: 15px; }
+  .agenda-demo-marca img { width: 24px; height: 24px; }
+  .agenda-demo-sidebar ul { grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 3px; }
+  .agenda-demo-sidebar li { min-height: 30px; padding: 4px; }
+  .agenda-demo-sidebar .agenda-demo-ativo { box-shadow: inset 0 -2px #06a7dd; }
+  [data-theme="dark"] .agenda-demo-sidebar .agenda-demo-ativo { box-shadow: inset 0 -2px #42c8ef; }
+  .agenda-demo-conteudo { padding: 22px 16px 18px; }
+  .agenda-demo-cabecalho { gap: 10px; margin-bottom: 24px; }
+  .agenda-demo-cabecalho .agenda-demo-pill { font-size: 12px; }
+  .agenda-demo-filtros { font-size: 15px; gap: 14px; }
+  .agenda-demo-campo { font-size: 16px; padding: 10px; min-height: 46px; }
+  .agenda-demo-novo { font-size: 14px; min-height: 46px; }
+  .agenda-demo-utilitarios { gap: 8px 12px; margin-bottom: 16px; }
+  .agenda-demo-utilitarios small { font-size: 12px; line-height: 1.5; }
+  .agenda-demo-utilitarios button { min-height: 44px; font-size: 13px; }
+  .agenda-demo-agendamentos > li { min-height: 148px; padding: 20px 14px; gap: 14px; }
+  .agenda-demo-horario { font-size: 15px; gap: 8px; line-height: 1.5; }
+  .agenda-demo-horario > span { font-size: 12px; }
+  .agenda-demo-atendimento p { font-size: 16px; line-height: 1.5; }
+  .agenda-demo-atendimento small { font-size: 13px; line-height: 1.6; }
+  .agenda-demo-acoes { flex-wrap: wrap; gap: 4px; }
+  .agenda-demo-acoes button { min-width: 64px; font-size: 13px; padding-inline: 8px; }
+  .agenda-demo-feedback { font-size: 14px; line-height: 1.5; }
+  .agenda-demo-modal { padding: 24px 20px; }
+  .agenda-demo-modal select { font-size: 16px; }
+}
