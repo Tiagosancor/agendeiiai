@@ -31,6 +31,7 @@ async function encaminhar(request: NextRequest, contexto: { params: Promise<{ ca
     method: request.method,
     headers: {
       "Content-Type": request.headers.get("content-type") ?? "application/json",
+      ...(request.headers.has("prefer") ? { Prefer: request.headers.get("prefer")! } : {}),
       ...(slug ? { "X-Slug-Negocio": slug } : {}),
     },
     body: request.method === "GET" || request.method === "HEAD" ? undefined : await request.text(),

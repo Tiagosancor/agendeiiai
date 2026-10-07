@@ -2,7 +2,7 @@ import { test, expect, type Page, type Route } from "@playwright/test";
 import { horarioEstabelecimentoParaIso } from "../src/lib/horario-estabelecimento";
 
 // Toda consulta/ação pública é interceptada; nenhum dado real é lido ou alterado.
-const detalhe = { id: "reserva-local", nomeNegocio: "Acme", local: "Rua de teste, 10", inicio: "2026-10-05T12:00:00Z", fim: "2026-10-05T12:30:00Z", servicos: ["Corte Teste"], total: 45, status: "Agendado" };
+const detalhe = { id: "reserva-local", nomeNegocio: "Acme", local: "Rua de teste, 10", inicio: "2026-10-05T12:00:00Z", fim: "2026-10-05T12:30:00Z", servicos: ["Corte Teste"], total: 45, status: "Agendado", acoes: { cancelar: { permitido: true }, remarcar: { permitido: true } } };
 type Cenario = {
   fuso?: string;
   status?: string;
@@ -20,6 +20,10 @@ async function preparar(page: Page, cenario: Cenario = {}) {
     if (!url.hostname.endsWith("localhost")) return rota.abort();
     if (url.pathname === "/api/publico/negocio") return rota.fulfill({ json: { fuso: cenario.fuso ?? "America/Sao_Paulo" } });
     if (url.pathname.startsWith("/api/publico/meus-agendamentos/")) {
+      if (url.pathname.endsWith("/horarios-livres")) {
+        const data = url.searchParams.get("data")!;
+        return rota.fulfill({ json: { fuso: cenario.fuso ?? "America/Sao_Paulo", data, duracaoMinutos: 30, profissionalId: "profissional-local", horarios: [horarioEstabelecimentoParaIso(`${data}T09:00`, cenario.fuso ?? "America/Sao_Paulo")] } });
+      }
       if (pedido.method() === "POST") {
         posts.push({ caminho: url.pathname, corpo: pedido.postData() ? pedido.postDataJSON() : null });
         if (cenario.acao) return cenario.acao(rota);
@@ -27,7 +31,8 @@ async function preparar(page: Page, cenario: Cenario = {}) {
       }
       consultas++;
       if (cenario.consulta) return cenario.consulta(rota, consultas, url.pathname.split("/")[4]);
-      return rota.fulfill({ json: { ...detalhe, status: cenario.status ?? "Agendado" } });
+      const status = cenario.status ?? (posts.some(p => p.caminho.endsWith("/cancelar")) ? "Cancelado" : "Agendado");
+      return rota.fulfill({ json: { ...detalhe, status, acoes: { cancelar: { permitido: status === "Agendado" }, remarcar: { permitido: status === "Agendado" } } } });
     }
     if (url.pathname.startsWith("/api/publico/") || !["GET", "HEAD"].includes(pedido.method())) throw new Error(`Requisição não simulada: ${pedido.method()} ${url.pathname}`);
     return rota.continue();
@@ -35,8 +40,14 @@ async function preparar(page: Page, cenario: Cenario = {}) {
   return { posts, erros, consultas: () => consultas };
 }
 const abrir = (page: Page, token = "token-local") => page.goto(`/agendamentos/${token}`);
-const campo = (page: Page) => page.getByLabel("Remarcar para", { exact: true });
-const remarcar = (page: Page) => page.getByRole("button", { name: "Remarcar", exact: true });
+const campo = (page: Page) => page.locator('button[aria-controls="remarcacao"]');
+const remarcar = (page: Page) => page.getByRole("button", { name: "Confirmar remarcação", exact: true });
+async function selecionar(page: Page, civil: string) {
+  if (await campo(page).getAttribute("aria-expanded") !== "true") await campo(page).click();
+  await page.getByLabel("Data da remarcação", { exact: true }).fill(civil.slice(0, 10));
+  await page.getByRole("button", { name: "09:00", exact: true }).click();
+  await page.getByRole("button", { name: "Revisar remarcação" }).click();
+}
 function portao() {
   let liberar!: () => void;
   const promessa = new Promise<void>(resolve => { liberar = resolve; });
@@ -53,7 +64,7 @@ for (const timezoneId of ["America/Sao_Paulo", "Europe/Lisbon", "America/New_Yor
       await expect(page.getByText(/segunda-feira, 5 de outubro de 2026.*09:00/)).toBeVisible();
       await expect(page.getByText("Total: R$ 45,00")).toBeVisible();
       await expect(page.getByText("Horários do estabelecimento (America/Sao_Paulo).")).toBeVisible();
-      await campo(page).fill("2026-10-06T09:00");
+      await selecionar(page, "2026-10-06T09:00");
       await remarcar(page).click();
       await expect(page.getByRole("status")).toHaveText("Agendamento remarcado.");
       expect(mock.posts).toEqual([{ caminho: "/api/publico/meus-agendamentos/token-local/remarcar", corpo: { novoInicio: "2026-10-06T12:00:00.000Z" } }]);
@@ -66,21 +77,15 @@ for (const [civil, iso] of [["2026-01-10T09:00", "2026-01-10T14:00:00.000Z"], ["
   test(`DST: offset da data ${civil}, não o offset atual`, async ({ page }) => {
     const mock = await preparar(page, { fuso: "America/New_York" });
     await abrir(page);
-    await campo(page).fill(civil);
+    await selecionar(page, civil);
     await remarcar(page).click();
     await expect(page.getByRole("status")).toHaveText("Agendamento remarcado.");
     expect(mock.posts[0].corpo).toEqual({ novoInicio: iso });
   });
 }
 for (const [civil, texto] of [["2026-03-08T02:30", "não existe"], ["2026-11-01T01:30", "ocorre duas vezes"]]) {
-  test(`DST: ${texto} não envia POST`, async ({ page }) => {
-    const mock = await preparar(page, { fuso: "America/New_York" });
-    await abrir(page);
-    await campo(page).fill(civil);
-    await remarcar(page).click();
-    await expect(page.getByRole("main").getByRole("alert")).toContainText(texto);
-    await expect(remarcar(page)).toBeEnabled();
-    expect(mock.posts).toHaveLength(0);
+  test(`DST: helper recusa horário que ${texto}; D3 envia apenas slots do servidor`, () => {
+    expect(() => horarioEstabelecimentoParaIso(civil, "America/New_York")).toThrow(texto);
   });
 }
 test("helper rejeita data inválida, fuso inválido e gap de meia hora", () => {
@@ -93,10 +98,10 @@ test("helper rejeita data inválida, fuso inválido e gap de meia hora", () => {
 test("remarcação usa o horário canônico do GET, sem assumir o valor solicitado", async ({ page }) => {
   await preparar(page, { consulta: (rota, n) => rota.fulfill({ json: n === 1 ? detalhe : { ...detalhe, inicio: "2026-10-06T13:00:00Z" } }) });
   await abrir(page);
-  await campo(page).fill("2026-10-06T09:00");
+  await selecionar(page, "2026-10-06T09:00");
   await remarcar(page).click();
   await expect(page.getByText(/terça-feira, 6 de outubro.*10:00/)).toBeVisible();
-  await expect(campo(page)).toHaveValue("");
+  await expect(campo(page)).toHaveAttribute("aria-expanded", "false");
 });
 
 test("POST aceito + GET falho oculta dado antigo e retry faz somente GET", async ({ page }) => {
@@ -104,7 +109,7 @@ test("POST aceito + GET falho oculta dado antigo e retry faz somente GET", async
     ? rota.fulfill({ status: 503, json: { title: "Indisponível" } })
     : rota.fulfill({ json: n === 1 ? detalhe : { ...detalhe, inicio: "2026-10-06T13:00:00Z" } }) });
   await abrir(page);
-  await campo(page).fill("2026-10-06T09:00");
+  await selecionar(page, "2026-10-06T09:00");
   await remarcar(page).click();
   await expect(page.getByRole("status")).toContainText("A remarcação foi aceita");
   await expect(page.getByText("Detalhes aguardando atualização.")).toBeVisible();
@@ -122,7 +127,7 @@ for (const acao of ["remarcar", "cancelar"] as const) {
     const espera = portao();
     const mock = await preparar(page, { acao: async rota => { await espera.promessa; await rota.fulfill({ status: 204, body: "" }); } });
     await abrir(page);
-    if (acao === "remarcar") await campo(page).fill("2026-10-06T09:00");
+    if (acao === "remarcar") await selecionar(page, "2026-10-06T09:00");
     else page.on("dialog", dialog => dialog.accept());
     const botao = acao === "remarcar" ? remarcar(page) : page.getByRole("button", { name: "Cancelar agendamento" });
     await botao.evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
@@ -141,7 +146,7 @@ test("cancelamento recusado na confirmação não envia ação", async ({ page }
   await abrir(page);
   page.on("dialog", dialog => dialog.dismiss());
   await page.getByRole("button", { name: "Cancelar agendamento" }).click();
-  await expect(remarcar(page)).toBeEnabled();
+  await expect(campo(page)).toBeEnabled();
   expect(mock.posts).toHaveLength(0);
 });
 
@@ -180,11 +185,11 @@ test("fuso ausente impede ações e não usa fallback do aparelho", async ({ pag
 test("erro da ação preserva detalhe e permite nova tentativa", async ({ page }) => {
   const mock = await preparar(page, { acao: rota => rota.fulfill({ status: 409, json: { detail: "Esse horário não está disponível." } }) });
   await abrir(page);
-  await campo(page).fill("2026-10-06T09:00");
+  await selecionar(page, "2026-10-06T09:00");
   await remarcar(page).click();
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("Esse horário não está disponível.");
   await expect(page.getByText(/segunda-feira, 5 de outubro.*09:00/)).toBeVisible();
-  await expect(remarcar(page)).toBeEnabled();
+  await expect(campo(page)).toBeEnabled();
   expect(mock.consultas()).toBe(1);
 });
 
@@ -212,7 +217,7 @@ test("mudança de token descarta detalhe, formulário e mensagem anteriores dura
     await rota.fulfill({ json: { ...detalhe, nomeNegocio: token === "token-novo" ? "Novo" : "Anterior" } });
   } });
   await abrir(page, "token-anterior");
-  await campo(page).fill("2026-10-06T09:00");
+  await selecionar(page, "2026-10-06T09:00");
   await remarcar(page).click();
   await expect(page.getByRole("status")).toHaveText("Agendamento remarcado.");
   await abrir(page, "token-novo");
@@ -222,7 +227,7 @@ test("mudança de token descarta detalhe, formulário e mensagem anteriores dura
   await expect(campo(page)).toHaveCount(0);
   espera.liberar();
   await expect(page.getByRole("heading", { name: "Novo" })).toBeVisible();
-  await expect(campo(page)).toHaveValue("");
+  await expect(campo(page)).toHaveAttribute("aria-expanded", "false");
 });
 for (const status of ["Cancelado", "Concluido", "Faltou", "Expirado", "Reservado", "EmAtendimento"]) {
   test(`${status}: preserva política atual de não oferecer ações`, async ({ page }) => {
@@ -246,7 +251,7 @@ for (const largura of [375, 390, 430, 768, 1024, 1440]) {
       await expect(page.locator("html")).toHaveAttribute("data-theme", tema);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.screenshot({ path: test.info().outputPath(`consulta-${largura}-${tema}.png`), fullPage: true });
-      await campo(page).fill("2026-10-06T09:00");
+      await selecionar(page, "2026-10-06T09:00");
       await remarcar(page).click();
       await expect(page.getByText("Detalhes aguardando atualização.")).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

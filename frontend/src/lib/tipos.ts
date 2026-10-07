@@ -550,6 +550,26 @@ export interface DetalhePublicoAgendamento {
   servicos: string[];
   total: number;
   status: string;
+  fuso?: string;
+  duracaoMinutos?: number;
+  profissional?: { id: string; nome: string };
+  servicosDetalhe?: { servicoId: string; nome: string; duracaoMinutos: number; preco: number }[];
+  regras?: { antecedenciaMinimaHoras: number; limiteParaAlterarEm: string };
+  acoes?: { cancelar: AcaoGestaoPublica; remarcar: AcaoGestaoPublica };
+}
+
+export interface AcaoGestaoPublica {
+  permitido: boolean;
+  codigoMotivo?: string | null;
+  motivo?: string | null;
+}
+
+export interface HorariosRemarcacaoPublica {
+  fuso: string;
+  data: string;
+  duracaoMinutos: number;
+  profissionalId: string;
+  horarios: string[];
 }
 
 // --- Sprint 4: notificações e financeiro ---

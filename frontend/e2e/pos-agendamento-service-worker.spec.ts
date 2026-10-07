@@ -9,11 +9,12 @@ import { resolve } from "node:path";
 const DETALHE = "/api/publico/meus-agendamentos/fixture-a";
 const OUTRO = "/api/publico/meus-agendamentos/fixture-b";
 const ICS = `${DETALHE}/ics`;
+const SLOTS = `${DETALHE}/horarios-livres?data=2026-10-09`;
 const DOCUMENTO = "/agendamentos/fixture-a";
 const ASSET = "/fixture-public.css";
 const PUBLICO = "/pagina-publica-fixture";
 const CACHE = "agendeiiai-shell-v1";
-const detalhe = { id: "reserva-local", nomeNegocio: "Acme", local: "Rua de teste, 10", inicio: "2026-10-05T12:00:00Z", fim: "2026-10-05T12:30:00Z", servicos: ["Corte Teste"], total: 45, status: "Agendado" };
+const detalhe = { id: "reserva-local", nomeNegocio: "Acme", local: "Rua de teste, 10", inicio: "2026-10-05T12:00:00Z", fim: "2026-10-05T12:30:00Z", servicos: ["Corte Teste"], total: 45, status: "Agendado", fuso: "America/Sao_Paulo", acoes: { cancelar: { permitido: true }, remarcar: { permitido: true } } };
 let servidor: Server;
 let base: string;
 let sw: string;
@@ -41,6 +42,10 @@ test.beforeAll(async () => {
       return resposta.end(JSON.stringify({ fuso: "America/Sao_Paulo" }));
     }
     if (url.pathname.startsWith("/api/publico/meus-agendamentos/")) {
+      if (url.pathname.endsWith("/horarios-livres")) {
+        resposta.setHeader("Content-Type", "application/json");
+        return resposta.end(JSON.stringify({ fuso: "America/Sao_Paulo", data: url.searchParams.get("data"), duracaoMinutos: 30, profissionalId: "profissional-local", horarios: [`${url.searchParams.get("data")}T12:00:00.000Z`] }));
+      }
       if (pedido.method === "POST") {
         posts.push(url.pathname.endsWith("/cancelar") ? "cancelar" : "remarcar");
         let corpo = "";
@@ -100,7 +105,7 @@ const cacheado = (page: Page, caminho: string) => page.evaluate(async caminho =>
 
 test("detalhe, ICS, HTML e RSC por token não são gravados em CacheStorage", async ({ page }) => {
   await registrar(page);
-  for (const caminho of [DETALHE, ICS, DOCUMENTO, `${DOCUMENTO}?_rsc=fixture`]) {
+  for (const caminho of [DETALHE, ICS, SLOTS, DOCUMENTO, `${DOCUMENTO}?_rsc=fixture`]) {
     expect((await ler(page, caminho)).status).toBe(200);
     expect(await cacheado(page, caminho)).toBe(false);
   }
@@ -118,9 +123,9 @@ test("offline não há detalhe nem ICS stale, mesmo com entradas antigas present
   await page.evaluate(async ({ caminhos, cache }) => {
     const destino = await caches.open(cache);
     for (const caminho of caminhos) await destino.put(caminho, new Response("conteúdo antigo sensível", { status: 200 }));
-  }, { caminhos: [DETALHE, ICS, DOCUMENTO, `${DOCUMENTO}?_rsc=fixture`], cache: CACHE });
+  }, { caminhos: [DETALHE, ICS, SLOTS, DOCUMENTO, `${DOCUMENTO}?_rsc=fixture`], cache: CACHE });
   await context.setOffline(true);
-  for (const caminho of [DETALHE, ICS, DOCUMENTO, `${DOCUMENTO}?_rsc=fixture`]) expect(await ler(page, caminho)).toEqual({ status: null, texto: "indisponível" });
+  for (const caminho of [DETALHE, ICS, SLOTS, DOCUMENTO, `${DOCUMENTO}?_rsc=fixture`]) expect(await ler(page, caminho)).toEqual({ status: null, texto: "indisponível" });
   expect(await ler(page, `${DOCUMENTO}?_rsc=fixture`, { RSC: "1" })).toEqual({ status: null, texto: "indisponível" });
 });
 
@@ -195,7 +200,7 @@ test("assets e página pública continuam com fallback offline", async ({ page, 
 test("gestão real online preserva cancelamento com SW ativo", async ({ page }) => {
   await registrar(page);
   await page.goto(`${base}${DOCUMENTO}`);
-  await expect(page.getByLabel("Remarcar para", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remarcar agendamento" })).toBeVisible();
   expect(await page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
   page.on("dialog", dialog => dialog.accept());
   await page.getByRole("button", { name: "Cancelar agendamento" }).click();
@@ -210,9 +215,12 @@ test("gestão real: remarcação, refresh falho, offline e retry online sem repe
   await page.goto(`${base}${DOCUMENTO}`);
   await expect(page.getByText(/segunda-feira, 5 de outubro.*09:00/)).toBeVisible();
   await page.screenshot({ path: test.info().outputPath("sw-online.png"), fullPage: true });
-  await page.getByLabel("Remarcar para", { exact: true }).fill("2026-10-06T09:00");
+  await page.getByRole("button", { name: "Remarcar agendamento" }).click();
+  await page.getByLabel("Data da remarcação").fill("2026-10-06");
+  await page.getByRole("button", { name: "09:00", exact: true }).click();
+  await page.getByRole("button", { name: "Revisar remarcação" }).click();
   falharRefresh = true;
-  await page.getByRole("button", { name: "Remarcar", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmar remarcação", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("A remarcação foi aceita");
   await context.setOffline(true);
   await page.getByRole("button", { name: "Atualizar detalhes", exact: true }).click();
