@@ -268,7 +268,8 @@ for (const fuso of ["America/Sao_Paulo", "Europe/Lisbon", "America/New_York"]) {
     await verificar(page);
     await expect(assistente(page).getByText(/segunda-feira, 05 de outubro às 09:00/)).toBeVisible();
     await assistente(page).getByRole("button", { name: "Confirmar Agendamento", exact: true }).click();
-    await expect(assistente(page).getByText(/segunda-feira, 05 de outubro às 09:00/)).toBeVisible();
+    await expect(assistente(page).locator("dl")).toContainText("segunda-feira, 05 de outubro");
+    await expect(assistente(page).locator("dl")).toContainText("09:00");
     await contexto.close();
   });
 }

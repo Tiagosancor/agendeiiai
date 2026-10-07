@@ -5,6 +5,8 @@ import { requisicaoApiPublica, ErroApi } from "@/lib/api";
 import { formatarReais } from "@/lib/formatacao";
 import { dataNoFuso, proximosDiasDoNegocio, formatarDiaDaFaixa, formatarHoraDoNegocio, formatarDataDoNegocio } from "./datas-agendamento";
 import "./assistente-agendamento.css";
+import "./experiencia-publica.css";
+import { identidadePublica } from "./identidade-publica";
 import { fundoDoNegocio } from "@/lib/fundo";
 import type {
   CategoriaComServicosPublicos,
@@ -435,11 +437,12 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     <dialog
       ref={dialogo}
       data-accent-padrao={!negocio.corPrimaria || negocio.corPrimaria.toLowerCase() === "#2563eb"}
+      data-fundo-personalizado={fundo.temFundo}
       aria-modal="true"
       aria-labelledby={`${id}-titulo`}
       data-testid="assistente-agendamento"
       className={`assistente-publico fixed inset-0 z-40 flex flex-col ${fundo.temFundo ? "" : "bg-white dark:bg-neutral-950"}`}
-      style={{ ...fundo.estilo, "--cor-primaria": negocio.corPrimaria ?? "#2563eb" } as React.CSSProperties}
+      style={{ ...identidadePublica(negocio.corPrimaria, negocio.corSecundaria), ...fundo.estilo }}
     >
       <div data-testid="assistente-marca" className="flex items-center gap-2 px-4 pt-3 pb-1">
         {negocio.logoUrl && <img src={negocio.logoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />}
@@ -452,14 +455,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
         </span>
       </div>
 
-      <div
-        className={
-          fundo.temFundo
-            ? "mx-2 mt-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white shadow-sm sm:mx-auto sm:w-full sm:max-w-xl dark:bg-neutral-950"
-            : "flex min-h-0 flex-1 flex-col"
-        }
-      >
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-neutral-800">
+      <div className="assistente-painel">
+      <div className="assistente-topo flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-neutral-800">
         {etapa !== primeiraEtapa && etapa !== "sucesso" ? (
           <button disabled={reservando} onClick={() => setEtapa((e) => (typeof e === "number" ? ((e - 1) as Etapa) : e))} className="text-sm text-gray-600 dark:text-neutral-300">
             ← Voltar
@@ -483,13 +480,13 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+      <div className="assistente-corpo min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {erro && <p id={`${id}-erro`} role="alert" tabIndex={-1} data-erro-etapa className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{erro}</p>}
 
         {etapa === 1 && (
           <div>
             <h2 id={`${id}-titulo`} tabIndex={-1} className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha o profissional</h2>
-            <div className="space-y-2" role="group" aria-label="Profissionais">
+            <div className="assistente-profissionais space-y-2" role="group" aria-label="Profissionais">
               <button
                 aria-pressed={profissionalId === QUALQUER}
                 onClick={() => escolherProfissional(QUALQUER)}
@@ -497,7 +494,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                   profissionalId === QUALQUER ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950" : "border-gray-300 dark:border-neutral-700"
                 }`}
               >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--cor-primaria) text-white">★</span>
+                <span aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-(--cor-primaria) text-white">↗</span>
                 <span>
                   <span className="block font-medium text-gray-900 dark:text-neutral-50">
                     {servicoInicialId ? "Qualquer profissional entre eles" : "Qualquer profissional"}
@@ -539,7 +536,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               {profissionalEscolhido ? `Com ${profissionalEscolhido.nome}` : "Com qualquer profissional"}
             </p>
             {catalogo.length === 0 && (
-              <div className="space-y-2 text-sm text-gray-500 dark:text-neutral-400">
+              <div className="assistente-estado space-y-2 text-sm text-gray-500 dark:text-neutral-400">
                 <p>Nenhum serviço disponível para essa escolha.</p>
                 <button onClick={() => unico ? aoFechar() : setEtapa(1)} className="rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">
                   {unico ? "Voltar à página" : "Escolher outro profissional"}
@@ -549,7 +546,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             {catalogo.map((categoria) => (
               <div key={categoria.categoriaId} className="mb-4">
                 <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-neutral-400">{categoria.nome}</h3>
-                <div className="space-y-2" role="group" aria-label={categoria.nome}>
+                <div className="assistente-servicos space-y-2" role="group" aria-label={categoria.nome}>
                   {categoria.servicos.map((s) => {
                     const selecionado = servicoIds.includes(s.id);
                     const valores = valoresDe(s);
@@ -591,7 +588,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               {profissionalEscolhido ? `Com ${profissionalEscolhido.nome}` : "Com qualquer profissional"}
             </p>
 
-            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="assistente-datas mb-3 flex gap-2 overflow-x-auto pb-1">
               {proximosDiasDoNegocio(14, negocio.fuso).map((dia) => {
                 const selecionado = dia === dataEscolhida;
                 return (
@@ -612,6 +609,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                   >
                     <span>{formatarDiaDaFaixa(dia)}</span>
                     <span className="font-semibold">{Number(dia.slice(8))}</span>
+                    <span>{new Date(`${dia}T12:00:00Z`).toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" })}</span>
                   </button>
                 );
               })}
@@ -620,7 +618,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             {profissionaisElegiveis.length === 0 ? (
               <p className="text-sm text-gray-500">Nenhum profissional faz todos esses serviços juntos. Volte e ajuste a escolha.</p>
             ) : disponibilidadeAtual?.status === "erro" ? (
-              <div role="alert" className="space-y-2 text-sm text-gray-500 dark:text-neutral-400">
+              <div role="alert" className="assistente-estado space-y-2 text-sm text-gray-500 dark:text-neutral-400">
                 <p>Não foi possível consultar os horários.</p>
                 <button onClick={() => {
                   setDisponibilidade(null);
@@ -630,15 +628,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 }} className="rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">Tentar novamente</button>
               </div>
             ) : horariosLivres === null ? (
-              <p role="status" className="text-sm text-gray-600 dark:text-neutral-400">Carregando horários...</p>
+              <p role="status" className="assistente-estado text-sm text-gray-600 dark:text-neutral-400">Carregando horários...</p>
             ) : horariosLivres.length === 0 ? (
-              <p role="status" className="text-sm text-gray-600 dark:text-neutral-400">Nenhum horário livre neste dia. Escolha outra data.</p>
+              <p role="status" className="assistente-estado text-sm text-gray-600 dark:text-neutral-400">Nenhum horário livre neste dia. Escolha outra data.</p>
             ) : (
-              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Horários disponíveis">
+              <div className="assistente-horarios grid grid-cols-3 gap-2" role="group" aria-label="Horários disponíveis">
                 {horariosLivres.map((h) => (
                   <button
                     key={h.inicio}
                     disabled={reservando}
+                    aria-label={formatarHoraDoNegocio(h.inicio, negocio.fuso)}
                     aria-pressed={horarioEscolhido?.inicio === h.inicio && horarioEscolhido.profissionalId === h.profissionalId}
                     onClick={() => { setHorarioEscolhido(h); setChaveHorarioEscolhido(chaveDisponibilidade); }}
                     className={`rounded-lg border px-2 py-2 text-sm ${
@@ -656,7 +655,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
         )}
 
         {etapa === 4 && (
-          <div className="space-y-3">
+          <div className="assistente-dados space-y-3">
             <h2 id={`${id}-titulo`} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Seus dados</h2>
             {reservadoAte && (
               <p className="text-xs text-gray-500 dark:text-neutral-400">
@@ -664,7 +663,9 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               </p>
             )}
 
-            <input
+            {!codigoEnviado && <>
+            <label htmlFor={`${id}-nome`} className="assistente-campo">Nome completo</label>
+            <input id={`${id}-nome`}
               aria-label="Nome completo" autoComplete="name"
               placeholder="Nome completo"
               value={nome}
@@ -672,7 +673,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               disabled={codigoEnviado || enviandoCodigo || validandoCodigo}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
-            <input
+            <label htmlFor={`${id}-telefone`} className="assistente-campo">WhatsApp com DDD</label>
+            <input id={`${id}-telefone`}
               placeholder="WhatsApp com DDD — ex.: (71) 98888-7777"
               aria-label="WhatsApp com DDD"
               type="tel"
@@ -691,7 +693,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               disabled={codigoEnviado || enviandoCodigo || validandoCodigo}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
-            <input
+            <label htmlFor={`${id}-email`} className="assistente-campo">E-mail <span className="font-normal">(opcional)</span></label>
+            <input id={`${id}-email`}
               aria-label="E-mail" autoComplete="email"
               placeholder="E-mail"
               type="email"
@@ -700,6 +703,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               disabled={codigoEnviado || enviandoCodigo || validandoCodigo}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
+            </>}
             {!codigoEnviado && !email.trim() && (
               <p data-testid="aviso-sem-email" className="text-xs text-gray-500 dark:text-neutral-400">
                 Sem e-mail, o código chega só pelo WhatsApp. Com e-mail, você recebe pelos dois.
@@ -707,7 +711,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             )}
 
             {!codigoEnviado && (
-              <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-neutral-400">
+              <label className="assistente-consentimento flex items-start gap-2 text-xs text-gray-600 dark:text-neutral-400">
                 <input type="checkbox" checked={aceite} onChange={(e) => setAceite(e.target.checked)} className="mt-0.5" />
                 <span>
                   Ao agendar, concordo com os termos de serviço e a{" "}
@@ -723,12 +727,14 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               <button
                 onClick={enviarCodigo}
                 disabled={!podeEnviarCodigo || enviandoCodigo}
-                className="w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                className="publico-cta w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
               >
                 {enviandoCodigo ? "Enviando..." : "Enviar código"}
               </button>
             ) : (
-              <div className="space-y-2">
+              <div className="assistente-codigo space-y-2">
+                <h3>Código enviado</h3>
+                <p className="text-sm text-gray-600 dark:text-neutral-400">Confirme seu contato para finalizar. WhatsApp •••• {telefone.replace(/\D/g, "").slice(-4)}</p>
                 <p id={`${id}-instrucao-codigo`} role="status" className="text-sm text-gray-600 dark:text-neutral-400">
                   {email.trim()
                     ? "Digite o código de 6 dígitos enviado por WhatsApp e e-mail."
@@ -745,11 +751,11 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 <button
                   onClick={validarCodigo}
                   disabled={codigo.length !== 6 || validandoCodigo}
-                  className="w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  className="publico-cta w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                 >
                   {validandoCodigo ? "Validando..." : "Confirmar código"}
                 </button>
-                <div className="flex justify-between text-xs">
+                <div className="codigo-acoes flex justify-between text-xs">
                   <button
                     disabled={enviandoCodigo || validandoCodigo}
                     onClick={() => {
@@ -772,7 +778,20 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
         {etapa === 5 && horarioEscolhido && (
           <div className="space-y-4">
             <h2 id={`${id}-titulo`} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Resumo</h2>
-
+            <p className="text-sm text-gray-600 dark:text-neutral-400">Confira seu horário antes de confirmar.</p>
+            <div className="assistente-resumo-card">
+            <div>
+              <h3>Serviços</h3>
+              <ul>
+                {servicosSelecionados.map((s) => (
+                  <li key={s.id} className="flex justify-between">
+                    <span>{s.nome}</span>
+                    <span>{formatarReais(s.preco)}</span>
+                  </li>
+                ))}
+              </ul>
+              {nomeDoProfissional && <p className="mt-3 text-sm text-gray-600 dark:text-neutral-400">com {nomeDoProfissional}</p>}
+            </div>
             <div>
               <h3 className="text-xs font-semibold uppercase text-gray-500">Quando</h3>
               <p className="text-sm text-gray-800 dark:text-neutral-200">
@@ -781,26 +800,17 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               </p>
             </div>
 
-            <div>
+            {(negocio.bairro || negocio.cidade) && <div>
               <h3 className="text-xs font-semibold uppercase text-gray-500">Onde</h3>
               <p className="text-sm text-gray-800 dark:text-neutral-200">{[negocio.bairro, negocio.cidade].filter(Boolean).join(", ")}</p>
-            </div>
+            </div>}
 
-            <div>
-              <h3 className="text-xs font-semibold uppercase text-gray-500">Serviços</h3>
-              {nomeDoProfissional && <p className="text-xs text-gray-500 dark:text-neutral-400">com {nomeDoProfissional}</p>}
-              <ul className="text-sm text-gray-800 dark:text-neutral-200">
-                {servicosSelecionados.map((s) => (
-                  <li key={s.id} className="flex justify-between">
-                    <span>{s.nome}</span>
-                    <span>{formatarReais(s.preco)}</span>
-                  </li>
-                ))}
-              </ul>
             </div>
-
+            <div className="assistente-opcionais">
+            <p>Detalhes opcionais</p>
+            <label className="assistente-campo" htmlFor={`${id}-cupom`}>Cupom</label>
             <div className="flex gap-2">
-              <input
+              <input id={`${id}-cupom`}
                 aria-label="Cupom" aria-invalid={campoComErro === "cupom" && !!erro} aria-describedby={campoComErro === "cupom" && erro ? `${id}-erro` : undefined}
                 placeholder="Cupom"
                 value={cupomCodigo}
@@ -816,7 +826,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               </button>
             </div>
 
-            <textarea
+            <label className="assistente-campo" htmlFor={`${id}-observacoes`}>Observações <span className="font-normal">(opcional)</span></label>
+            <textarea id={`${id}-observacoes`}
               aria-label="Observações (opcional)"
               placeholder="Observações (opcional)"
               value={observacoes}
@@ -824,21 +835,25 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               rows={2}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
             />
+            </div>
           </div>
         )}
 
         {etapa === "sucesso" && resumoFinal && (
-          <div className="space-y-4 text-center">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl text-green-600 dark:bg-green-950">
+          <div className="assistente-sucesso space-y-4">
+            <div aria-hidden="true" className="sucesso-simbolo">
               ✓
             </div>
             <h2 id={`${id}-titulo`} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Agendamento confirmado!</h2>
-            <p className="text-sm text-gray-600 dark:text-neutral-400">
-              {formatarDataDoNegocio(resumoFinal.inicio, negocio.fuso)} às{" "}
-              {formatarHoraDoNegocio(resumoFinal.inicio, negocio.fuso)}
-            </p>
-            <p className="text-sm text-gray-600 dark:text-neutral-400">{resumoFinal.servicos.join(", ")}</p>
-            <div className="flex flex-col gap-2">
+            <p className="sucesso-intro text-sm text-gray-600 dark:text-neutral-400">Seu horário está marcado. Confira os detalhes abaixo.</p>
+            <dl>
+              <div><dt>Serviços</dt><dd>{resumoFinal.servicos.join(", ")}</dd></div>
+              {nomeDoProfissional && <div><dt>Profissional</dt><dd>{nomeDoProfissional}</dd></div>}
+              <div><dt>Data e horário</dt><dd><strong>{formatarHoraDoNegocio(resumoFinal.inicio, negocio.fuso)}</strong><br />{formatarDataDoNegocio(resumoFinal.inicio, negocio.fuso)}</dd></div>
+              {(resumoFinal.local || negocio.cidade || negocio.rua) && <div><dt>Local</dt><dd>{resumoFinal.local || [negocio.rua, negocio.numero, negocio.bairro, negocio.cidade].filter(Boolean).join(", ")}</dd></div>}
+              <div><dt>Total</dt><dd>{formatarReais(resumoFinal.total)}</dd></div>
+            </dl>
+            <div className="sucesso-acoes">
               <a
                 href={`/api/publico/meus-agendamentos/${tokenAgendamento}/ics`}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-neutral-700"
@@ -851,7 +866,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 </a>
               )}
             </div>
-            <button onClick={aoFechar} className="w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white">
+            <button onClick={aoFechar} className="publico-cta w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white">
               Fechar
             </button>
           </div>
@@ -883,7 +898,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               else if (etapa === 4) setEtapa(5);
               else if (etapa === 5) confirmarAgendamento();
             }}
-            className="w-full rounded-lg bg-(--cor-primaria) px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            className="publico-cta w-full rounded-lg bg-(--cor-primaria) px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
             {reservando ? "Reservando..." : textoBotaoContinuar(etapa, { podeEscolherServicos, podeContinuarServicos, podeContinuarHorario, podeConfirmar, confirmando })}
           </button>

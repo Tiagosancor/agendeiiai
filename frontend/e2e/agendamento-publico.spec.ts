@@ -182,7 +182,7 @@ test("com 'Qualquer profissional', cada horário aparece uma vez só", async ({ 
   await page.goto("/");
   await page.getByRole("button", { name: "Agendar", exact: true }).click();
   const assistente = page.getByTestId("assistente-agendamento");
-  await assistente.getByRole("button", { name: /^★\s*Qualquer profissional/ }).click();
+  await assistente.getByRole("button", { name: /^Qualquer profissional/ }).click();
   await assistente.getByRole("button", { name: "Continuar" }).click();
   await assistente.getByRole("button", { name: new RegExp(nomeServico) }).click();
   await assistente.getByRole("button", { name: "Continuar" }).click();
@@ -208,7 +208,7 @@ test("à noite (depois das 21h no Brasil), o dia pedido à API é o mesmo dia mo
   await page.goto("/");
   await page.getByRole("button", { name: "Agendar", exact: true }).click();
   const assistente = page.getByTestId("assistente-agendamento");
-  await assistente.getByRole("button", { name: /^★\s*Qualquer profissional/ }).click();
+  await assistente.getByRole("button", { name: /^Qualquer profissional/ }).click();
   await assistente.getByRole("button", { name: "Continuar" }).click();
   await assistente.locator("button[aria-pressed]").first().click();
   const pedido = page.waitForRequest((r) => r.url().includes("/horarios-livres"));

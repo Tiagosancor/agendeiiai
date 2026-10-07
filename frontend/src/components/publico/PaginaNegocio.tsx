@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import Image from "next/image";
 import { requisicaoApiPublica } from "@/lib/api";
 import type { CategoriaComServicosPublicos, NegocioPublico, ProfissionalPublico } from "@/lib/tipos";
 import { NOMES_DIAS_SEMANA } from "@/lib/tipos";
 import { AssistenteAgendamento } from "@/components/publico/AssistenteAgendamento";
 import { BotaoTema } from "@/components/BotaoTema";
 import { formatarReais } from "@/lib/formatacao";
+import "./experiencia-publica.css";
+import { identidadePublica } from "./identidade-publica";
 import { fundoDoNegocio } from "@/lib/fundo";
 
 function iniciaisNome(nome: string): string {
@@ -87,11 +90,12 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
   return (
     <div
       data-testid="pagina-negocio"
-      className={fundo.temFundo ? "min-h-screen" : undefined}
-      style={{ "--cor-primaria": corPrimaria, "--cor-secundaria": corSecundaria, ...fundo.estilo } as React.CSSProperties}
+      className="pagina-publica"
+      data-fundo-personalizado={fundo.temFundo}
+      style={{ ...identidadePublica(corPrimaria, corSecundaria), ...fundo.estilo }}
     >
-      <header className="sticky top-0 z-30 flex items-center justify-between border-b border-gray-100 bg-white/90 px-4 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
-        <div className="flex items-center gap-2">
+      <header className="pagina-cabecalho sticky top-0 z-30 flex items-center justify-between border-b border-gray-100 bg-white/90 px-4 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/90">
+        <div className="pagina-marca flex items-center gap-2">
           {negocio.logoUrl && <img src={negocio.logoUrl} alt="" className="h-8 w-8 rounded-full object-cover" />}
           <span className="font-semibold text-gray-900 dark:text-neutral-50">{negocio.nomeExibido}</span>
         </div>
@@ -101,7 +105,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
             <button
               disabled={estadoCatalogo !== "sucesso"}
               onClick={() => abrirAssistente()}
-              className="rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
+              className="publico-cta rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
             >
               Agendar
             </button>
@@ -110,7 +114,14 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
       </header>
 
       <main>
-        <section className="px-4 py-12 text-center">
+        <section className="pagina-hero">
+          <div className="pagina-hero-marca">
+            {negocio.logoUrl ? <Image src={negocio.logoUrl} alt="" width={58} height={58} unoptimized className="pagina-hero-avatar" /> : <span className="pagina-hero-avatar" aria-hidden="true">{iniciaisNome(negocio.nomeExibido)}</span>}
+            <div>
+              <p className="pagina-hero-nome">{negocio.nomeExibido}</p>
+              {enderecoResumido(negocio) && <p className="pagina-hero-local">{enderecoResumido(negocio)}</p>}
+            </div>
+          </div>
           <h1 className={`mx-auto max-w-md text-2xl font-bold ${classeTituloTopo}`}>
             {negocio.tituloPagina ?? `Bem-vindo à ${negocio.nomeExibido}`}
           </h1>
@@ -121,7 +132,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
             <button
               disabled={estadoCatalogo !== "sucesso"}
               onClick={() => abrirAssistente()}
-              className="mt-6 rounded-lg bg-(--cor-primaria) px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
+              className="publico-cta mt-6 rounded-lg bg-(--cor-primaria) px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
               Agendar Agora
             </button>
@@ -140,34 +151,14 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
               )}
             </p>
           )}
+          {negocio.textoSobre && <p>{negocio.textoSobre}</p>}
         </section>
 
         <div
           data-testid="conteudo-pagina"
-          className={fundo.temFundo ? "mx-3 mb-6 overflow-hidden rounded-2xl bg-white shadow-sm sm:mx-auto sm:max-w-2xl dark:bg-neutral-950" : undefined}
+          className="pagina-conteudo"
         >
-        {profissionais && profissionais.length > 0 && (
-          <section className="border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-50">Equipe</h2>
-            <div className="flex gap-4 overflow-x-auto pb-2">
-              {profissionais.map((p) => (
-                <div key={p.id} className="flex w-20 shrink-0 flex-col items-center text-center">
-                  {p.fotoUrl ? (
-                    <img src={p.fotoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
-                  ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-(--cor-primaria) text-sm font-semibold text-white">
-                      {iniciaisNome(p.nome)}
-                    </div>
-                  )}
-                  <span className="mt-2 text-xs font-medium text-gray-800 dark:text-neutral-200">{p.nome.split(" ")[0]}</span>
-                  {p.funcao && <span className="text-xs text-gray-500 dark:text-neutral-400">{p.funcao}</span>}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
+        <section className="pagina-servicos border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
           <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-50">Serviços</h2>
 
           {estadoCatalogo === "carregando" && <p role="status" className="text-sm text-gray-500 dark:text-neutral-400">Carregando serviços e profissionais...</p>}
@@ -211,6 +202,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
               return (
                 <div key={categoria.categoriaId} className="rounded-lg border border-gray-200 dark:border-neutral-800">
                   <button
+                    aria-expanded={aberta}
                     onClick={() => alternarCategoria(categoria.categoriaId)}
                     className="flex w-full items-center justify-between px-3 py-2 text-left text-sm font-medium text-gray-800 dark:text-neutral-200"
                   >
@@ -243,11 +235,32 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           </div>
         </section>
 
-        <section className="border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
+        {profissionais && profissionais.length > 0 && (
+          <section className="pagina-equipe border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-50">Equipe</h2>
+            <div className="flex gap-4 overflow-x-auto pb-2">
+              {profissionais.map((p) => (
+                <div key={p.id} className="flex w-20 shrink-0 flex-col items-center text-center">
+                  {p.fotoUrl ? (
+                    <img src={p.fotoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-(--cor-primaria) text-sm font-semibold text-white">
+                      {iniciaisNome(p.nome)}
+                    </div>
+                  )}
+                  <span className="mt-2 text-xs font-medium text-gray-800 dark:text-neutral-200">{p.nome.split(" ")[0]}</span>
+                  {p.funcao && <span className="text-xs text-gray-500 dark:text-neutral-400">{p.funcao}</span>}
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className="pagina-local border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
           <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Localização</h2>
           <p className="text-sm text-gray-700 dark:text-neutral-300">{enderecoResumido(negocio)}</p>
           {enderecoCompleto(negocio) && <p className="text-sm text-gray-500 dark:text-neutral-400">{enderecoCompleto(negocio)}</p>}
-          {negocio.telefone && <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400">{negocio.telefone}</p>}
+          {negocio.telefone && <a href={`tel:${negocio.telefone}`}>{negocio.telefone}</a>}
 
           {negocio.horarioFuncionamento.length > 0 && (
             <ul className="mt-3 space-y-0.5 text-sm text-gray-600 dark:text-neutral-400">
@@ -266,7 +279,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
       </main>
 
       <footer
-        className={`px-4 py-6 text-center text-xs ${
+        className={`pagina-rodape px-4 py-6 text-center text-xs ${
           fundo.temFundo ? classeTextoTopo : "border-t border-gray-100 text-gray-400 dark:border-neutral-800 dark:text-neutral-500"
         }`}
       >
@@ -291,6 +304,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
 }
 
 function FormularioContato() {
+  const id = useId();
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
@@ -320,32 +334,39 @@ function FormularioContato() {
   }
 
   return (
-    <section className="border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
+    <section className="pagina-contato border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
       <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Fale Conosco</h2>
       <form onSubmit={aoEnviar} className="space-y-3">
-        <input
+        <div><label htmlFor={`${id}-nome`}>Nome</label>
+        <input id={`${id}-nome`}
           required
           placeholder="Nome"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
         />
-        <div className="flex gap-2">
-          <input
+        </div>
+        <div className="contato-dupla">
+          <div><label htmlFor={`${id}-telefone`}>Telefone</label>
+          <input id={`${id}-telefone`} type="tel" inputMode="tel"
             placeholder="Telefone"
             value={telefone}
             onChange={(e) => setTelefone(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
           />
-          <input
+          </div>
+          <div><label htmlFor={`${id}-email`}>E-mail</label>
+          <input id={`${id}-email`}
             placeholder="E-mail"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
           />
+          </div>
         </div>
-        <textarea
+        <div><label htmlFor={`${id}-mensagem`}>Mensagem</label>
+        <textarea id={`${id}-mensagem`}
           required
           rows={3}
           placeholder="Mensagem"
@@ -353,15 +374,16 @@ function FormularioContato() {
           onChange={(e) => setMensagem(e.target.value)}
           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-(--cor-primaria) dark:border-neutral-700 dark:bg-neutral-900"
         />
+        </div>
         <button
           type="submit"
           disabled={enviando}
-          className="rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
+          className="publico-cta rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-60"
         >
           {enviando ? "Enviando..." : "Enviar"}
         </button>
-        {status === "enviado" && <p className="text-sm text-green-600">Mensagem enviada!</p>}
-        {status === "erro" && <p className="text-sm text-red-600">Não foi possível enviar. Tente novamente.</p>}
+        {status === "enviado" && <p role="status" className="text-sm text-green-600">Mensagem enviada!</p>}
+        {status === "erro" && <p role="alert" className="text-sm text-red-600">Não foi possível enviar. Tente novamente.</p>}
       </form>
     </section>
   );
