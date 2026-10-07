@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { requisicaoApiPublica, ErroApi } from "@/lib/api";
 import { formatarReais } from "@/lib/formatacao";
 import { dataNoFuso, proximosDiasDoNegocio, formatarDiaDaFaixa, formatarHoraDoNegocio, formatarDataDoNegocio } from "./datas-agendamento";
+import "./assistente-agendamento.css";
 import { fundoDoNegocio } from "@/lib/fundo";
 import type {
   CategoriaComServicosPublicos,
@@ -32,6 +33,11 @@ interface Props {
 }
 
 export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, profissionais, servicoInicialId }: Props) {
+  const id = useId();
+  const dialogo = useRef<HTMLDialogElement>(null);
+  const fecharAtual = useRef(aoFechar);
+  const reservandoAtual = useRef(false);
+  const [campoComErro, setCampoComErro] = useState<"codigo" | "cupom" | null>(null);
   // Com um único profissional ativo, o passo Profissional é pulado (seção 6.2.1).
   const unico = profissionais.length === 1 ? profissionais[0] : null;
   const primeiraEtapa: Etapa = unico ? 2 : 1;
@@ -145,6 +151,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     setResumoFinal(null);
     setTokenAgendamento(null);
     setErro(null);
+    setCampoComErro(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto, servicoInicialId]);
 
@@ -173,6 +180,68 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     return () => clearTimeout(id);
   }, [reenviarEm]);
 
+  useEffect(() => {
+    fecharAtual.current = aoFechar;
+    reservandoAtual.current = reservando;
+  }, [aoFechar, reservando]);
+
+  useEffect(() => {
+    if (!aberto || !dialogo.current) return;
+    const elemento = dialogo.current;
+    const origem = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overflowAnterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    elemento.showModal();
+    const cancelar = (evento: Event) => {
+      evento.preventDefault();
+      // Fechar só encerra a interface; a reserva conserva a expiração do servidor.
+      if (!reservandoAtual.current) fecharAtual.current();
+    };
+    const conterTabulacao = (evento: KeyboardEvent) => {
+      if (evento.key !== "Tab") return;
+      const controles = Array.from(elemento.querySelectorAll<HTMLElement>(
+        "button:not(:disabled), a[href], input:not(:disabled), textarea:not(:disabled), [tabindex='0']",
+      )).filter((controle) => controle.getClientRects().length > 0);
+      const primeiro = controles[0];
+      const ultimo = controles.at(-1);
+      if (!primeiro || !ultimo) { evento.preventDefault(); return; }
+      const ativo = document.activeElement;
+      if (evento.shiftKey && (ativo === primeiro || !controles.includes(ativo as HTMLElement))) {
+        evento.preventDefault();
+        ultimo.focus();
+      } else if (!evento.shiftKey && ativo === ultimo) {
+        evento.preventDefault();
+        primeiro.focus();
+      }
+    };
+    elemento.addEventListener("cancel", cancelar);
+    elemento.addEventListener("keydown", conterTabulacao);
+    return () => {
+      elemento.removeEventListener("cancel", cancelar);
+      elemento.removeEventListener("keydown", conterTabulacao);
+      elemento.close();
+      document.body.style.overflow = overflowAnterior;
+      if (origem?.isConnected) origem.focus({ preventScroll: true });
+    };
+  }, [aberto]);
+
+  useEffect(() => {
+    if (!aberto) return;
+    const alvo = codigoEnviado && etapa === 4
+      ? dialogo.current?.querySelector<HTMLInputElement>("[data-campo-codigo]")
+      : dialogo.current?.querySelector<HTMLElement>("h2");
+    alvo?.focus({ preventScroll: true });
+    alvo?.scrollIntoView({ block: "nearest" });
+  }, [aberto, etapa, codigoEnviado]);
+
+  useEffect(() => {
+    if (!aberto || !erro) return;
+    const alvo = dialogo.current?.querySelector<HTMLElement>("[aria-invalid=true]")
+      ?? dialogo.current?.querySelector<HTMLElement>("[data-erro-etapa]");
+    alvo?.focus({ preventScroll: true });
+    alvo?.scrollIntoView({ block: "nearest" });
+  }, [aberto, erro]);
+
   if (!aberto) return null;
 
   /** Trocar de profissional tira os serviços que o novo não executa. */
@@ -199,6 +268,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     reservaEmCurso.current = true;
     setReservando(true);
     setErro(null);
+    setCampoComErro(null);
 
     try {
       const dados: CriarReservaPublica = {
@@ -224,6 +294,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
   async function enviarCodigo() {
     setErro(null);
+    setCampoComErro(null);
     setEnviandoCodigo(true);
     try {
       await requisicaoApiPublica("/codigos", { metodo: "POST", corpo: { telefone, email: email || null } });
@@ -239,6 +310,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   /** Troca o código e manda de novo pelos dois canais; o limite de reenvios vem da API, com a mensagem pronta. */
   async function reenviarCodigo() {
     setErro(null);
+    setCampoComErro(null);
     setEnviandoCodigo(true);
     try {
       await requisicaoApiPublica("/codigos/reenviar", { metodo: "POST", corpo: { telefone, email: email || null } });
@@ -259,6 +331,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     const versao = versaoVerificacao.current;
     const telefoneDoCodigo = telefone;
     setErro(null);
+    setCampoComErro(null);
     setValidandoCodigo(true);
     try {
       const resposta = await requisicaoApiPublica<{ tokenVerificacao: string }>("/codigos/validar", {
@@ -270,6 +343,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
       setTokenVerificacao(resposta.tokenVerificacao);
       setEtapa(5);
     } catch {
+      setCampoComErro("codigo");
       setErro("Código inválido ou expirado. Confira e tente de novo.");
     } finally {
       setValidandoCodigo(false);
@@ -279,6 +353,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   async function aplicarCupom() {
     if (!agendamentoId || !cupomCodigo) return;
     setErro(null);
+    setCampoComErro(null);
     setAplicandoCupom(true);
     try {
       const resposta = await requisicaoApiPublica<{ desconto: number }>("/cupons/validar", {
@@ -288,6 +363,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
       setDesconto(resposta.desconto);
     } catch {
       setDesconto(0);
+      setCampoComErro("cupom");
       setErro("Cupom inválido.");
     } finally {
       setAplicandoCupom(false);
@@ -297,6 +373,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   async function confirmarAgendamento() {
     if (!agendamentoId || !podeConfirmar || !tokenVerificacao) return;
     setErro(null);
+    setCampoComErro(null);
     setConfirmando(true);
     try {
       const dados: ConfirmarAgendamentoPublico = {
@@ -355,10 +432,14 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   const fundo = fundoDoNegocio(negocio);
 
   return (
-    <div
+    <dialog
+      ref={dialogo}
+      data-accent-padrao={!negocio.corPrimaria || negocio.corPrimaria.toLowerCase() === "#2563eb"}
+      aria-modal="true"
+      aria-labelledby={`${id}-titulo`}
       data-testid="assistente-agendamento"
-      className={`fixed inset-0 z-40 flex flex-col ${fundo.temFundo ? "" : "bg-white dark:bg-neutral-950"}`}
-      style={fundo.estilo}
+      className={`assistente-publico fixed inset-0 z-40 flex flex-col ${fundo.temFundo ? "" : "bg-white dark:bg-neutral-950"}`}
+      style={{ ...fundo.estilo, "--cor-primaria": negocio.corPrimaria ?? "#2563eb" } as React.CSSProperties}
     >
       <div data-testid="assistente-marca" className="flex items-center gap-2 px-4 pt-3 pb-1">
         {negocio.logoUrl && <img src={negocio.logoUrl} alt="" className="h-7 w-7 rounded-full object-cover" />}
@@ -380,31 +461,34 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
       >
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-neutral-800">
         {etapa !== primeiraEtapa && etapa !== "sucesso" ? (
-          <button disabled={reservando} onClick={() => setEtapa((e) => (typeof e === "number" ? ((e - 1) as Etapa) : e))} className="text-sm text-gray-500">
+          <button disabled={reservando} onClick={() => setEtapa((e) => (typeof e === "number" ? ((e - 1) as Etapa) : e))} className="text-sm text-gray-600 dark:text-neutral-300">
             ← Voltar
           </button>
         ) : (
           <span />
         )}
-        <div className="flex gap-1">
+        <div className="flex flex-col items-center gap-1" aria-label="Progresso">
+          <span className="text-xs text-gray-600 dark:text-neutral-300">{etapa === "sucesso" ? "Concluído" : `Etapa ${etapas.indexOf(etapa) + 1} de ${etapas.length}`}</span>
+          <div className="flex gap-1" aria-hidden="true">
           {etapas.map((n) => (
             <span
               key={n}
               className={`h-1.5 w-6 rounded-full ${typeof etapa === "number" && etapa >= n ? "bg-(--cor-primaria)" : "bg-gray-200 dark:bg-neutral-800"}`}
             />
           ))}
+          </div>
         </div>
-        <button disabled={reservando} onClick={aoFechar} aria-label="Fechar" className="text-gray-400 hover:text-gray-700">
+        <button disabled={reservando} onClick={aoFechar} aria-label="Fechar" className="text-gray-600 hover:text-gray-900 dark:text-neutral-300 dark:hover:text-white">
           ✕
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        {erro && <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{erro}</p>}
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        {erro && <p id={`${id}-erro`} role="alert" tabIndex={-1} data-erro-etapa className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">{erro}</p>}
 
         {etapa === 1 && (
           <div>
-            <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha o profissional</h2>
+            <h2 id={`${id}-titulo`} tabIndex={-1} className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha o profissional</h2>
             <div className="space-y-2" role="group" aria-label="Profissionais">
               <button
                 aria-pressed={profissionalId === QUALQUER}
@@ -450,7 +534,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
         {etapa === 2 && (
           <div>
-            <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha os serviços</h2>
+            <h2 id={`${id}-titulo`} tabIndex={-1} className="mb-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">Escolha os serviços</h2>
             <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
               {profissionalEscolhido ? `Com ${profissionalEscolhido.nome}` : "Com qualquer profissional"}
             </p>
@@ -465,7 +549,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             {catalogo.map((categoria) => (
               <div key={categoria.categoriaId} className="mb-4">
                 <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-neutral-400">{categoria.nome}</h3>
-                <div className="space-y-2">
+                <div className="space-y-2" role="group" aria-label={categoria.nome}>
                   {categoria.servicos.map((s) => {
                     const selecionado = servicoIds.includes(s.id);
                     const valores = valoresDe(s);
@@ -502,7 +586,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
         {etapa === 3 && (
           <div>
-            <h2 className="mb-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">Data e horário</h2>
+            <h2 id={`${id}-titulo`} tabIndex={-1} className="mb-1 text-lg font-semibold text-gray-900 dark:text-neutral-50">Data e horário</h2>
             <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
               {profissionalEscolhido ? `Com ${profissionalEscolhido.nome}` : "Com qualquer profissional"}
             </p>
@@ -514,6 +598,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                   <button
                     key={dia}
                     disabled={reservando}
+                    aria-pressed={selecionado}
+                    aria-label={new Date(`${dia}T12:00:00Z`).toLocaleDateString("pt-BR", { dateStyle: "full", timeZone: "UTC" })}
                     onClick={() => {
                       setDataEscolhida(dia);
                       setHorarioEscolhido(null);
@@ -544,15 +630,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 }} className="rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">Tentar novamente</button>
               </div>
             ) : horariosLivres === null ? (
-              <p className="text-sm text-gray-500">Carregando horários...</p>
+              <p role="status" className="text-sm text-gray-600 dark:text-neutral-400">Carregando horários...</p>
             ) : horariosLivres.length === 0 ? (
-              <p className="text-sm text-gray-500">Nenhum horário livre neste dia. Escolha outra data.</p>
+              <p role="status" className="text-sm text-gray-600 dark:text-neutral-400">Nenhum horário livre neste dia. Escolha outra data.</p>
             ) : (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-2" role="group" aria-label="Horários disponíveis">
                 {horariosLivres.map((h) => (
                   <button
                     key={h.inicio}
                     disabled={reservando}
+                    aria-pressed={horarioEscolhido?.inicio === h.inicio && horarioEscolhido.profissionalId === h.profissionalId}
                     onClick={() => { setHorarioEscolhido(h); setChaveHorarioEscolhido(chaveDisponibilidade); }}
                     className={`rounded-lg border px-2 py-2 text-sm ${
                       horarioEscolhido?.inicio === h.inicio && horarioEscolhido.profissionalId === h.profissionalId
@@ -570,7 +657,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
         {etapa === 4 && (
           <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Seus dados</h2>
+            <h2 id={`${id}-titulo`} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Seus dados</h2>
             {reservadoAte && (
               <p className="text-xs text-gray-500 dark:text-neutral-400">
                 Horário reservado por alguns minutos enquanto você confirma os dados.
@@ -578,6 +665,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             )}
 
             <input
+              aria-label="Nome completo" autoComplete="name"
               placeholder="Nome completo"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
@@ -604,6 +692,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
             <input
+              aria-label="E-mail" autoComplete="email"
               placeholder="E-mail"
               type="email"
               value={email}
@@ -640,15 +729,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               </button>
             ) : (
               <div className="space-y-2">
-                <p className="text-sm text-gray-600 dark:text-neutral-400">
+                <p id={`${id}-instrucao-codigo`} role="status" className="text-sm text-gray-600 dark:text-neutral-400">
                   {email.trim()
                     ? "Digite o código de 6 dígitos enviado por WhatsApp e e-mail."
                     : "Digite o código de 6 dígitos enviado por WhatsApp."}
                 </p>
                 <input
+                  aria-label="Código de confirmação" data-campo-codigo inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" aria-describedby={`${id}-instrucao-codigo${campoComErro === "codigo" && erro ? ` ${id}-erro` : ""}`} aria-invalid={campoComErro === "codigo" && !!erro} disabled={validandoCodigo || enviandoCodigo}
                   placeholder="000000"
                   value={codigo}
-                  onChange={(e) => setCodigo(e.target.value)}
+                  onChange={(e) => { setCodigo(e.target.value.replace(/\D/g, "")); setCampoComErro(null); setErro(null); }}
                   maxLength={6}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-center text-lg tracking-widest dark:border-neutral-700 dark:bg-neutral-900"
                 />
@@ -666,11 +756,11 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                       setCodigoEnviado(false);
                       setCodigo("");
                     }}
-                    className="text-gray-500 hover:underline"
+                    className="text-gray-600 hover:underline dark:text-neutral-300"
                   >
                     Mudar dados
                   </button>
-                  <button onClick={reenviarCodigo} disabled={reenviarEm > 0 || enviandoCodigo} className="text-(--cor-primaria) disabled:opacity-50">
+                  <button onClick={reenviarCodigo} disabled={reenviarEm > 0 || enviandoCodigo} className="assistente-link text-(--cor-primaria) disabled:opacity-50">
                     {reenviarEm > 0 ? `Reenviar em ${reenviarEm}s` : "Reenviar código"}
                   </button>
                 </div>
@@ -681,7 +771,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
         {etapa === 5 && horarioEscolhido && (
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Resumo</h2>
+            <h2 id={`${id}-titulo`} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Resumo</h2>
 
             <div>
               <h3 className="text-xs font-semibold uppercase text-gray-500">Quando</h3>
@@ -711,10 +801,11 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
             <div className="flex gap-2">
               <input
+                aria-label="Cupom" aria-invalid={campoComErro === "cupom" && !!erro} aria-describedby={campoComErro === "cupom" && erro ? `${id}-erro` : undefined}
                 placeholder="Cupom"
                 value={cupomCodigo}
                 onChange={(e) => setCupomCodigo(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
               />
               <button
                 onClick={aplicarCupom}
@@ -726,6 +817,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             </div>
 
             <textarea
+              aria-label="Observações (opcional)"
               placeholder="Observações (opcional)"
               value={observacoes}
               onChange={(e) => setObservacoes(e.target.value)}
@@ -740,7 +832,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl text-green-600 dark:bg-green-950">
               ✓
             </div>
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Agendamento confirmado!</h2>
+            <h2 id={`${id}-titulo`} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Agendamento confirmado!</h2>
             <p className="text-sm text-gray-600 dark:text-neutral-400">
               {formatarDataDoNegocio(resumoFinal.inicio, negocio.fuso)} às{" "}
               {formatarHoraDoNegocio(resumoFinal.inicio, negocio.fuso)}
@@ -754,7 +846,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 Adicionar ao calendário
               </a>
               {tokenAgendamento && (
-                <a href={`/agendamentos/${tokenAgendamento}`} className="text-sm text-(--cor-primaria) hover:underline">
+                <a href={`/agendamentos/${tokenAgendamento}`} className="assistente-link text-sm text-(--cor-primaria) hover:underline">
                   Cancelar ou remarcar
                 </a>
               )}
@@ -767,7 +859,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
       </div>
 
       {etapa !== "sucesso" && (
-        <div className="border-t border-gray-100 px-4 py-3 dark:border-neutral-800">
+        <div className="assistente-rodape shrink-0 border-t border-gray-100 px-4 py-3 dark:border-neutral-800">
           <div className="mb-2 flex items-center justify-between text-sm">
             <span className="text-gray-500 dark:text-neutral-400">
               {servicosSelecionados.length > 0 ? `${servicosSelecionados.length} serviço(s) · ${duracaoTotal} min` : "Nenhum serviço"}
@@ -798,7 +890,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
         </div>
       )}
       </div>
-    </div>
+    </dialog>
   );
 }
 

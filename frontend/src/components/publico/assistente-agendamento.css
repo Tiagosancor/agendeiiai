@@ -1,0 +1,38 @@
+/* Ajustes restritos ao assistente público; não alteram página, painel ou marca do negócio. */
+.assistente-publico {
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #111827;
+  overflow: hidden;
+}
+[data-theme="dark"] .assistente-publico { color: #f5f5f5; }
+.assistente-publico::backdrop { background: rgb(0 0 0 / .3); }
+.assistente-publico :is(button, a) {
+  min-height: 44px;
+  min-width: 44px;
+}
+.assistente-publico a { display: inline-flex; align-items: center; justify-content: center; }
+.assistente-publico :is(button, a, input, textarea):focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 3px;
+}
+[data-theme="dark"] .assistente-publico :is(button, a, input, textarea):focus-visible { outline-color: #93c5fd; }
+.assistente-publico :is(input:not([type=checkbox]), textarea) { min-height: 44px; scroll-margin-block: 16px; }
+.assistente-publico label:has(input[type=checkbox]) { min-height: 44px; align-items: center; }
+.assistente-publico input[type=checkbox] { width: 22px; height: 22px; flex-shrink: 0; }
+.assistente-publico [aria-invalid=true] { border-color: #b91c1c; }
+[data-theme="dark"] .assistente-publico [aria-invalid=true] { border-color: #fca5a5; }
+.assistente-publico[data-accent-padrao=true] .assistente-link { color: #1d4ed8; }
+[data-theme="dark"] .assistente-publico[data-accent-padrao=true] .assistente-link { color: #93c5fd; }
+.assistente-rodape { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
+@media (max-width: 767px) {
+  .assistente-publico :is(input:not([type=checkbox]), textarea) { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .assistente-publico *, .assistente-publico { scroll-behavior: auto; transition: none; animation: none; }
+}
