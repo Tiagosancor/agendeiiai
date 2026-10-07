@@ -26,7 +26,8 @@ public sealed class ConsultaDisponibilidade : IConsultaDisponibilidade
     }
 
     public async Task<IReadOnlyList<DateTimeOffset>> ListarHorariosLivresAsync(
-        Guid profissionalId, DateOnly data, int duracaoTotalMinutos, CancellationToken cancellationToken = default)
+        Guid profissionalId, DateOnly data, int duracaoTotalMinutos, CancellationToken cancellationToken = default,
+        Guid? ignorarAgendamentoId = null)
     {
         if (duracaoTotalMinutos <= 0)
             return [];
@@ -53,6 +54,7 @@ public sealed class ConsultaDisponibilidade : IConsultaDisponibilidade
 
         var ocupados = await _dbContext.Agendamentos.AsNoTracking()
             .Where(a => a.ProfissionalId == profissionalId
+                && (ignorarAgendamentoId == null || a.Id != ignorarAgendamentoId)
                 && a.Inicio < fimDiaUtc && a.Fim > inicioDiaUtc
                 && (a.Status == StatusAgendamento.Reservado
                     || a.Status == StatusAgendamento.Agendado

@@ -8,6 +8,11 @@ namespace Plataforma.Aplicacao.Agendamentos;
 /// </summary>
 public interface IConsultaDisponibilidade
 {
+    /// <param name="ignorarAgendamentoId">
+    /// Agendamento que não conta como ocupação — o que está sendo remarcado, para o horário dele
+    /// não aparecer indisponível por causa dele mesmo. Os demais conflitos continuam valendo.
+    /// </param>
     Task<IReadOnlyList<DateTimeOffset>> ListarHorariosLivresAsync(
-        Guid profissionalId, DateOnly data, int duracaoTotalMinutos, CancellationToken cancellationToken = default);
+        Guid profissionalId, DateOnly data, int duracaoTotalMinutos, CancellationToken cancellationToken = default,
+        Guid? ignorarAgendamentoId = null);
 }

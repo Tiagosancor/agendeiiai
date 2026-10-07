@@ -222,9 +222,15 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     }
 
     /// <summary>Move para um novo horário — quem chama precisa revalidar expediente/bloqueios; a exclusion constraint garante a ausência de sobreposição no SaveChanges (seção 8.2.7).</summary>
+    /// <summary>Regra de status de <see cref="Mover"/>, exposta para quem precisa decidir antes de tentar.</summary>
+    public bool PodeSerMovido => Status is StatusAgendamento.Agendado or StatusAgendamento.Reservado;
+
+    /// <summary>Regra de status de <see cref="Cancelar"/>, exposta para quem precisa decidir antes de tentar.</summary>
+    public bool PodeSerCancelado => Status is not (StatusAgendamento.Cancelado or StatusAgendamento.Concluido);
+
     public void Mover(DateTimeOffset novoInicio, DateTimeOffset novoFim, DateTimeOffset? agora = null)
     {
-        if (Status is not (StatusAgendamento.Agendado or StatusAgendamento.Reservado))
+        if (!PodeSerMovido)
             throw new InvalidOperationException("Só um agendamento ativo pode ser movido.");
 
         if (novoFim <= novoInicio)
@@ -304,7 +310,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
 
     public void Cancelar()
     {
-        if (Status is StatusAgendamento.Cancelado or StatusAgendamento.Concluido)
+        if (!PodeSerCancelado)
             throw new InvalidOperationException($"Um agendamento {Status} não pode ser cancelado.");
 
         Status = StatusAgendamento.Cancelado;

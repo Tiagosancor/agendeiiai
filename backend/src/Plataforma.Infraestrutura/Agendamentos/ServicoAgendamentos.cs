@@ -810,7 +810,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 {
                     await transacao.RollbackAsync(cancellationToken);
                     return await ConflitoComProximosAsync(
-                        "Esse horário já está ocupado. Escolha outro.", agendamento.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
+                        "Esse horário já está ocupado. Escolha outro.", agendamento.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken,
+                        agendamento.Id);
                 }
             }
 
@@ -830,7 +831,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             {
                 await transacao.RollbackAsync(cancellationToken);
                 return await ConflitoComProximosAsync(
-                    "Esse horário já está ocupado. Escolha outro.", agendamento.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken);
+                    "Esse horário já está ocupado. Escolha outro.", agendamento.ProfissionalId, diaLocal, duracaoTotalMinutos, cancellationToken,
+                    agendamento.Id);
             }
         });
 
@@ -1186,9 +1188,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 || a.Status == StatusAgendamento.Concluido), cancellationToken);
 
     private async Task<ResultadoAgendamento> ConflitoComProximosAsync(
-        string mensagem, Guid profissionalId, DateOnly diaLocal, int duracaoMinutos, CancellationToken cancellationToken)
+        string mensagem, Guid profissionalId, DateOnly diaLocal, int duracaoMinutos, CancellationToken cancellationToken,
+        Guid? ignorarAgendamentoId = null)
     {
-        var proximos = await _consultaDisponibilidade.ListarHorariosLivresAsync(profissionalId, diaLocal, duracaoMinutos, cancellationToken);
+        var proximos = await _consultaDisponibilidade.ListarHorariosLivresAsync(
+            profissionalId, diaLocal, duracaoMinutos, cancellationToken, ignorarAgendamentoId);
         return ResultadoAgendamento.ComConflito(mensagem, proximos.Take(5).ToList());
     }
 

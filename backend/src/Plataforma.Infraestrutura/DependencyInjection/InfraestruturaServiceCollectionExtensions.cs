@@ -176,6 +176,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IConsultaAgendaSemana, ConsultaAgendaSemana>();
         servicos.AddScoped<IAgendaDoProfissionalLogado, AgendaDoProfissionalLogado>();
         servicos.AddScoped<IServicoAgendamentos, ServicoAgendamentos>();
+        servicos.AddScoped<IGestaoPublicaAgendamento, GestaoPublicaAgendamento>();
         servicos.AddScoped<JobExpirarReservas>();
 
         // Página pública, assistente e código de confirmação (Sprint 3 — seção 8.1/6).
