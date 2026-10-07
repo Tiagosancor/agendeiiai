@@ -61,6 +61,15 @@
 }
 .publico-cta { border-radius: 14px; font-weight: 650; padding: 13px 20px; box-shadow: 0 5px 15px #0b235715; }
 .publico-cta:hover:not(:disabled) { filter: brightness(.96); }
+.pagina-publica .publico-cta:disabled {
+  background: var(--publico-elevado); color: var(--publico-suave);
+  box-shadow: inset 0 0 0 1px var(--publico-borda); opacity: 1; filter: none;
+}
+[data-theme="dark"] :is(.pagina-publica, .assistente-publico) .publico-cta:not(:disabled),
+[data-theme="dark"] .assistente-topo [class*="bg-(--cor-primaria)"] {
+  box-shadow: inset 0 0 0 1px #ffffff30;
+}
+.pagina-servicos .publico-recuperar { color: var(--publico-link); font-weight: 600; }
 .pagina-cabecalho {
   position: sticky; top: 0; z-index: 30;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -171,6 +180,10 @@
 .assistente-sucesso .sucesso-acoes { display: grid; gap: 10px; margin-top: 22px; }
 .assistente-sucesso .sucesso-acoes a { border: 1px solid var(--publico-borda); border-radius: 12px; padding: 12px; color: var(--publico-texto); background: var(--publico-superficie); }
 .assistente-sucesso .sucesso-acoes .assistente-link { color: var(--publico-link); }
+@media (max-width: 767px) {
+  /* O próximo dia parcialmente visível comunica continuidade sem novo controle. */
+  .assistente-datas button { flex: 0 0 calc((100% - 32px) / 4.6); }
+}
 @media (min-width: 768px) {
   .pagina-hero { padding: 40px; margin-block: 32px; }
   .pagina-hero .publico-cta { width: auto; min-width: 200px; }
@@ -181,7 +194,7 @@
   .pagina-contato { grid-column: 1 / -1; }
   .pagina-contato .contato-dupla { grid-template-columns: 1fr 1fr; }
   .pagina-contato .publico-cta { width: auto; min-width: 150px; }
-  .assistente-publico .assistente-painel { width: min(620px, calc(100% - 48px)); max-height: min(820px, calc(100dvh - 80px)); margin: 0 auto 24px; border: 1px solid var(--publico-borda); border-radius: 24px; box-shadow: var(--publico-sombra); }
+  .assistente-publico .assistente-painel { width: min(620px, calc(100% - 48px)); flex: 0 1 auto; min-height: min(560px, calc(100dvh - 80px)); max-height: min(820px, calc(100dvh - 80px)); margin: 0 auto 24px; border: 1px solid var(--publico-borda); border-radius: 24px; box-shadow: var(--publico-sombra); }
   .assistente-publico [data-testid="assistente-marca"] { width: min(620px, calc(100% - 48px)); margin: 16px auto 0; background: var(--publico-superficie); border: 1px solid var(--publico-borda); border-bottom: 0; border-radius: 18px 18px 0 0; padding: 12px 20px; }
   .assistente-corpo { padding: 28px; }
   .assistente-rodape { padding-inline: 28px; }

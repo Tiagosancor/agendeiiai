@@ -207,7 +207,8 @@ test("mudar telefone invalida token anterior; nova verificação permite confirm
   await assistente(page).getByRole("button", { name: "← Voltar" }).click();
   await assistente(page).getByRole("button", { name: "Mudar dados" }).click();
   await assistente(page).getByLabel("WhatsApp com DDD").fill("(71) 97777-6666");
-  await expect(assistente(page).getByRole("button", { name: "Valide o código" })).toBeDisabled();
+  await expect(assistente(page).getByRole("button", { name: "Confirmar código", exact: true })).toHaveCount(0);
+  await expect(assistente(page).getByRole("button", { name: "Enviar código", exact: true })).toBeEnabled();
   expect(estado.confirmacoes).toHaveLength(0);
   await assistente(page).getByRole("button", { name: "Enviar código", exact: true }).click();
   await assistente(page).getByPlaceholder("000000").fill("654321");

@@ -168,7 +168,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
               <button onClick={() => {
                 setEstadoCatalogo("carregando");
                 setTentativaCatalogo((atual) => atual + 1);
-              }} className="rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">Tentar novamente</button>
+              }} className="publico-recuperar rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">Tentar novamente</button>
             </div>
           )}
           {estadoCatalogo === "sucesso" && categorias?.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Nenhum serviço disponível no momento.</p>}

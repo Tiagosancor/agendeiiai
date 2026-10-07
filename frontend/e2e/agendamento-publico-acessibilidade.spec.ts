@@ -132,7 +132,7 @@ test("viewport mobile reduzida mantém campo com erro e CTA acessíveis", async 
   await assistente(page).getByRole("button", { name: "Confirmar código", exact: true }).click();
   await expect(codigo).toBeFocused();
   const campo = await codigo.boundingBox();
-  const rodape = await assistente(page).getByRole("button", { name: "Valide o código", exact: true }).boundingBox();
+  const rodape = await assistente(page).getByRole("button", { name: "Confirmar código", exact: true }).boundingBox();
   expect(campo!.y).toBeGreaterThanOrEqual(0);
   expect(campo!.y + campo!.height).toBeLessThanOrEqual(rodape!.y);
   expect(rodape!.y + rodape!.height).toBeLessThanOrEqual(460);

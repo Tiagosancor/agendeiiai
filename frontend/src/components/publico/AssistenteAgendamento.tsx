@@ -470,7 +470,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
           {etapas.map((n) => (
             <span
               key={n}
-              className={`h-1.5 w-6 rounded-full ${typeof etapa === "number" && etapa >= n ? "bg-(--cor-primaria)" : "bg-gray-200 dark:bg-neutral-800"}`}
+              className={`h-1.5 w-6 rounded-full ${etapa === "sucesso" || (typeof etapa === "number" && etapa >= n) ? "bg-(--cor-primaria)" : "bg-gray-200 dark:bg-neutral-800"}`}
             />
           ))}
           </div>
@@ -723,15 +723,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               </label>
             )}
 
-            {!codigoEnviado ? (
-              <button
-                onClick={enviarCodigo}
-                disabled={!podeEnviarCodigo || enviandoCodigo}
-                className="publico-cta w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {enviandoCodigo ? "Enviando..." : "Enviar código"}
-              </button>
-            ) : (
+            {codigoEnviado && (
               <div className="assistente-codigo space-y-2">
                 <h3>Código enviado</h3>
                 <p className="text-sm text-gray-600 dark:text-neutral-400">Confirme seu contato para finalizar. WhatsApp •••• {telefone.replace(/\D/g, "").slice(-4)}</p>
@@ -748,13 +740,6 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                   maxLength={6}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-center text-lg tracking-widest dark:border-neutral-700 dark:bg-neutral-900"
                 />
-                <button
-                  onClick={validarCodigo}
-                  disabled={codigo.length !== 6 || validandoCodigo}
-                  className="publico-cta w-full rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                >
-                  {validandoCodigo ? "Validando..." : "Confirmar código"}
-                </button>
                 <div className="codigo-acoes flex justify-between text-xs">
                   <button
                     disabled={enviandoCodigo || validandoCodigo}
@@ -888,19 +873,21 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               (etapa === 1 && !podeEscolherServicos) ||
               (etapa === 2 && !podeContinuarServicos) ||
               (etapa === 3 && (!podeContinuarHorario || reservando)) ||
-              (etapa === 4 && !podeConfirmar) ||
+              (etapa === 4 && !podeConfirmar && (codigoEnviado ? codigo.length !== 6 || validandoCodigo || enviandoCodigo : !podeEnviarCodigo || enviandoCodigo)) ||
               (etapa === 5 && confirmando)
             }
             onClick={() => {
               if (etapa === 1) setEtapa(2);
               else if (etapa === 2) { setDisponibilidade(null); setHorarioEscolhido(null); setChaveHorarioEscolhido(null); setEtapa(3); }
               else if (etapa === 3) avancarParaResumo();
-              else if (etapa === 4) setEtapa(5);
+              else if (etapa === 4) { if (podeConfirmar) setEtapa(5); else if (codigoEnviado) validarCodigo(); else enviarCodigo(); }
               else if (etapa === 5) confirmarAgendamento();
             }}
             className="publico-cta w-full rounded-lg bg-(--cor-primaria) px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {reservando ? "Reservando..." : textoBotaoContinuar(etapa, { podeEscolherServicos, podeContinuarServicos, podeContinuarHorario, podeConfirmar, confirmando })}
+            {etapa === 4
+              ? (podeConfirmar ? "Continuar" : codigoEnviado ? (validandoCodigo ? "Validando..." : "Confirmar código") : (enviandoCodigo ? "Enviando..." : "Enviar código"))
+              : reservando ? "Reservando..." : textoBotaoContinuar(etapa, { podeEscolherServicos, podeContinuarServicos, podeContinuarHorario, confirmando })}
           </button>
         </div>
       )}
@@ -915,14 +902,12 @@ function textoBotaoContinuar(
     podeEscolherServicos: boolean;
     podeContinuarServicos: boolean;
     podeContinuarHorario: boolean;
-    podeConfirmar: boolean;
     confirmando: boolean;
   },
 ): string {
   if (etapa === 1) return estado.podeEscolherServicos ? "Continuar" : "Selecione um profissional";
   if (etapa === 2) return estado.podeContinuarServicos ? "Continuar" : "Selecione um serviço";
   if (etapa === 3) return estado.podeContinuarHorario ? "Continuar" : "Selecione um horário";
-  if (etapa === 4) return estado.podeConfirmar ? "Continuar" : "Valide o código";
   if (etapa === 5) return estado.confirmando ? "Confirmando..." : "Confirmar Agendamento";
   return "Continuar";
 }

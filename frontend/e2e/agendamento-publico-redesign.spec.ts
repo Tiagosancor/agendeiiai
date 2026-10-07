@@ -168,6 +168,8 @@ for (const tema of ["light", "dark"]) {
         await page.setViewportSize({ width: largura, height: 900 });
         const cta = page.getByRole("button", { name: "Agendar Agora", exact: true });
         await expect(cta).toBeEnabled();
+        // Aguarda o fim da transição entre catálogo indisponível e CTA ativo.
+        await expect(cta).toHaveCSS("background-color", tema === "light" ? "rgb(254, 240, 138)" : "rgb(23, 37, 84)");
         const cores = await cta.evaluate(el => {
           const estilo = getComputedStyle(el);
           const luminancia = (valor: string) => {
