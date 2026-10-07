@@ -38,9 +38,19 @@ async function encaminhar(request: NextRequest, contexto: { params: Promise<{ ca
     cache: "no-store",
   });
 
+  const headers = new Headers({ "Content-Type": resposta.headers.get("content-type") ?? "application/json" });
+  // Links de gestão são privados por token. Nunca os armazenar no navegador/proxy.
+  if (caminho[0] === "meus-agendamentos") headers.set("Cache-Control", "no-store");
+  // Somente o download de calendário recebe o nome de arquivo fornecido pela API.
+  const disposicao = resposta.headers.get("content-disposition");
+  if (caminho.length === 3 && caminho[0] === "meus-agendamentos" && caminho[2] === "ics"
+      && resposta.ok && headers.get("Content-Type")?.startsWith("text/calendar")
+      && disposicao && /^attachment; filename=agendamento\.ics(?:; filename\*=UTF-8''agendamento\.ics)?$/i.test(disposicao)) {
+    headers.set("Content-Disposition", disposicao);
+  }
   return new NextResponse(resposta.body, {
     status: resposta.status,
-    headers: { "Content-Type": resposta.headers.get("content-type") ?? "application/json" },
+    headers,
   });
 }
 

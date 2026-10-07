@@ -220,7 +220,7 @@ test("gestão real: remarcação, refresh falho, offline e retry online sem repe
   await page.getByRole("button", { name: "09:00", exact: true }).click();
   await page.getByRole("button", { name: "Revisar remarcação" }).click();
   falharRefresh = true;
-  await page.getByRole("button", { name: "Confirmar remarcação", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmar novo horário", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("A remarcação foi aceita");
   await context.setOffline(true);
   await page.getByRole("button", { name: "Atualizar detalhes", exact: true }).click();

@@ -38,7 +38,7 @@ async function revisar(page: Page) {
   await page.getByRole("button", { name: "09:15", exact: true }).click();
   await page.getByRole("button", { name: "Revisar remarcação" }).click();
 }
-const confirmar = (page: Page) => page.getByRole("button", { name: "Confirmar remarcação", exact: true });
+const confirmar = (page: Page) => page.getByRole("button", { name: "Confirmar novo horário", exact: true });
 test.use({ serviceWorkers: "block" });
 
 test("capabilities permitidas, contexto real, serviços e limite", async ({ page }) => {

@@ -39,6 +39,14 @@ test("D3 full-stack local: capabilities, slots, conflito, 200 canônico e cancel
     const token = (await confirmado.json()).tokenAgendamento;
     const detalhe = await requisicaoPublica.get(`${publico}/meus-agendamentos/${token}`); expect(detalhe.ok()).toBe(true);
     const contexto = await detalhe.json(); expect(contexto.acoes.remarcar.permitido).toBe(true); expect(contexto.acoes.cancelar.permitido).toBe(true); expect(contexto.fuso).toBe("America/Sao_Paulo"); expect(contexto.profissional.id).toBe(profissionalId);
+    expect(detalhe.headers()["cache-control"]).toBe("no-store");
+    // D4 audita o proxy, sem inferir política de calendário na interface.
+    const calendario = await requisicaoPublica.get(`${publico}/meus-agendamentos/${token}/ics`);
+    expect(calendario.ok()).toBe(true);
+    expect(calendario.headers()["content-type"]).toContain("text/calendar");
+    expect(calendario.headers()["content-disposition"]).toContain("filename=agendamento.ics");
+    expect(calendario.headers()["cache-control"]).toBe("no-store");
+    expect(await calendario.text()).toContain("BEGIN:VCALENDAR");
     await page.goto(`/agendamentos/${token}`);
     await expect(page.getByText(`Profissional: D3 Local ${sufixo}`)).toBeVisible();
     await page.getByRole("button", { name: "Remarcar agendamento" }).click(); await page.getByLabel("Data da remarcação").fill(data(4));
@@ -50,11 +58,11 @@ test("D3 full-stack local: capabilities, slots, conflito, 200 canônico e cancel
     const cliente = await request.post(`${api}/painel/clientes`, { headers, data: { nome: `Conflito D3 ${sufixo}`, telefone: `+55718${sufixo}` } }); expect(cliente.ok()).toBe(true);
     const ocupar = await request.post(`${api}/painel/agendamentos`, { headers, data: { profissionalId, clienteId: await cliente.json(), servicoIds: [servicoId], inicio: slots.horarios[0] } }); expect(ocupar.ok()).toBe(true); agendamentos.push(await ocupar.json());
     const conflito = page.waitForResponse(r => r.url().endsWith(`/${token}/remarcar`) && r.request().method() === "POST");
-    await page.getByRole("button", { name: "Confirmar remarcação" }).click(); expect((await conflito).status()).toBe(409);
+    await page.getByRole("button", { name: "Confirmar novo horário" }).click(); expect((await conflito).status()).toBe(409);
     await expect(page.getByRole("main").getByRole("alert")).toContainText("acabou de ficar indisponível");
     const livres = await requisicaoPublica.get(`${publico}/meus-agendamentos/${token}/horarios-livres?data=${data(4)}`); const novoInicio = (await livres.json()).horarios[0];
     await page.getByRole("button", { name: horario(novoInicio), exact: true }).click(); await page.getByRole("button", { name: "Revisar remarcação" }).click();
-    const resposta200 = page.waitForResponse(r => r.url().endsWith(`/${token}/remarcar`) && r.request().method() === "POST"); await page.getByRole("button", { name: "Confirmar remarcação" }).click();
+    const resposta200 = page.waitForResponse(r => r.url().endsWith(`/${token}/remarcar`) && r.request().method() === "POST"); await page.getByRole("button", { name: "Confirmar novo horário" }).click();
     const canonico = await resposta200; expect(canonico.status()).toBe(200); expect(canonico.request().headers().prefer).toBe("return=representation"); expect(new Date((await canonico.json()).inicio).getTime()).toBe(new Date(novoInicio).getTime());
     await expect(page.getByRole("status")).toHaveText("Agendamento remarcado.");
     page.once("dialog", d => d.accept()); const cancelado = page.waitForResponse(r => r.url().endsWith(`/${token}/cancelar`)); await page.getByRole("button", { name: "Cancelar agendamento" }).click(); expect((await cancelado).status()).toBe(200);

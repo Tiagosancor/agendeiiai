@@ -3,11 +3,10 @@
 import { use, useEffect, useRef, useState } from "react";
 import { requisicaoApiPublica, ErroApi } from "@/lib/api";
 import type { DetalhePublicoAgendamento, NegocioPublico } from "@/lib/tipos";
-import { formatarReais } from "@/lib/formatacao";
+import { CompromissoAgendamento } from "@/components/publico/CompromissoAgendamento";
 import { formatarHorarioEstabelecimento } from "@/lib/horario-estabelecimento";
 import { controleGestao, RemarcacaoAgendamento } from "@/components/publico/RemarcacaoAgendamento";
 
-const ROTULO_STATUS: Record<string, string> = { EmAtendimento: "Em atendimento", Concluido: "Concluído" };
 type Aviso = { tipo: "erro" | "sucesso" | "aviso"; texto: string };
 type Dados = { detalhe: DetalhePublicoAgendamento; fuso: string };
 
@@ -98,37 +97,34 @@ function GestaoAgendamento({ token }: { token: string }) {
     } finally { trava.current = false; if (montado.current) setProcessando(null); }
   }
 
-  if (!dados) return <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-6 text-center">
+  if (!dados) return <main className="gestao-estado-inicial">
+    <span className="gestao-estado-simbolo" aria-hidden="true">{erroCarregar ? "!" : "◷"}</span>
+    <h1>Seu agendamento</h1>
     <div ref={carga} tabIndex={-1}><p role={erroCarregar ? "alert" : "status"}>{erroCarregar?.texto ?? "Carregando..."}</p></div>
     {erroCarregar?.temporario && <button className={controleGestao} onClick={() => { carga.current?.focus(); setErroCarregar(null); setTentativa(n => n + 1); }}>Tentar novamente</button>}
   </main>;
 
   const { detalhe, fuso } = dados;
   const acoes = detalhe.acoes;
-  return <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 px-6 py-12 text-gray-800 dark:text-neutral-200">
-    <h1 ref={titulo} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-neutral-50">{detalhe.nomeNegocio}</h1>
-    <div className="rounded-xl border border-gray-200 p-4 dark:border-neutral-700">
-      {aguardandoAtualizacao ? <p>Detalhes aguardando atualização.</p> : <>
-        <p>Status: {ROTULO_STATUS[detalhe.status] ?? detalhe.status}</p>
-        <p className="mt-1">{formatarHorarioEstabelecimento(detalhe.inicio, fuso)}</p>
-        {detalhe.profissional?.nome && <p>Profissional: {detalhe.profissional.nome}</p>}
-        {detalhe.duracaoMinutos !== undefined && <p>Duração: {detalhe.duracaoMinutos} minutos</p>}
-        {detalhe.servicosDetalhe?.length ? <ul>{detalhe.servicosDetalhe.map(s => <li key={s.servicoId}>{s.nome} · {s.duracaoMinutos} min · {formatarReais(s.preco)}</li>)}</ul> : <p>{detalhe.servicos.join(", ")}</p>}
-        <p>{detalhe.local}</p><p className="mt-2 font-semibold">Total: {formatarReais(detalhe.total)}</p>
-        {detalhe.regras?.limiteParaAlterarEm && <p className="mt-2 text-sm">Limite para alterações: {formatarHorarioEstabelecimento(detalhe.regras.limiteParaAlterarEm, fuso)}</p>}
-      </>}
-    </div>
-    <p id="fuso-estabelecimento">Horários do estabelecimento ({fuso}).</p>
-    {processando ? <p role="status">{processando === "cancelar" ? "Cancelando agendamento..." : processando === "remarcar" ? "Remarcando agendamento..." : "Atualizando detalhes..."}</p>
-      : mensagem && <p role={mensagem.tipo === "erro" ? "alert" : "status"}>{mensagem.texto}</p>}
+  return <main className="gestao-pagina">
+    <div className="gestao-intro"><h1 ref={titulo} tabIndex={-1}>{detalhe.nomeNegocio}</h1><p>Consulte seu compromisso e organize seu próximo horário.</p></div>
+    <div className="gestao-grid">
+    {aguardandoAtualizacao ? <article className="gestao-compromisso"><h2>Atualizando seu agendamento</h2><p>Detalhes aguardando atualização.</p></article> : <CompromissoAgendamento detalhe={detalhe} fuso={fuso} />}
+    <section className="gestao-acoes" aria-labelledby="gestao-acoes-titulo">
+    <h2 id="gestao-acoes-titulo">Organize seu agendamento</h2>
+    <p id="fuso-estabelecimento" className="gestao-contexto">Horários do estabelecimento ({fuso}).</p>
+    {!aguardandoAtualizacao && detalhe.regras?.limiteParaAlterarEm && <p className="gestao-regra">Limite para alterações: {formatarHorarioEstabelecimento(detalhe.regras.limiteParaAlterarEm, fuso)}</p>}
+    {processando ? <p className="gestao-aviso" role="status">{processando === "cancelar" ? "Cancelando agendamento..." : processando === "remarcar" ? "Remarcando agendamento..." : "Atualizando detalhes..."}</p>
+      : mensagem && <p className="gestao-aviso" data-tipo={mensagem.tipo} role={mensagem.tipo === "erro" ? "alert" : "status"}>{mensagem.texto}</p>}
     {aguardandoAtualizacao ? <button className={controleGestao} disabled={!!processando} onClick={repetirAtualizacao}>{processando ? "Atualizando..." : "Atualizar detalhes"}</button> : <>
       {!acoes && <p role="status">As opções de alteração não estão disponíveis. Tente consultar novamente mais tarde.</p>}
-      {acoes?.cancelar?.permitido === true ? <button className={`${controleGestao} text-red-700 dark:text-red-300`} disabled={!!processando} onClick={() => agir("cancelar")}>{processando === "cancelar" ? "Cancelando..." : "Cancelar agendamento"}</button>
-        : acoes?.cancelar?.motivo && <p>Cancelamento: {acoes.cancelar.motivo}</p>}
       {acoes?.remarcar?.permitido === true ? <>
-        <button ref={abrir} className={controleGestao} aria-expanded={aberto} aria-controls="remarcacao" disabled={!!processando} onClick={() => setAberto(v => !v)}>{aberto ? "Fechar remarcação" : "Remarcar agendamento"}</button>
+        <button ref={abrir} className={`${controleGestao} gestao-primario`} aria-expanded={aberto} aria-controls="remarcacao" disabled={!!processando} onClick={() => setAberto(v => !v)}>{aberto ? "Fechar remarcação" : "Remarcar agendamento"}</button>
         {aberto && <RemarcacaoAgendamento token={token} fuso={fuso} inicio={detalhe.inicio} bloqueado={!!processando} remarcando={processando === "remarcar"} confirmar={slot => agir("remarcar", slot)} />}
-      </> : acoes?.remarcar?.motivo && <p>Remarcação: {acoes.remarcar.motivo}</p>}
+      </> : acoes?.remarcar?.motivo && <p className="gestao-motivo">Remarcação: {acoes.remarcar.motivo}</p>}
+      {acoes?.cancelar?.permitido === true ? <button className={`${controleGestao} gestao-cancelar`} disabled={!!processando} onClick={() => agir("cancelar")}>{processando === "cancelar" ? "Cancelando..." : "Cancelar agendamento"}</button>
+        : acoes?.cancelar?.motivo && <p className="gestao-motivo">Cancelamento: {acoes.cancelar.motivo}</p>}
     </>}
+    </section></div>
   </main>;
 }

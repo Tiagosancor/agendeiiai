@@ -41,7 +41,7 @@ async function preparar(page: Page, cenario: Cenario = {}) {
 }
 const abrir = (page: Page, token = "token-local") => page.goto(`/agendamentos/${token}`);
 const campo = (page: Page) => page.locator('button[aria-controls="remarcacao"]');
-const remarcar = (page: Page) => page.getByRole("button", { name: "Confirmar remarcação", exact: true });
+const remarcar = (page: Page) => page.getByRole("button", { name: "Confirmar novo horário", exact: true });
 async function selecionar(page: Page, civil: string) {
   if (await campo(page).getAttribute("aria-expanded") !== "true") await campo(page).click();
   await page.getByLabel("Data da remarcação", { exact: true }).fill(civil.slice(0, 10));
