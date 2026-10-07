@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { requisicaoApiPublica, ErroApi } from "@/lib/api";
-import { dataLocalIso, formatarReais } from "@/lib/formatacao";
+import { formatarReais } from "@/lib/formatacao";
+import { dataNoFuso, proximosDiasDoNegocio, formatarDiaDaFaixa, formatarHoraDoNegocio, formatarDataDoNegocio } from "./datas-agendamento";
 import { fundoDoNegocio } from "@/lib/fundo";
 import type {
   CategoriaComServicosPublicos,
@@ -30,18 +31,6 @@ interface Props {
   servicoInicialId: string | null;
 }
 
-function formatarHora(iso: string): string {
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function proximosDias(quantidade: number): Date[] {
-  return Array.from({ length: quantidade }, (_, i) => {
-    const dia = new Date();
-    dia.setDate(dia.getDate() + i);
-    return dia;
-  });
-}
-
 export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, profissionais, servicoInicialId }: Props) {
   // Com um único profissional ativo, o passo Profissional é pulado (seção 6.2.1).
   const unico = profissionais.length === 1 ? profissionais[0] : null;
@@ -50,8 +39,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   const [etapa, setEtapa] = useState<Etapa>(primeiraEtapa);
   const [servicoIds, setServicoIds] = useState<string[]>([]);
   const [profissionalId, setProfissionalId] = useState<string | null>(null); // null = ainda não escolheu; QUALQUER = qualquer um
-  const [dataEscolhida, setDataEscolhida] = useState(() => new Date());
-  const [horariosLivres, setHorariosLivres] = useState<HorarioLivrePublico[] | null>(null);
+  const [dataEscolhida, setDataEscolhida] = useState(() => dataNoFuso(new Date(), negocio.fuso));
+  const [disponibilidade, setDisponibilidade] = useState<{
+    chave: string; status: "carregando" | "sucesso" | "erro"; horarios: HorarioLivrePublico[];
+  } | null>(null);
+  const [tentativaHorarios, setTentativaHorarios] = useState(0);
+  const [chaveHorarioEscolhido, setChaveHorarioEscolhido] = useState<string | null>(null);
+  const [reservando, setReservando] = useState(false);
+  const reservaEmCurso = useRef(false);
+  const versaoVerificacao = useRef(0);
+  const [telefoneVerificado, setTelefoneVerificado] = useState<string | null>(null);
   const [horarioEscolhido, setHorarioEscolhido] = useState<HorarioLivrePublico | null>(null);
   const [agendamentoId, setAgendamentoId] = useState<string | null>(null);
   const [reservadoAte, setReservadoAte] = useState<number | null>(null);
@@ -110,6 +107,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     : profissionais.filter((p) => servicoIds.every((id) => p.servicoIds.includes(id)));
   const nomeDoProfissional = profissionalDosValores?.nome ?? null;
 
+  // A consulta não depende do horário selecionado: a API calcula a duração de cada profissional.
+  const duracaoConsulta = todosServicos.filter((s) => servicoIds.includes(s.id)).reduce((soma, s) =>
+    soma + (profissionalEscolhido?.servicos?.find((v) => v.servicoId === s.id)?.duracaoMinutos ?? s.duracaoMinutos), 0);
+  const parametrosHorarios = new URLSearchParams({ data: dataEscolhida, duracaoMinutos: String(duracaoConsulta) });
+  if (profissionalId) parametrosHorarios.set("profissionalId", profissionalId);
+  for (const id of [...servicoIds].sort()) parametrosHorarios.append("servicoIds", id);
+  const chaveDisponibilidade = parametrosHorarios.toString();
+  const disponibilidadeAtual = disponibilidade?.chave === chaveDisponibilidade ? disponibilidade : null;
+  const horariosLivres = disponibilidadeAtual?.status === "sucesso" ? disponibilidadeAtual.horarios : null;
+
   useEffect(() => {
     // Reseta o assistente toda vez que ele é reaberto.
     if (!aberto) return;
@@ -117,8 +124,11 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
     setEtapa(primeiraEtapa);
     setServicoIds(servicoInicialId ? [servicoInicialId] : []);
     setProfissionalId(unico ? unico.id : null);
-    setDataEscolhida(new Date());
-    setHorariosLivres(null);
+    setDataEscolhida(dataNoFuso(new Date(), negocio.fuso));
+    setDisponibilidade(null);
+    setChaveHorarioEscolhido(null);
+    setTelefoneVerificado(null);
+    versaoVerificacao.current += 1;
     setHorarioEscolhido(null);
     setAgendamentoId(null);
     setReservadoAte(null);
@@ -139,21 +149,23 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   }, [aberto, servicoInicialId]);
 
   useEffect(() => {
-    if (etapa !== 3 || duracaoTotal === 0 || profissionaisElegiveis.length === 0) return;
-
-    const dataIso = dataLocalIso(dataEscolhida);
-    const parametros = new URLSearchParams({ data: dataIso, duracaoMinutos: String(duracaoTotal) });
-    if (profissionalId) parametros.set("profissionalId", profissionalId);
-    for (const id of servicoIds) parametros.append("servicoIds", id);
-
-    // Com "Qualquer profissional", a API devolve o mesmo horário uma vez por profissional
-    // livre — o cliente vê cada horário uma vez só, e a reserva fica com o primeiro livre.
-    requisicaoApiPublica<HorarioLivrePublico[]>(`/horarios-livres?${parametros.toString()}`).then((lista) => {
+    if (!aberto || etapa !== 3 || duracaoConsulta === 0 || profissionaisElegiveis.length === 0) return;
+    let atual = true;
+    // A chave protege o render e a reserva antes mesmo de este efeito executar.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDisponibilidade({ chave: chaveDisponibilidade, status: "carregando", horarios: [] });
+    setHorarioEscolhido(null);
+    setChaveHorarioEscolhido(null);
+    requisicaoApiPublica<HorarioLivrePublico[]>(`/horarios-livres?${chaveDisponibilidade}`).then((lista) => {
+      if (!atual) return;
       const vistos = new Set<string>();
-      setHorariosLivres(lista.filter((h) => !vistos.has(h.inicio) && vistos.add(h.inicio)));
+      setDisponibilidade({ chave: chaveDisponibilidade, status: "sucesso", horarios:
+        lista.filter((h) => !vistos.has(h.inicio) && vistos.add(h.inicio)) });
+    }).catch(() => {
+      if (atual) setDisponibilidade({ chave: chaveDisponibilidade, status: "erro", horarios: [] });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [etapa, dataEscolhida, profissionalId, duracaoTotal]);
+    return () => { atual = false; };
+  }, [aberto, etapa, chaveDisponibilidade, duracaoConsulta, profissionaisElegiveis.length, tentativaHorarios]);
 
   useEffect(() => {
     if (reenviarEm <= 0) return;
@@ -167,6 +179,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   function escolherProfissional(id: string) {
     setProfissionalId(id);
     setHorarioEscolhido(null);
+    setChaveHorarioEscolhido(null);
+    setDisponibilidade(null);
     if (id !== QUALQUER) {
       const dele = profissionais.find((p) => p.id === id)?.servicoIds ?? [];
       setServicoIds((atual) => atual.filter((s) => dele.includes(s)));
@@ -174,11 +188,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   }
 
   function alternarServico(id: string) {
+    setHorarioEscolhido(null);
+    setChaveHorarioEscolhido(null);
+    setDisponibilidade(null);
     setServicoIds((atual) => (atual.includes(id) ? atual.filter((s) => s !== id) : [...atual, id]));
   }
 
   async function avancarParaResumo() {
-    if (!horarioEscolhido) return;
+    if (!podeContinuarHorario || !horarioEscolhido || reservaEmCurso.current) return;
+    reservaEmCurso.current = true;
+    setReservando(true);
     setErro(null);
 
     try {
@@ -197,6 +216,9 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
       } else {
         setErro("Não foi possível reservar esse horário. Tente novamente.");
       }
+    } finally {
+      reservaEmCurso.current = false;
+      setReservando(false);
     }
   }
 
@@ -234,6 +256,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   }
 
   async function validarCodigo() {
+    const versao = versaoVerificacao.current;
+    const telefoneDoCodigo = telefone;
     setErro(null);
     setValidandoCodigo(true);
     try {
@@ -241,6 +265,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
         metodo: "POST",
         corpo: { telefone, codigo },
       });
+      if (versao !== versaoVerificacao.current) return;
+      setTelefoneVerificado(telefoneDoCodigo);
       setTokenVerificacao(resposta.tokenVerificacao);
       setEtapa(5);
     } catch {
@@ -269,7 +295,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
   }
 
   async function confirmarAgendamento() {
-    if (!agendamentoId || !tokenVerificacao) return;
+    if (!agendamentoId || !podeConfirmar || !tokenVerificacao) return;
     setErro(null);
     setConfirmando(true);
     try {
@@ -316,11 +342,14 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
   const podeEscolherServicos = profissionalId !== null;
   const podeContinuarServicos = servicoIds.length > 0;
-  const podeContinuarHorario = horarioEscolhido !== null;
+  const podeContinuarHorario = horarioEscolhido !== null && chaveHorarioEscolhido === chaveDisponibilidade
+    && disponibilidadeAtual?.status === "sucesso"
+    && dataNoFuso(horarioEscolhido.inicio, negocio.fuso) === dataEscolhida
+    && (horariosLivres?.some((h) => h.inicio === horarioEscolhido.inicio && h.profissionalId === horarioEscolhido.profissionalId) ?? false);
   const etapas: number[] = unico ? [2, 3, 4, 5] : [1, 2, 3, 4, 5];
   // DDD + número (10 ou 11 dígitos) basta: a API completa o +55. Com "+", é número de outro país.
   const podeEnviarCodigo = telefone.replace(/\D/g, "").length >= 10 && nome.trim().length > 0 && aceite;
-  const podeConfirmar = tokenVerificacao !== null;
+  const podeConfirmar = tokenVerificacao !== null && telefoneVerificado === telefone;
 
   // Mesma identidade da página (seção 5): logo e fundo do negócio em volta; os passos num painel do tema, legíveis.
   const fundo = fundoDoNegocio(negocio);
@@ -351,7 +380,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
       >
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-neutral-800">
         {etapa !== primeiraEtapa && etapa !== "sucesso" ? (
-          <button onClick={() => setEtapa((e) => (typeof e === "number" ? ((e - 1) as Etapa) : e))} className="text-sm text-gray-500">
+          <button disabled={reservando} onClick={() => setEtapa((e) => (typeof e === "number" ? ((e - 1) as Etapa) : e))} className="text-sm text-gray-500">
             ← Voltar
           </button>
         ) : (
@@ -365,7 +394,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             />
           ))}
         </div>
-        <button onClick={aoFechar} aria-label="Fechar" className="text-gray-400 hover:text-gray-700">
+        <button disabled={reservando} onClick={aoFechar} aria-label="Fechar" className="text-gray-400 hover:text-gray-700">
           ✕
         </button>
       </div>
@@ -425,6 +454,14 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             <p className="mb-3 text-sm text-gray-500 dark:text-neutral-400">
               {profissionalEscolhido ? `Com ${profissionalEscolhido.nome}` : "Com qualquer profissional"}
             </p>
+            {catalogo.length === 0 && (
+              <div className="space-y-2 text-sm text-gray-500 dark:text-neutral-400">
+                <p>Nenhum serviço disponível para essa escolha.</p>
+                <button onClick={() => unico ? aoFechar() : setEtapa(1)} className="rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">
+                  {unico ? "Voltar à página" : "Escolher outro profissional"}
+                </button>
+              </div>
+            )}
             {catalogo.map((categoria) => (
               <div key={categoria.categoriaId} className="mb-4">
                 <h3 className="mb-2 text-sm font-semibold text-gray-600 dark:text-neutral-400">{categoria.nome}</h3>
@@ -471,21 +508,24 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             </p>
 
             <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-              {proximosDias(14).map((dia) => {
-                const selecionado = dia.toDateString() === dataEscolhida.toDateString();
+              {proximosDiasDoNegocio(14, negocio.fuso).map((dia) => {
+                const selecionado = dia === dataEscolhida;
                 return (
                   <button
-                    key={dia.toISOString()}
+                    key={dia}
+                    disabled={reservando}
                     onClick={() => {
                       setDataEscolhida(dia);
                       setHorarioEscolhido(null);
+                      setChaveHorarioEscolhido(null);
+                      setDisponibilidade(null);
                     }}
                     className={`flex shrink-0 flex-col items-center rounded-lg border px-3 py-2 text-xs ${
                       selecionado ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950" : "border-gray-200 dark:border-neutral-800"
                     }`}
                   >
-                    <span>{dia.toLocaleDateString("pt-BR", { weekday: "short" })}</span>
-                    <span className="font-semibold">{dia.getDate()}</span>
+                    <span>{formatarDiaDaFaixa(dia)}</span>
+                    <span className="font-semibold">{Number(dia.slice(8))}</span>
                   </button>
                 );
               })}
@@ -493,6 +533,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
 
             {profissionaisElegiveis.length === 0 ? (
               <p className="text-sm text-gray-500">Nenhum profissional faz todos esses serviços juntos. Volte e ajuste a escolha.</p>
+            ) : disponibilidadeAtual?.status === "erro" ? (
+              <div role="alert" className="space-y-2 text-sm text-gray-500 dark:text-neutral-400">
+                <p>Não foi possível consultar os horários.</p>
+                <button onClick={() => {
+                  setDisponibilidade(null);
+                  setHorarioEscolhido(null);
+                  setChaveHorarioEscolhido(null);
+                  setTentativaHorarios((atual) => atual + 1);
+                }} className="rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">Tentar novamente</button>
+              </div>
             ) : horariosLivres === null ? (
               <p className="text-sm text-gray-500">Carregando horários...</p>
             ) : horariosLivres.length === 0 ? (
@@ -502,14 +552,15 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 {horariosLivres.map((h) => (
                   <button
                     key={h.inicio}
-                    onClick={() => setHorarioEscolhido(h)}
+                    disabled={reservando}
+                    onClick={() => { setHorarioEscolhido(h); setChaveHorarioEscolhido(chaveDisponibilidade); }}
                     className={`rounded-lg border px-2 py-2 text-sm ${
                       horarioEscolhido?.inicio === h.inicio && horarioEscolhido.profissionalId === h.profissionalId
                         ? "border-(--cor-primaria) bg-blue-50 dark:bg-blue-950"
                         : "border-gray-200 dark:border-neutral-800"
                     }`}
                   >
-                    {formatarHora(h.inicio)}
+                    {formatarHoraDoNegocio(h.inicio, negocio.fuso)}
                   </button>
                 ))}
               </div>
@@ -530,7 +581,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               placeholder="Nome completo"
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              disabled={codigoEnviado}
+              disabled={codigoEnviado || enviandoCodigo || validandoCodigo}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
             <input
@@ -540,8 +591,16 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               inputMode="tel"
               autoComplete="tel-national"
               value={telefone}
-              onChange={(e) => setTelefone(e.target.value)}
-              disabled={codigoEnviado}
+              onChange={(e) => {
+                if (e.target.value !== telefone) {
+                  versaoVerificacao.current += 1;
+                  setTokenVerificacao(null);
+                  setTelefoneVerificado(null);
+                  setCodigo("");
+                }
+                setTelefone(e.target.value);
+              }}
+              disabled={codigoEnviado || enviandoCodigo || validandoCodigo}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
             <input
@@ -549,7 +608,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              disabled={codigoEnviado}
+              disabled={codigoEnviado || enviandoCodigo || validandoCodigo}
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-60 dark:border-neutral-700 dark:bg-neutral-900"
             />
             {!codigoEnviado && !email.trim() && (
@@ -602,6 +661,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 </button>
                 <div className="flex justify-between text-xs">
                   <button
+                    disabled={enviandoCodigo || validandoCodigo}
                     onClick={() => {
                       setCodigoEnviado(false);
                       setCodigo("");
@@ -626,8 +686,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             <div>
               <h3 className="text-xs font-semibold uppercase text-gray-500">Quando</h3>
               <p className="text-sm text-gray-800 dark:text-neutral-200">
-                {new Date(horarioEscolhido.inicio).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} às{" "}
-                {formatarHora(horarioEscolhido.inicio)}
+                {formatarDataDoNegocio(horarioEscolhido.inicio, negocio.fuso)} às{" "}
+                {formatarHoraDoNegocio(horarioEscolhido.inicio, negocio.fuso)}
               </p>
             </div>
 
@@ -682,8 +742,8 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             </div>
             <h2 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">Agendamento confirmado!</h2>
             <p className="text-sm text-gray-600 dark:text-neutral-400">
-              {new Date(resumoFinal.inicio).toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} às{" "}
-              {formatarHora(resumoFinal.inicio)}
+              {formatarDataDoNegocio(resumoFinal.inicio, negocio.fuso)} às{" "}
+              {formatarHoraDoNegocio(resumoFinal.inicio, negocio.fuso)}
             </p>
             <p className="text-sm text-gray-600 dark:text-neutral-400">{resumoFinal.servicos.join(", ")}</p>
             <div className="flex flex-col gap-2">
@@ -720,20 +780,20 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
             disabled={
               (etapa === 1 && !podeEscolherServicos) ||
               (etapa === 2 && !podeContinuarServicos) ||
-              (etapa === 3 && !podeContinuarHorario) ||
+              (etapa === 3 && (!podeContinuarHorario || reservando)) ||
               (etapa === 4 && !podeConfirmar) ||
               (etapa === 5 && confirmando)
             }
             onClick={() => {
               if (etapa === 1) setEtapa(2);
-              else if (etapa === 2) setEtapa(3);
+              else if (etapa === 2) { setDisponibilidade(null); setHorarioEscolhido(null); setChaveHorarioEscolhido(null); setEtapa(3); }
               else if (etapa === 3) avancarParaResumo();
               else if (etapa === 4) setEtapa(5);
               else if (etapa === 5) confirmarAgendamento();
             }}
             className="w-full rounded-lg bg-(--cor-primaria) px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
-            {textoBotaoContinuar(etapa, { podeEscolherServicos, podeContinuarServicos, podeContinuarHorario, podeConfirmar, confirmando })}
+            {reservando ? "Reservando..." : textoBotaoContinuar(etapa, { podeEscolherServicos, podeContinuarServicos, podeContinuarHorario, podeConfirmar, confirmando })}
           </button>
         </div>
       )}

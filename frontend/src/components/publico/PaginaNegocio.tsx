@@ -29,21 +29,30 @@ function enderecoCompleto(n: NegocioPublico): string {
 export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
   const [categorias, setCategorias] = useState<CategoriaComServicosPublicos[] | null>(null);
   const [profissionais, setProfissionais] = useState<ProfissionalPublico[] | null>(null);
+  const [estadoCatalogo, setEstadoCatalogo] = useState<"carregando" | "sucesso" | "erro">("carregando");
+  const [tentativaCatalogo, setTentativaCatalogo] = useState(0);
   const [categoriasAbertas, setCategoriasAbertas] = useState<Set<string>>(new Set());
   const [assistenteAberto, setAssistenteAberto] = useState(false);
   const [servicoInicialId, setServicoInicialId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Busca disparada pela montagem da página pública.
+    let atual = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setEstadoCatalogo("carregando");
     Promise.all([
       requisicaoApiPublica<CategoriaComServicosPublicos[]>("/servicos"),
       requisicaoApiPublica<ProfissionalPublico[]>("/profissionais"),
     ]).then(([listaCategorias, listaProfissionais]) => {
+      if (!atual) return;
       setCategorias(listaCategorias);
       setProfissionais(listaProfissionais);
       setCategoriasAbertas(new Set(listaCategorias.slice(0, 1).map((c) => c.categoriaId)));
+      setEstadoCatalogo("sucesso");
+    }).catch(() => {
+      if (atual) setEstadoCatalogo("erro");
     });
-  }, []);
+    return () => { atual = false; };
+  }, [tentativaCatalogo]);
 
   const corPrimaria = negocio.corPrimaria ?? "#2563eb";
   const corSecundaria = negocio.corSecundaria ?? "#1d4ed8";
@@ -53,6 +62,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
   const classeTextoTopo = fundo.temFundo ? (fundo.textoClaro ? "text-white/90" : "text-gray-700") : "text-gray-600 dark:text-neutral-400";
 
   function abrirAssistente(servicoId?: string) {
+    if (estadoCatalogo !== "sucesso") return;
     setServicoInicialId(servicoId ?? null);
     setAssistenteAberto(true);
   }
@@ -89,6 +99,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           <BotaoTema />
           {aceitaAgendamento && (
             <button
+              disabled={estadoCatalogo !== "sucesso"}
               onClick={() => abrirAssistente()}
               className="rounded-lg bg-(--cor-primaria) px-4 py-2 text-sm font-medium text-white transition hover:opacity-90"
             >
@@ -108,6 +119,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           )}
           {aceitaAgendamento ? (
             <button
+              disabled={estadoCatalogo !== "sucesso"}
               onClick={() => abrirAssistente()}
               className="mt-6 rounded-lg bg-(--cor-primaria) px-6 py-3 text-sm font-semibold text-white transition hover:opacity-90"
             >
@@ -158,7 +170,18 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
         <section className="border-t border-gray-100 px-4 py-8 dark:border-neutral-800">
           <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-neutral-50">Serviços</h2>
 
-          {populares.length > 0 && (
+          {estadoCatalogo === "carregando" && <p role="status" className="text-sm text-gray-500 dark:text-neutral-400">Carregando serviços e profissionais...</p>}
+          {estadoCatalogo === "erro" && (
+            <div role="alert" className="space-y-2 text-sm text-gray-600 dark:text-neutral-400">
+              <p>Não foi possível carregar os serviços e profissionais.</p>
+              <button onClick={() => {
+                setEstadoCatalogo("carregando");
+                setTentativaCatalogo((atual) => atual + 1);
+              }} className="rounded-lg border border-gray-300 px-3 py-2 dark:border-neutral-700">Tentar novamente</button>
+            </div>
+          )}
+          {estadoCatalogo === "sucesso" && categorias?.length === 0 && <p className="text-sm text-gray-500 dark:text-neutral-400">Nenhum serviço disponível no momento.</p>}
+          {estadoCatalogo === "sucesso" && populares.length > 0 && (
             <div className="mb-4">
               <h3 className="mb-2 flex items-center gap-1 text-sm font-semibold text-gray-700 dark:text-neutral-300">
                 ⭐ Mais procurados
@@ -183,7 +206,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
           )}
 
           <div className="space-y-2">
-            {vitrine.map((categoria) => {
+            {(estadoCatalogo === "sucesso" ? vitrine : []).map((categoria) => {
               const aberta = categoriasAbertas.has(categoria.categoriaId);
               return (
                 <div key={categoria.categoriaId} className="rounded-lg border border-gray-200 dark:border-neutral-800">
@@ -253,7 +276,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
         </a>
       </footer>
 
-      {aceitaAgendamento && (
+      {aceitaAgendamento && estadoCatalogo === "sucesso" && (
         <AssistenteAgendamento
           aberto={assistenteAberto}
           aoFechar={() => setAssistenteAberto(false)}
