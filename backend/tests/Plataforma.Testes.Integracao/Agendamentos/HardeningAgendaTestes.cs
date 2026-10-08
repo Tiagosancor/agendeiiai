@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Plataforma.Api.Controllers.Painel;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Profissionais;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Profissionais;
@@ -121,30 +122,6 @@ public sealed class HardeningAgendaTestes : IAsyncLifetime
         (await InicioNoBanco(id)).Should().Be(Local(c, 10, 0));
     }
 
-    [Fact]
-    public async Task Encaixe_lancar_e_iniciar_agora_continua_valendo_e_encaixe_no_passado_nao()
-    {
-        var c = await ArranjarAsync();
-        var agora = SemeadorDeComissoes.Fuso is { } fuso ? TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, fuso) : DateTimeOffset.UtcNow;
-        if (agora.Hour == 23 && agora.Minute >= 20)
-            return; // um serviço de 30 min iniciado agora atravessaria a meia-noite: a regra de H5 o recusa de propósito.
-
-        var profissional = await ComTurnoAsync(c.NegocioId, "Plantonista", new TimeOnly(0, 0), new TimeOnly(23, 59), todosOsDias: true);
-
-        var iniciar = await c.Admin.PostAsJsonAsync("/painel/encaixes", new LancarEncaixe(
-            profissional, null, new NovoClienteEncaixe("Balcão", null), [c.Cenario.ServicoId], null, true, false));
-        iniciar.StatusCode.Should().Be(HttpStatusCode.Created);
-        var idIniciado = (await iniciar.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("agendamentoId").GetGuid();
-        (await _fabrica.NoBancoAsync(db => db.Agendamentos.IgnoreQueryFilters().Where(a => a.Id == idIniciado).Select(a => a.Status).SingleAsync()))
-            .Should().Be(StatusAgendamento.EmAtendimento);
-
-        var noPassado = await c.Admin.PostAsJsonAsync("/painel/encaixes", new LancarEncaixe(
-            profissional, null, new NovoClienteEncaixe("Balcão 2", null), [c.Cenario.ServicoId],
-            SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(-1), 10, 0), false, false));
-        noPassado.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await noPassado.Content.ReadAsStringAsync()).Should().Contain("já passou");
-    }
-
     // ---------------------------------------------------------------- H5 — intervalo inteiro no expediente
 
     [Fact]
@@ -201,7 +178,7 @@ public sealed class HardeningAgendaTestes : IAsyncLifetime
         var c = await ArranjarAsync();
         var (id, token) = await SemearAsync(c, Local(c, 10, 0));
 
-        foreach (var (hora, minuto) in new[] { (23, 45), (17, 45), (8, 45) })
+        foreach (var (hora, minuto) in new[] { (23, 45), (17, 45), (17, 41), (8, 45) })
         {
             var publico = await c.Publico.PostAsJsonAsync($"/publico/meus-agendamentos/{token}/remarcar", new { novoInicio = Local(c, hora, minuto) });
             publico.StatusCode.Should().Be(HttpStatusCode.BadRequest, $"público {hora}:{minuto:00}");
@@ -289,6 +266,180 @@ public sealed class HardeningAgendaTestes : IAsyncLifetime
             $"/publico/horarios-livres?data={ontem:yyyy-MM-dd}&duracaoMinutos=30&servicoIds={c.Cenario.ServicoId}&profissionalId={c.Cenario.ProfissionalId}"))!
             .Should().BeEmpty();
         (await Reservar(c, SemeadorDeComissoes.Local(ontem, 10, 0))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    // ---------------------------------------------------------------- H5 — limites [início, fim)
+
+    [Fact]
+    public async Task Fechamento_exato_e_aceito_um_minuto_a_mais_e_a_abertura_anterior_sao_recusados()
+    {
+        var c = await ArranjarAsync();
+
+        // Serviço de 30 min, turno da tarde até 18:00: 17:30 termina exatamente no fechamento.
+        (await Reservar(c, Local(c, 17, 31))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await c.Admin.PostAsJsonAsync("/painel/agendamentos",
+            new CriarAgendamento(c.Cenario.ProfissionalId, c.Cenario.ClienteId, [c.Cenario.ServicoId], Local(c, 17, 31))))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await Reservar(c, Local(c, 8, 59))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        (await Reservar(c, Local(c, 17, 30))).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await Reservar(c, Local(c, 9, 0))).StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task Bloqueio_parcial_vale_no_intervalo_semiaberto()
+    {
+        var c = await ArranjarAsync();
+        await _fabrica.NoBancoAsync(async db =>
+        {
+            db.BloqueiosAgenda.Add(BloqueioAgenda.Criar(c.NegocioId, c.Cenario.ProfissionalId, Local(c, 14, 0), Local(c, 14, 20), "Dentista"));
+            return await db.SaveChangesAsync();
+        });
+
+        foreach (var (hora, minuto) in new[] { (13, 31), (14, 19), (14, 0) })
+        {
+            var resposta = await Reservar(c, Local(c, hora, minuto));
+            resposta.StatusCode.Should().Be(HttpStatusCode.BadRequest, $"{hora}:{minuto:00}");
+            (await resposta.Content.ReadAsStringAsync()).Should().Contain("bloqueado");
+        }
+
+        (await Reservar(c, Local(c, 13, 30))).StatusCode.Should().Be(HttpStatusCode.Created); // termina 14:00, quando o bloqueio começa
+        (await Reservar(c, Local(c, 14, 20))).StatusCode.Should().Be(HttpStatusCode.Created); // começa quando o bloqueio termina
+    }
+
+    [Fact]
+    public async Task Conflito_com_outro_agendamento_respeita_o_intervalo_semiaberto()
+    {
+        var c = await ArranjarAsync();
+
+        (await Reservar(c, Local(c, 10, 0))).StatusCode.Should().Be(HttpStatusCode.Created);  // 10:00–10:30
+        (await Reservar(c, Local(c, 10, 30))).StatusCode.Should().Be(HttpStatusCode.Created); // colado depois
+        (await Reservar(c, Local(c, 9, 30))).StatusCode.Should().Be(HttpStatusCode.Created);  // colado antes (termina 10:00)
+
+        foreach (var (hora, minuto) in new[] { (10, 15), (9, 31), (10, 59) })
+            (await Reservar(c, Local(c, hora, minuto))).StatusCode.Should().Be(HttpStatusCode.Conflict, $"{hora}:{minuto:00}");
+    }
+
+    [Fact]
+    public async Task Transferencia_aceita_o_que_termina_no_fechamento_e_recusa_um_minuto_a_mais()
+    {
+        var c = await ArranjarAsync();
+        var origem = await ComTurnoAsync(c.NegocioId, "Origem Limite", new TimeOnly(0, 0), new TimeOnly(23, 59), todosOsDias: true);
+        // Semeados com 20 min, em dias úteis diferentes: 17:40 termina 18:00 (cabe), 17:45 termina 18:05 (não cabe).
+        var cabe = await _fabrica.SemearAgendamentoAsync(c.NegocioId, origem, Local(c, 17, 40), servicoId: c.Cenario.ServicoId);
+        var naoCabe = await _fabrica.SemearAgendamentoAsync(c.NegocioId, origem, SemeadorDeComissoes.Local(c.Segunda.AddDays(1), 17, 45), servicoId: c.Cenario.ServicoId);
+        await _fabrica.NoBancoAsync(async db =>
+        {
+            db.ProfissionalServicos.Add(ProfissionalServico.Criar(c.NegocioId, c.Cenario.ProfissionalId, c.Cenario.ServicoId));
+            return await db.SaveChangesAsync();
+        });
+
+        (await c.Admin.PostAsJsonAsync($"/painel/profissionais/{origem}/agendamentos-futuros/{naoCabe}/transferir",
+            new TransferirAgendamentoRequisicao(c.Cenario.ProfissionalId))).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await c.Admin.PostAsJsonAsync($"/painel/profissionais/{origem}/agendamentos-futuros/{cabe}/transferir",
+            new TransferirAgendamentoRequisicao(c.Cenario.ProfissionalId))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Encaixe_apenas_encaixar_valida_o_intervalo_inteiro()
+    {
+        var c = await ArranjarAsync();
+
+        var atravessa = await c.Admin.PostAsJsonAsync("/painel/encaixes", new LancarEncaixe(
+            c.Cenario.ProfissionalId, null, new NovoClienteEncaixe("Balcão", null), [c.Cenario.ServicoId], Local(c, 23, 45), false, false));
+        atravessa.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await atravessa.Content.ReadAsStringAsync()).Should().Contain("Fora do expediente");
+
+        (await c.Admin.PostAsJsonAsync("/painel/encaixes", new LancarEncaixe(
+            c.Cenario.ProfissionalId, null, new NovoClienteEncaixe("Balcão 2", null), [c.Cenario.ServicoId], Local(c, 17, 30), false, false)))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+    }
+
+    [Fact]
+    public async Task O_modelo_continua_sem_aceitar_turno_que_atravessa_a_meia_noite()
+    {
+        var c = await ArranjarAsync();
+
+        var resposta = await c.Admin.PutAsJsonAsync($"/painel/profissionais/{c.Cenario.ProfissionalId}/horarios",
+            new[] { new IntervaloTrabalho((int)DiaSemana.Segunda, new TimeOnly(22, 0), new TimeOnly(2, 0)) });
+
+        resposta.IsSuccessStatusCode.Should().BeFalse($"recebeu {(int)resposta.StatusCode}");
+        (await _fabrica.NoBancoAsync(db => db.HorariosTrabalho.IgnoreQueryFilters()
+            .AnyAsync(h => h.ProfissionalId == c.Cenario.ProfissionalId && h.Inicio == new TimeOnly(22, 0)))).Should().BeFalse();
+    }
+
+    // ---------------------------------------------------------------- oferece × aceita (varreduras)
+
+    [Fact]
+    public async Task Varredura_do_dia_inteiro_o_que_e_oferecido_e_exatamente_o_que_o_POST_aceita()
+    {
+        var c = await ArranjarAsync();
+        await SemearAsync(c, Local(c, 10, 0)); // outro agendamento (20 min: 10:00–10:20)
+        await _fabrica.NoBancoAsync(async db =>
+        {
+            db.BloqueiosAgenda.Add(BloqueioAgenda.Criar(c.NegocioId, c.Cenario.ProfissionalId, Local(c, 14, 0), Local(c, 14, 20), "Dentista"));
+            return await db.SaveChangesAsync();
+        });
+
+        var oferecidos = (await c.Publico.GetFromJsonAsync<List<HorarioPublico>>(
+            $"/publico/horarios-livres?data={c.Segunda:yyyy-MM-dd}&duracaoMinutos=30&servicoIds={c.Cenario.ServicoId}&profissionalId={c.Cenario.ProfissionalId}"))!
+            .Select(h => h.Inicio).ToHashSet();
+
+        // Expectativa calculada à parte, em minutos: turnos 09:00–12:00 e 13:00–18:00, serviço de 30 min,
+        // ocupado 10:00–10:20 e bloqueio 14:00–14:20 (intervalos semiabertos).
+        static bool Sobrepoe(int ini, int fim, int ocIni, int ocFim) => ini < ocFim && fim > ocIni;
+        var validos = 0;
+
+        for (var minuto = 0; minuto < 24 * 60; minuto += 15)
+        {
+            var (ini, fim) = (minuto, minuto + 30);
+            var dentroDeUmTurno = (ini >= 540 && fim <= 720) || (ini >= 780 && fim <= 1080);
+            var ocupado = Sobrepoe(ini, fim, 600, 620);
+            var bloqueado = Sobrepoe(ini, fim, 840, 860);
+            var valido = dentroDeUmTurno && !ocupado && !bloqueado;
+            if (valido) validos++;
+
+            var inicio = Local(c, minuto / 60, minuto % 60);
+            var resposta = await Reservar(c, inicio);
+            var rotulo = $"{minuto / 60:00}:{minuto % 60:00}";
+
+            oferecidos.Contains(inicio).Should().Be(valido, $"{rotulo} — oferta");
+            (resposta.StatusCode == HttpStatusCode.Created).Should().Be(valido, $"{rotulo} — POST");
+            if (resposta.StatusCode == HttpStatusCode.Created)
+            {
+                var id = (await resposta.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("agendamentoId").GetGuid();
+                (await c.Admin.PostAsync($"/painel/agendamentos/{id}/cancelar", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            }
+            else if (!valido)
+            {
+                // 409 só é legítimo para conflito com outro agendamento (ocupação), nunca por regra de expediente.
+                var esperado = dentroDeUmTurno && ocupado && !bloqueado ? HttpStatusCode.Conflict : HttpStatusCode.BadRequest;
+                resposta.StatusCode.Should().Be(esperado, $"{rotulo} — motivo da recusa");
+            }
+        }
+
+        validos.Should().BeGreaterThan(20, "a varredura precisa exercitar horários válidos, não só recusas");
+        oferecidos.Should().HaveCount(validos);
+    }
+
+    [Fact]
+    public async Task Varredura_de_ontem_nada_e_oferecido_e_tudo_e_recusado_por_ser_passado()
+    {
+        var c = await ArranjarAsync();
+        var ontem = SemeadorDeComissoes.Dia(-1);
+
+        (await c.Publico.GetFromJsonAsync<List<HorarioPublico>>(
+            $"/publico/horarios-livres?data={ontem:yyyy-MM-dd}&duracaoMinutos=30&servicoIds={c.Cenario.ServicoId}&profissionalId={c.Cenario.ProfissionalId}"))!
+            .Should().BeEmpty();
+
+        for (var minuto = 0; minuto < 24 * 60; minuto += 15)
+        {
+            var resposta = await Reservar(c, SemeadorDeComissoes.Local(ontem, minuto / 60, minuto % 60));
+            resposta.StatusCode.Should().Be(HttpStatusCode.BadRequest, $"{minuto / 60:00}:{minuto % 60:00}");
+            (await resposta.Content.ReadAsStringAsync()).Should().Contain("já passou");
+        }
+
+        (await Contar(c)).Should().Be(0);
     }
 
     // ---------------------------------------------------------------- apoio

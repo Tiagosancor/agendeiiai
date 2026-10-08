@@ -90,6 +90,8 @@ public sealed class RegrasDeHorarioTestes
         RegrasDeHorario.JaPassou(agora.AddMinutes(-30), agora).Should().BeTrue();
         RegrasDeHorario.JaPassou(agora.AddMinutes(-6), agora).Should().BeTrue();
         RegrasDeHorario.JaPassou(agora.AddMinutes(-5), agora).Should().BeFalse(); // limite: ainda é "agora"
+        RegrasDeHorario.JaPassou(agora.AddMinutes(-5).AddTicks(-1), agora).Should().BeTrue(); // um tick além do limite
+        RegrasDeHorario.JaPassou(agora.AddMinutes(-5).AddTicks(1), agora).Should().BeFalse();
         RegrasDeHorario.JaPassou(agora.AddSeconds(-45), agora).Should().BeFalse(); // "Lançar e iniciar" trunca para o minuto
         RegrasDeHorario.JaPassou(agora, agora).Should().BeFalse();
         RegrasDeHorario.JaPassou(agora.AddHours(1), agora).Should().BeFalse();
