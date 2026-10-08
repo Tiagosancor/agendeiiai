@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Plataforma.Api.Controllers.Painel;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Negocios;
@@ -479,19 +480,79 @@ public sealed class GestaoPublicaAgendamentoTestes : IAsyncLifetime
         (await HorariosAsync(c, tokenB, c.Segunda)).Should().Contain(Local(c.Segunda, 10, 0));
     }
 
+    [Theory]
+    [InlineData("Faltou")]
+    [InlineData("EmAtendimento")]
+    public async Task Faltou_e_EmAtendimento_nao_oferecem_cancelamento_ao_cliente_mas_o_painel_continua_cancelando(string status)
+    {
+        var c = await ArranjarAsync();
+        var (id, token) = await SemearAsync(c, Local(c.Segunda, 10, 0));
+        await MudarStatusAsync(id, status);
+
+        // Capability e POST aplicam a mesma decisão, com o código estável de status.
+        var cancelar = (await AcoesAsync(c, token)).GetProperty("cancelar");
+        cancelar.GetProperty("permitido").GetBoolean().Should().BeFalse();
+        cancelar.GetProperty("codigoMotivo").GetString().Should().Be("status_nao_permite");
+
+        var post = await c.Publico.PostAsync($"/publico/meus-agendamentos/{token}/cancelar", null);
+        post.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codigo").GetString().Should().Be("status_nao_permite");
+        (await Status(c, id)).ToString().Should().Be(status);
+
+        // O comportamento administrativo do painel não muda (a regra global do domínio continua a mesma).
+        (await c.Admin.PostAsync($"/painel/agendamentos/{id}/cancelar", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await Status(c, id)).Should().Be(StatusAgendamento.Cancelado);
+    }
+
+    [Fact]
+    public async Task Cancelar_em_quinzena_fechada_e_bloqueado_na_capability_e_no_POST_com_o_contrato_neutro()
+    {
+        var c = await ArranjarAsync();
+        var ana = await _fabrica.CriarProfissionalAsync(c.NegocioId, "Ana Quinzena");
+        (await c.Admin.DefinirComissaoAsync(ana, 10m, acertoPorQuinzena: true)).EnsureSuccessStatusCode();
+
+        // Período que ainda tem dias à frente: o agendamento futuro de Ana dentro dele fica travado pelo fechamento.
+        var criada = await c.Admin.PostAsJsonAsync("/painel/quinzenas",
+            new DatasQuinzenaRequisicao(SemeadorDeComissoes.Dia(-1), SemeadorDeComissoes.Dia(10)));
+        criada.StatusCode.Should().Be(HttpStatusCode.Created);
+        var quinzena = (await criada.Content.ReadFromJsonAsync<QuinzenaSalvaResposta>())!.Id;
+
+        var travado = await SemearDeAsync(c, ana, SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(5), 10, 0));
+        var foraDoPeriodo = await SemearDeAsync(c, ana, SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(20), 10, 0));
+        (await c.Admin.PostAsJsonAsync($"/painel/quinzenas/{quinzena}/fechar", new FecharQuinzenaRequisicao(true)))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var acoes = await AcoesAsync(c, travado.Token);
+        acoes.GetProperty("cancelar").GetProperty("permitido").GetBoolean().Should().BeFalse();
+        acoes.GetProperty("cancelar").GetProperty("codigoMotivo").GetString().Should().Be("nao_permitido");
+        acoes.GetProperty("cancelar").GetProperty("motivo").GetString().Should().NotContain("quinzena").And.NotContain("comiss");
+        acoes.GetProperty("remarcar").GetProperty("permitido").GetBoolean().Should().BeTrue(); // remarcar nunca foi travado
+
+        var post = await c.Publico.PostAsync($"/publico/meus-agendamentos/{travado.Token}/cancelar", null);
+        post.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var json = await post.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("codigo").GetString().Should().Be("nao_permitido");
+        json.GetRawText().Should().NotContainAny("quinzena", "comiss", "fechamento");
+        (await Status(c, travado.Id)).Should().Be(StatusAgendamento.Agendado);
+
+        // Fora do período fechado, o mesmo profissional continua cancelável.
+        (await AcoesAsync(c, foraDoPeriodo.Token)).GetProperty("cancelar").GetProperty("permitido").GetBoolean().Should().BeTrue();
+        (await c.Publico.PostAsync($"/publico/meus-agendamentos/{foraDoPeriodo.Token}/cancelar", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
     // ---------------------------------------------------------------- apoio
 
     private sealed record Contexto(
-        HttpClient Publico, Guid NegocioId, SemeadorDeAgenda.CenarioDeAgenda Cenario, DateOnly Segunda);
+        HttpClient Publico, Guid NegocioId, SemeadorDeAgenda.CenarioDeAgenda Cenario, DateOnly Segunda, HttpClient Admin);
 
     private sealed record HorarioPublico(DateTimeOffset Inicio, Guid ProfissionalId);
 
     private async Task<Contexto> ArranjarAsync()
     {
-        var (_, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
         var cenario = await _fabrica.CriarCenarioPadraoAsync(negocioId);
         var negocio = await _fabrica.NoBancoAsync(db => db.Negocios.IgnoreQueryFilters().SingleAsync(n => n.Id == negocioId));
-        return new Contexto(ClientePorSlug(negocio.Slug.Valor), negocioId, cenario, ProximaSegunda());
+        return new Contexto(ClientePorSlug(negocio.Slug.Valor), negocioId, cenario, ProximaSegunda(), admin);
     }
 
     private async Task<(Guid Id, string Token)> SemearAsync(Contexto c, DateTimeOffset inicio, decimal[]? precos = null)
@@ -499,6 +560,12 @@ public sealed class GestaoPublicaAgendamentoTestes : IAsyncLifetime
         var id = await _fabrica.SemearAgendamentoAsync(c.NegocioId, c.Cenario.ProfissionalId, inicio, precos: precos, servicoId: c.Cenario.ServicoId);
         var token = _fabrica.Services.GetRequiredService<IServicoTokenPublico>().GerarTokenAgendamento(c.NegocioId, id);
         return (id, token);
+    }
+
+    private async Task<(Guid Id, string Token)> SemearDeAsync(Contexto c, Guid profissionalId, DateTimeOffset inicio)
+    {
+        var id = await _fabrica.SemearAgendamentoAsync(c.NegocioId, profissionalId, inicio, servicoId: c.Cenario.ServicoId);
+        return (id, _fabrica.Services.GetRequiredService<IServicoTokenPublico>().GerarTokenAgendamento(c.NegocioId, id));
     }
 
     private async Task<JsonElement> AcoesAsync(Contexto c, string token) =>
@@ -520,6 +587,7 @@ public sealed class GestaoPublicaAgendamentoTestes : IAsyncLifetime
                 case "Cancelado": agendamento.Cancelar(); break;
                 case "Concluido": agendamento.MarcarConcluido(0m, DateTimeOffset.UtcNow); break;
                 case "EmAtendimento": agendamento.IniciarAtendimento(); break;
+                case "Faltou": agendamento.MarcarFaltou(); break;
                 default: throw new ArgumentException(status);
             }
 
