@@ -1,128 +1,130 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { requisicaoApiPublica, ErroApi } from "@/lib/api";
-import type { DetalhePublicoAgendamento } from "@/lib/tipos";
-import { formatarReais } from "@/lib/formatacao";
+import type { DetalhePublicoAgendamento, NegocioPublico } from "@/lib/tipos";
+import { CompromissoAgendamento } from "@/components/publico/CompromissoAgendamento";
+import { formatarHorarioEstabelecimento } from "@/lib/horario-estabelecimento";
+import { controleGestao, RemarcacaoAgendamento } from "@/components/publico/RemarcacaoAgendamento";
 
-function formatarDataHora(iso: string): string {
-  return new Date(iso).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" });
-}
-
-const ROTULO_STATUS: Record<string, string> = { EmAtendimento: "Em atendimento", Concluido: "Concluído" };
+type Aviso = { tipo: "erro" | "sucesso" | "aviso"; texto: string };
+type Dados = { detalhe: DetalhePublicoAgendamento; fuso: string };
 
 export default function PaginaMeuAgendamento({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params);
+  return <GestaoAgendamento key={token} token={token} />;
+}
 
-  const [detalhe, setDetalhe] = useState<DetalhePublicoAgendamento | null>(null);
-  const [erroCarregar, setErroCarregar] = useState<string | null>(null);
-  const [processando, setProcessando] = useState(false);
-  const [mensagem, setMensagem] = useState<string | null>(null);
-  const [novoInicio, setNovoInicio] = useState("");
+function GestaoAgendamento({ token }: { token: string }) {
+  const [dados, setDados] = useState<Dados | null>(null);
+  const [erroCarregar, setErroCarregar] = useState<{ texto: string; temporario: boolean } | null>(null);
+  const [tentativa, setTentativa] = useState(0);
+  const [processando, setProcessando] = useState<"cancelar" | "remarcar" | "atualizar" | null>(null);
+  const [mensagem, setMensagem] = useState<Aviso | null>(null);
+  const [aguardandoAtualizacao, setAguardandoAtualizacao] = useState(false);
+  const [aberto, setAberto] = useState(false);
+  const trava = useRef(false);
+  const montado = useRef(false);
+  const acaoAceita = useRef<"cancelar" | "remarcar">("remarcar");
+  const titulo = useRef<HTMLHeadingElement>(null);
+  const carga = useRef<HTMLDivElement>(null);
+  const abrir = useRef<HTMLButtonElement>(null);
 
+  useEffect(() => { montado.current = true; return () => { montado.current = false; }; }, []);
   useEffect(() => {
-    // Busca disparada pela montagem, a partir do token na URL.
-    requisicaoApiPublica<DetalhePublicoAgendamento>(`/meus-agendamentos/${token}`)
-      .then(setDetalhe)
-      .catch(() => setErroCarregar("Link inválido ou expirado."));
-  }, [token]);
+    if (mensagem?.tipo === "erro" && document.getElementById("titulo-remarcacao")) document.getElementById("titulo-remarcacao")?.focus();
+    else if (dados || erroCarregar) (titulo.current ?? carga.current)?.focus();
+  }, [dados, erroCarregar, mensagem]);
+  useEffect(() => {
+    let vigente = true;
+    (async () => {
+      const detalhe = await requisicaoApiPublica<DetalhePublicoAgendamento>(`/meus-agendamentos/${token}`);
+      const fuso = detalhe.fuso ?? (await requisicaoApiPublica<NegocioPublico>("/negocio")).fuso;
+      formatarHorarioEstabelecimento(detalhe.inicio, fuso);
+      if (vigente) setDados({ detalhe, fuso });
+    })().catch(excecao => {
+      if (!vigente) return;
+      const invalido = excecao instanceof ErroApi && (excecao.status === 401 || excecao.status === 404);
+      setErroCarregar({ texto: invalido ? "Link inválido ou expirado, ou agendamento não encontrado." : "Não foi possível carregar o agendamento. Tente novamente.", temporario: !invalido });
+    });
+    return () => { vigente = false; };
+  }, [token, tentativa]);
 
-  async function cancelar() {
-    if (!confirm("Tem certeza que deseja cancelar este agendamento?")) return;
-
-    setProcessando(true);
-    setMensagem(null);
+  function aplicar(detalhe: DetalhePublicoAgendamento) {
+    const fuso = detalhe.fuso ?? dados!.fuso;
+    formatarHorarioEstabelecimento(detalhe.inicio, fuso);
+    setDados({ detalhe, fuso }); setAguardandoAtualizacao(false); setAberto(false);
+    setMensagem({ tipo: "sucesso", texto: acaoAceita.current === "cancelar" ? "Agendamento cancelado." : "Agendamento remarcado." });
+  }
+  async function atualizarDetalhes() {
     try {
-      await requisicaoApiPublica(`/meus-agendamentos/${token}/cancelar`, { metodo: "POST" });
-      setDetalhe((atual) => (atual ? { ...atual, status: "Cancelado" } : atual));
-      setMensagem("Agendamento cancelado.");
-    } catch (excecao) {
-      setMensagem(excecao instanceof ErroApi ? excecao.message : "Não foi possível cancelar.");
-    } finally {
-      setProcessando(false);
+      const detalhe = await requisicaoApiPublica<DetalhePublicoAgendamento>(`/meus-agendamentos/${token}`);
+      if (montado.current) aplicar(detalhe);
+    } catch {
+      if (montado.current) setMensagem({ tipo: "aviso", texto: `A ${acaoAceita.current === "cancelar" ? "solicitação de cancelamento" : "remarcação"} foi aceita, mas não foi possível atualizar os detalhes. Tente atualizar os detalhes novamente.` });
     }
   }
-
-  async function remarcar(evento: React.FormEvent) {
-    evento.preventDefault();
-    if (!novoInicio) return;
-
-    setProcessando(true);
-    setMensagem(null);
+  async function repetirAtualizacao() {
+    if (trava.current || !aguardandoAtualizacao) return;
+    trava.current = true; setProcessando("atualizar"); titulo.current?.focus();
+    try { await atualizarDetalhes(); } finally { trava.current = false; if (montado.current) setProcessando(null); }
+  }
+  async function agir(acao: "cancelar" | "remarcar", slot?: string): Promise<boolean> {
+    if (trava.current || aguardandoAtualizacao || dados?.detalhe.acoes?.[acao]?.permitido !== true) return false;
+    trava.current = true;
+    if (acao === "cancelar" && !confirm("Tem certeza que deseja cancelar este agendamento?")) { trava.current = false; return false; }
+    setProcessando(acao); setMensagem(null);
     try {
-      const iso = new Date(novoInicio).toISOString();
-      await requisicaoApiPublica(`/meus-agendamentos/${token}/remarcar`, { metodo: "POST", corpo: { novoInicio: iso } });
-      const atualizado = await requisicaoApiPublica<DetalhePublicoAgendamento>(`/meus-agendamentos/${token}`);
-      setDetalhe(atualizado);
-      setMensagem("Agendamento remarcado.");
+      const detalhe = await requisicaoApiPublica<DetalhePublicoAgendamento | undefined>(`/meus-agendamentos/${token}/${acao}`, {
+        metodo: "POST", ...(slot ? { corpo: { novoInicio: slot } } : {}), cabecalhos: { Prefer: "return=representation" },
+      });
+      if (!montado.current) return true;
+      acaoAceita.current = acao;
+      // Toda falha de reconciliação depois deste ponto é aviso, não falha do POST.
+      setAguardandoAtualizacao(true); setAberto(false);
+      setMensagem({ tipo: "aviso", texto: "Solicitação aceita. Atualizando os detalhes..." });
+      if (detalhe) {
+        try { aplicar(detalhe); } catch { await atualizarDetalhes(); }
+      } else await atualizarDetalhes();
+      return true;
     } catch (excecao) {
-      setMensagem(excecao instanceof ErroApi ? excecao.message : "Não foi possível remarcar. Escolha outro horário.");
-    } finally {
-      setProcessando(false);
-    }
+      if (montado.current) setMensagem({ tipo: "erro", texto: excecao instanceof ErroApi
+        ? excecao.status === 409 && excecao.codigo === "horario_indisponivel"
+          ? "Esse horário acabou de ficar indisponível. Escolha uma nova opção entre os horários atualizados."
+          : /^Erro \d+$/.test(excecao.message) ? "Não foi possível concluir a solicitação. Tente novamente." : excecao.message
+        : "Não foi possível concluir a solicitação. Tente novamente." });
+      return false;
+    } finally { trava.current = false; if (montado.current) setProcessando(null); }
   }
 
-  if (erroCarregar) {
-    return (
-      <main className="flex min-h-screen items-center justify-center px-6 text-center">
-        <p className="text-sm text-gray-500">{erroCarregar}</p>
-      </main>
-    );
-  }
+  if (!dados) return <main className="gestao-estado-inicial">
+    <span className="gestao-estado-simbolo" aria-hidden="true">{erroCarregar ? "!" : "◷"}</span>
+    <h1>Seu agendamento</h1>
+    <div ref={carga} tabIndex={-1}><p role={erroCarregar ? "alert" : "status"}>{erroCarregar?.texto ?? "Carregando..."}</p></div>
+    {erroCarregar?.temporario && <button className={controleGestao} onClick={() => { carga.current?.focus(); setErroCarregar(null); setTentativa(n => n + 1); }}>Tentar novamente</button>}
+  </main>;
 
-  if (!detalhe) {
-    return (
-      <main className="flex min-h-screen items-center justify-center px-6 text-center">
-        <p className="text-sm text-gray-500">Carregando...</p>
-      </main>
-    );
-  }
-
-  const ativo = detalhe.status === "Agendado";
-
-  return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center gap-4 px-6 py-12">
-      <h1 className="text-lg font-semibold text-gray-900 dark:text-neutral-50">{detalhe.nomeNegocio}</h1>
-
-      <div className="rounded-xl border border-gray-200 p-4 dark:border-neutral-800">
-        <p className="text-sm text-gray-500 dark:text-neutral-400">Status: {ROTULO_STATUS[detalhe.status] ?? detalhe.status}</p>
-        <p className="mt-1 text-sm text-gray-800 dark:text-neutral-200">{formatarDataHora(detalhe.inicio)}</p>
-        <p className="text-sm text-gray-600 dark:text-neutral-400">{detalhe.servicos.join(", ")}</p>
-        <p className="text-sm text-gray-600 dark:text-neutral-400">{detalhe.local}</p>
-        <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-neutral-50">Total: {formatarReais(detalhe.total)}</p>
-      </div>
-
-      {mensagem && <p className="text-sm text-gray-700 dark:text-neutral-300">{mensagem}</p>}
-
-      {ativo && (
-        <>
-          <button
-            onClick={cancelar}
-            disabled={processando}
-            className="rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 disabled:opacity-60 dark:border-red-900 dark:text-red-400"
-          >
-            Cancelar agendamento
-          </button>
-
-          <form onSubmit={remarcar} className="space-y-2">
-            <label className="block text-sm text-gray-600 dark:text-neutral-400">Remarcar para</label>
-            <input
-              type="datetime-local"
-              required
-              value={novoInicio}
-              onChange={(e) => setNovoInicio(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-            />
-            <button
-              type="submit"
-              disabled={processando}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-            >
-              Remarcar
-            </button>
-          </form>
-        </>
-      )}
-    </main>
-  );
+  const { detalhe, fuso } = dados;
+  const acoes = detalhe.acoes;
+  return <main className="gestao-pagina">
+    <div className="gestao-intro"><h1 ref={titulo} tabIndex={-1}>{detalhe.nomeNegocio}</h1><p>Consulte seu compromisso e organize seu próximo horário.</p></div>
+    <div className="gestao-grid">
+    {aguardandoAtualizacao ? <article className="gestao-compromisso"><h2>Atualizando seu agendamento</h2><p>Detalhes aguardando atualização.</p></article> : <CompromissoAgendamento detalhe={detalhe} fuso={fuso} />}
+    <section className="gestao-acoes" aria-labelledby="gestao-acoes-titulo">
+    <h2 id="gestao-acoes-titulo">Organize seu agendamento</h2>
+    <p id="fuso-estabelecimento" className="gestao-contexto">Horários do estabelecimento ({fuso}).</p>
+    {!aguardandoAtualizacao && detalhe.regras?.limiteParaAlterarEm && <p className="gestao-regra">Limite para alterações: {formatarHorarioEstabelecimento(detalhe.regras.limiteParaAlterarEm, fuso)}</p>}
+    {processando ? <p className="gestao-aviso" role="status">{processando === "cancelar" ? "Cancelando agendamento..." : processando === "remarcar" ? "Remarcando agendamento..." : "Atualizando detalhes..."}</p>
+      : mensagem && <p className="gestao-aviso" data-tipo={mensagem.tipo} role={mensagem.tipo === "erro" ? "alert" : "status"}>{mensagem.texto}</p>}
+    {aguardandoAtualizacao ? <button className={controleGestao} disabled={!!processando} onClick={repetirAtualizacao}>{processando ? "Atualizando..." : "Atualizar detalhes"}</button> : <>
+      {!acoes && <p role="status">As opções de alteração não estão disponíveis. Tente consultar novamente mais tarde.</p>}
+      {acoes?.remarcar?.permitido === true ? <>
+        <button ref={abrir} className={`${controleGestao} gestao-primario`} aria-expanded={aberto} aria-controls="remarcacao" disabled={!!processando} onClick={() => setAberto(v => !v)}>{aberto ? "Fechar remarcação" : "Remarcar agendamento"}</button>
+        {aberto && <RemarcacaoAgendamento token={token} fuso={fuso} inicio={detalhe.inicio} bloqueado={!!processando} remarcando={processando === "remarcar"} confirmar={slot => agir("remarcar", slot)} />}
+      </> : acoes?.remarcar?.motivo && <p className="gestao-motivo">Remarcação: {acoes.remarcar.motivo}</p>}
+      {acoes?.cancelar?.permitido === true ? <button className={`${controleGestao} gestao-cancelar`} disabled={!!processando} onClick={() => agir("cancelar")}>{processando === "cancelar" ? "Cancelando..." : "Cancelar agendamento"}</button>
+        : acoes?.cancelar?.motivo && <p className="gestao-motivo">Cancelamento: {acoes.cancelar.motivo}</p>}
+    </>}
+    </section></div>
+  </main>;
 }

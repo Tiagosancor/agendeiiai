@@ -113,19 +113,20 @@ export async function requisicaoAutenticacaoPainel<T>(caminho: "login" | "renova
 export async function requisicaoApiPublica<T>(caminho: string, opcoes: OpcoesRequisicao = {}): Promise<T> {
   const resposta = await fetch(`/api/publico${caminho}`, {
     method: opcoes.metodo ?? "GET",
-    headers: opcoes.corpo !== undefined ? { "Content-Type": "application/json" } : {},
+    headers: { ...(opcoes.corpo !== undefined ? { "Content-Type": "application/json" } : {}), ...opcoes.cabecalhos },
     body: opcoes.corpo !== undefined ? JSON.stringify(opcoes.corpo) : undefined,
   });
 
   if (!resposta.ok) {
     let mensagem = `Erro ${resposta.status}`;
+    let corpoErro: Record<string, unknown> | undefined;
     try {
-      const corpoErro = await resposta.json();
-      mensagem = corpoErro.detail ?? corpoErro.title ?? mensagem;
+      corpoErro = await resposta.json();
+      mensagem = (corpoErro?.detail as string) ?? (corpoErro?.title as string) ?? mensagem;
     } catch {
       // corpo não é JSON — mantém a mensagem genérica.
     }
-    throw new ErroApi(resposta.status, mensagem);
+    throw new ErroApi(resposta.status, mensagem, corpoErro?.codigo as string | undefined, corpoErro);
   }
 
   return lerCorpoJson<T>(resposta);
