@@ -32,6 +32,18 @@ function formatoDeSlugValido(candidato: string): boolean {
 }
 
 /**
+ * O alvo do rewrite chama `notFound()` e pode ser pré-renderizado pelo Next.js. Sem
+ * headers explícitos, esse 404 recebe cache público prolongado e pode sobreviver à
+ * criação futura do slug. A proteção precisa estar na resposta final do rewrite,
+ * sem alterar a política das páginas válidas.
+ */
+function negocioNaoEncontrado(request: NextRequest): NextResponse {
+  const resposta = NextResponse.rewrite(new URL("/negocio-nao-encontrado", request.url));
+  resposta.headers.set("Cache-Control", "no-store");
+  return resposta;
+}
+
+/**
  * Link antigo de um negócio que trocou de slug (seção 5): por 90 dias, 301 para o mesmo caminho no endereço novo (links de
  * e-mail como /agendamentos/{token} continuam funcionando). Cache curto de propósito: um 301 fica guardado no navegador, e
  * depois do prazo o slug pode ser de outro negócio.
@@ -83,7 +95,7 @@ export async function proxy(request: NextRequest) {
   const slugCandidato = host.slice(0, -sufixo.length);
 
   if (!formatoDeSlugValido(slugCandidato)) {
-    return NextResponse.rewrite(new URL("/negocio-nao-encontrado", request.url));
+    return negocioNaoEncontrado(request);
   }
 
   try {
@@ -93,7 +105,7 @@ export async function proxy(request: NextRequest) {
     });
 
     if (resposta.status === 404) {
-      return (await redirecionarLinkAntigo(request, slugCandidato)) ?? NextResponse.rewrite(new URL("/negocio-nao-encontrado", request.url));
+      return (await redirecionarLinkAntigo(request, slugCandidato)) ?? negocioNaoEncontrado(request);
     }
   } catch {
     // API indisponível: não derruba o site inteiro por uma falha temporária de infra —

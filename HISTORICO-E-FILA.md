@@ -131,19 +131,25 @@ validações frontend conhecidas. D6 publicou o conjunto sem incidentes e sem mi
 O release D7 não alterou frontend, banco, migrations, schema, dependências ou
 infraestrutura. Railway, Vercel e CI ficaram saudáveis; não houve rollback.
 
+### Hardening D8.1 — implementado localmente, não publicado
+
+| Campo | Registro |
+|---|---|
+| Responsável | Codex |
+| Branch | `codex/fix-cache-404-negocio-inexistente` |
+| Base | `0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91` |
+| Commits | `bda0996` (histórico) e `fix: impede cache prolongado de negócio inexistente` (implementação) |
+| Resultado | Respostas 404 de slug inexistente ou inválido mantêm a página humana e passam a declarar `Cache-Control: no-store` na resposta final do Next.js |
+| Testes | 4/4 testes específicos e 83/83 testes direcionados passaram; lint, TypeScript e build passaram |
+| Escopo | Somente frontend, proxy e testes Playwright; sem backend, API, banco, migrations ou dependências |
+| Produção | Não alterada; o snapshot publicado continua em `0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91` |
+
+O ajuste preserva a landing raiz, `app`, `www`, negócios válidos, redirecionamento de slug
+anterior, caminhos, query strings e a política existente quando a API está indisponível.
+O item F1 foi encerrado na branch local e ainda depende dos gates normais de integração e
+publicação.
+
 ## Fila atual
-
-### F1 — cache de 404 para negócio inexistente
-
-- **Responsável:** Codex.
-- **Camada:** frontend, `proxy.ts` e política HTTP/cache.
-- **Origem:** auditoria D7.
-- **Situação:** pendente de ciclo próprio.
-- **Problema confirmado:** respostas 404 para host/slug de negócio inexistente podem usar
-  `s-maxage=31536000`, permitindo retenção prolongada por CDN.
-- **Objetivo:** definir política segura e testada sem prejudicar a resolução normal de
-  tenant, slugs anteriores ou páginas públicas válidas.
-- **Não envolve:** regra de domínio, migration ou redesign.
 
 ### F2 — melhorias D4.1 da experiência pós-agendamento
 
@@ -232,11 +238,10 @@ Não transformar esse item em novo redesign do painel.
 
 ## Próxima sequência recomendada
 
-1. Codex: F1, correção técnica do cache de 404.
-2. Codex: F2, polimento D4.1 do pós-agendamento.
-3. Codex: F3, P2 pontuais do painel, após nova verificação visual.
-4. Claude Code: B1, resposta 400 para horários inválidos.
-5. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
+1. Codex: F2, polimento D4.1 do pós-agendamento.
+2. Codex: F3, P2 pontuais do painel, após nova verificação visual.
+3. Claude Code: B1, resposta 400 para horários inválidos.
+4. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
 
 A ordem pode ser alterada pelo usuário. Cada item deve usar branch própria, preservar os
 gates de release e não misturar frontend visual com correção backend sem necessidade.
