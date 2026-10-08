@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Plataforma.Api.Controllers.Painel;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Agendamentos;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Negocios;
 using Plataforma.Dominio.Profissionais;
@@ -538,6 +539,127 @@ public sealed class GestaoPublicaAgendamentoTestes : IAsyncLifetime
         // Fora do período fechado, o mesmo profissional continua cancelável.
         (await AcoesAsync(c, foraDoPeriodo.Token)).GetProperty("cancelar").GetProperty("permitido").GetBoolean().Should().BeTrue();
         (await c.Publico.PostAsync($"/publico/meus-agendamentos/{foraDoPeriodo.Token}/cancelar", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    // ---------------------------------------------------------------- D7.4 — cancelamento público atômico
+
+    private const string EmailDoProfissional = "profissional.d74@teste.com";
+
+    private Task DefinirEmailDoProfissionalAsync(Guid profissionalId) =>
+        _fabrica.NoBancoAsync(db => db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE profissionais SET email = {EmailDoProfissional} WHERE id = {profissionalId}"));
+
+    private int AvisosAoProfissional() =>
+        _fabrica.Services.GetRequiredService<EspiaEmail>().Enviados.Count(e => e.Destinatario == EmailDoProfissional);
+
+    [Theory]
+    [InlineData("EmAtendimento")]
+    [InlineData("Faltou")]
+    public async Task Decisao_envelhecida_o_servico_reavalia_na_transacao_e_recusa_sem_cancelar_nem_avisar(string novoStatus)
+    {
+        var c = await ArranjarAsync();
+        await DefinirEmailDoProfissionalAsync(c.Cenario.ProfissionalId);
+        var (id, _) = await SemearAsync(c, Local(c.Segunda, 10, 0));
+
+        // Mesmo escopo (= mesma requisição): o detalhe carrega o agendamento rastreado como "Agendado" e libera a ação.
+        using var escopo = _fabrica.Services.CreateScope();
+        escopo.ServiceProvider.GetRequiredService<IContextoNegocio>().Definir(c.NegocioId);
+        var detalhe = await escopo.ServiceProvider.GetRequiredService<IGestaoPublicaAgendamento>().ObterAsync(id);
+        detalhe!.Acoes.Cancelar.Permitido.Should().BeTrue();
+
+        // O status muda por fora depois da decisão — a cópia rastreada continua dizendo "Agendado".
+        await MudarStatusAsync(id, novoStatus);
+        var antes = AvisosAoProfissional();
+
+        var resultado = await escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>().CancelarPelaGestaoPublicaAsync(id);
+
+        resultado.Should().Be(ResultadoCancelamentoPublico.StatusNaoPermite);
+        (await Status(c, id)).Should().Be(Enum.Parse<StatusAgendamento>(novoStatus));
+        AvisosAoProfissional().Should().Be(antes);
+    }
+
+    [Fact]
+    public async Task Cancelamento_publico_permitido_cancela_e_avisa_o_profissional_uma_vez()
+    {
+        var c = await ArranjarAsync();
+        await DefinirEmailDoProfissionalAsync(c.Cenario.ProfissionalId);
+        var (id, token) = await SemearAsync(c, Local(c.Segunda, 10, 0));
+
+        (await c.Publico.PostAsync($"/publico/meus-agendamentos/{token}/cancelar", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await Status(c, id)).Should().Be(StatusAgendamento.Cancelado);
+        AvisosAoProfissional().Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("EmAtendimento")]
+    [InlineData("Faltou")]
+    public async Task POST_com_status_ja_alterado_devolve_409_status_nao_permite_sem_cancelar_nem_avisar(string status)
+    {
+        var c = await ArranjarAsync();
+        await DefinirEmailDoProfissionalAsync(c.Cenario.ProfissionalId);
+        var (id, token) = await SemearAsync(c, Local(c.Segunda, 10, 0));
+        (await AcoesAsync(c, token)).GetProperty("cancelar").GetProperty("permitido").GetBoolean().Should().BeTrue();
+        await MudarStatusAsync(id, status);
+
+        var resposta = await c.Publico.PostAsync($"/publico/meus-agendamentos/{token}/cancelar", null);
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var json = await resposta.Content.ReadFromJsonAsync<JsonElement>();
+        json.GetProperty("codigo").GetString().Should().Be("status_nao_permite");
+        json.GetRawText().Should().NotContainAny("Exception", "InvalidOperation", "agendamentos", "StackTrace");
+        (await Status(c, id)).Should().Be(Enum.Parse<StatusAgendamento>(status));
+        AvisosAoProfissional().Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("EmAtendimento")]
+    [InlineData("Faltou")]
+    public async Task Painel_continua_cancelando_atendimento_em_andamento_ou_faltou(string status)
+    {
+        var c = await ArranjarAsync();
+        var (id, _) = await SemearAsync(c, Local(c.Segunda, 10, 0));
+        await MudarStatusAsync(id, status);
+
+        (await c.Admin.PostAsync($"/painel/agendamentos/{id}/cancelar", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await Status(c, id)).Should().Be(StatusAgendamento.Cancelado);
+    }
+
+    [Theory]
+    [InlineData("Agendado", true)]
+    [InlineData("EmAtendimento", false)]
+    [InlineData("Faltou", false)]
+    [InlineData("Cancelado", false)]
+    [InlineData("Concluido", false)]
+    public async Task Capability_e_POST_dizem_a_mesma_coisa_para_cada_status(string status, bool permitido)
+    {
+        var c = await ArranjarAsync();
+        var (id, token) = await SemearAsync(c, Local(c.Segunda, 10, 0));
+        if (status != "Agendado")
+            await MudarStatusAsync(id, status);
+
+        (await AcoesAsync(c, token)).GetProperty("cancelar").GetProperty("permitido").GetBoolean().Should().Be(permitido);
+        var post = await c.Publico.PostAsync($"/publico/meus-agendamentos/{token}/cancelar", null);
+
+        post.StatusCode.Should().Be(permitido ? HttpStatusCode.NoContent : HttpStatusCode.Conflict);
+        if (!permitido)
+            (await post.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("codigo").GetString().Should().Be("status_nao_permite");
+    }
+
+    [Fact]
+    public async Task Cancelamento_publico_no_servico_nao_enxerga_agendamento_de_outro_negocio()
+    {
+        var c = await ArranjarAsync();
+        var (id, _) = await SemearAsync(c, Local(c.Segunda, 10, 0));
+        var (_, outroNegocio) = await CriarOutroNegocioAsync();
+
+        using var escopo = _fabrica.Services.CreateScope();
+        escopo.ServiceProvider.GetRequiredService<IContextoNegocio>().Definir(outroNegocio);
+        var resultado = await escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>().CancelarPelaGestaoPublicaAsync(id);
+
+        resultado.Should().Be(ResultadoCancelamentoPublico.NaoEncontrado);
+        (await Status(c, id)).Should().Be(StatusAgendamento.Agendado);
     }
 
     // ---------------------------------------------------------------- apoio

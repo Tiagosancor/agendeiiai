@@ -570,25 +570,50 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             : new ResultadoPreVisualizacaoCupom(false, MensagemErro: resultado.MensagemErro);
     }
 
-    public async Task<bool> CancelarAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    public async Task<bool> CancelarAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
+        await CancelarNaTravaAsync(agendamentoId, pelaGestaoPublica: false, cancellationToken) == ResultadoCancelamentoPublico.Cancelado;
+
+    public Task<ResultadoCancelamentoPublico> CancelarPelaGestaoPublicaAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
+        CancelarNaTravaAsync(agendamentoId, pelaGestaoPublica: true, cancellationToken);
+
+    private async Task<ResultadoCancelamentoPublico> CancelarNaTravaAsync(Guid agendamentoId, bool pelaGestaoPublica, CancellationToken cancellationToken)
     {
-        var cancelado = await ExecutarNaTravaDeQuinzenasAsync(async () =>
+        var resultado = ResultadoCancelamentoPublico.NaoEncontrado;
+
+        await ExecutarNaTravaDeQuinzenasAsync(async () =>
         {
+            resultado = ResultadoCancelamentoPublico.NaoEncontrado;
+
             var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
             if (agendamento is null)
                 return false;
 
+            if (pelaGestaoPublica)
+            {
+                // A decisão do link pode ter envelhecido (e o contexto pode ter a entidade rastreada com o status antigo):
+                // trava a linha, relê do banco e só então confere. Quem muda o status depois espera esta transação.
+                await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM agendamentos WHERE id = {agendamentoId} FOR UPDATE", cancellationToken);
+                await _dbContext.Entry(agendamento).ReloadAsync(cancellationToken);
+
+                if (!GestaoPublicaAgendamento.StatusPermiteCancelarPeloLink(agendamento))
+                {
+                    resultado = ResultadoCancelamentoPublico.StatusNaoPermite;
+                    return false;
+                }
+            }
+
             await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
             agendamento.Cancelar();
             await _dbContext.SaveChangesAsync(cancellationToken);
+            resultado = ResultadoCancelamentoPublico.Cancelado;
             return true;
         }, cancellationToken);
 
-        if (!cancelado)
-            return false;
+        if (resultado == ResultadoCancelamentoPublico.Cancelado)
+            await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Cancelado, cancellationToken);
 
-        await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Cancelado, cancellationToken);
-        return true;
+        return resultado;
     }
 
     public async Task<bool> CancelarAvisandoClienteAsync(Guid agendamentoId, CancellationToken cancellationToken = default)

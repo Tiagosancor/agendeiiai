@@ -80,15 +80,13 @@ public sealed class MeusAgendamentosController : ControllerBase
         if (!detalhe.Acoes.Cancelar.Permitido)
             return AcaoNaoPermitida(detalhe.Acoes.Cancelar);
 
-        try
+        // A permissão é reavaliada dentro da transação que cancela; o status pode ter mudado depois do detalhe acima.
+        switch (await _servicoAgendamentos.CancelarPelaGestaoPublicaAsync(agendamentoId.Value, cancellationToken))
         {
-            if (!await _servicoAgendamentos.CancelarAsync(agendamentoId.Value, cancellationToken))
+            case ResultadoCancelamentoPublico.NaoEncontrado:
                 return NaoEncontrado();
-        }
-        catch (InvalidOperationException)
-        {
-            // O status mudou entre a decisão e a gravação (ex.: o salão concluiu o atendimento agora).
-            return AcaoNaoPermitida(AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.StatusNaoPermite, "Este agendamento não pode mais ser cancelado."));
+            case ResultadoCancelamentoPublico.StatusNaoPermite:
+                return AcaoNaoPermitida(AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.StatusNaoPermite, "Este agendamento não pode mais ser cancelado."));
         }
 
         return await SucessoAsync(agendamentoId.Value, cancellationToken);
