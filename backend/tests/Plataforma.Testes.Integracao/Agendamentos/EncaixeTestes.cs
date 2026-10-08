@@ -165,7 +165,7 @@ public sealed class EncaixeTestes : IAsyncLifetime
         await admin.DefinirComissaoAsync(profissionalId, 20m);
         await admin.PutAsJsonAsync("/painel/fidelidade", new DefinirProgramaFidelidade(5, "Corte grátis"));
 
-        var id = await IdAsync(await LancarAsync(admin, Encaixar(profissionalId, servicos, SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(-1), 10, 0), "Balcão")));
+        var id = await IdAsync(await LancarAsync(admin, Encaixar(profissionalId, servicos, SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(1), 10, 0), "Balcão")));
         (await admin.PostAsync($"/painel/agendamentos/{id}/concluir", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await admin.PostAsJsonAsync("/painel/pagamentos", new RegistrarPagamento(id, 40m, "Dinheiro"))).StatusCode.Should().Be(HttpStatusCode.Created);
 

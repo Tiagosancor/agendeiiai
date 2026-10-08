@@ -31,9 +31,6 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 {
     private static readonly TimeSpan DuracaoDaReserva = TimeSpan.FromMinutes(10);
 
-    /// <summary>Folga para o "agora" do encaixe forçado não ser recusado como passado (seção 7).</summary>
-    private static readonly TimeSpan ToleranciaAgora = TimeSpan.FromMinutes(5);
-
     private const int TamanhoMaximoMotivo = 500;
 
     private readonly PlataformaDbContext _dbContext;
@@ -261,7 +258,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                     .SetProperty(a => a.Status, StatusAgendamento.Expirado)
                     .SetProperty(a => a.ReservadoAte, (DateTimeOffset?)null), cancellationToken);
 
-            var (diaLocal, horaInicioLocal) = ConversorFusoHorario.ParaLocal(dados.Inicio, fuso);
+            var (diaLocal, _) = ConversorFusoHorario.ParaLocal(dados.Inicio, fuso);
             List<RegraQuebrada> regrasQuebradas = [];
 
             if (motivoForcar is not null)
@@ -278,23 +275,27 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             }
             else
             {
-                // 2) Expediente e almoço — a exclusion constraint não cobre isso.
-                var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(fim, fuso);
+                // 2) Passado nunca (a disponibilidade também não oferece): instantes, com a tolerância do encaixe "agora".
+                if (RegrasDeHorario.JaPassou(dados.Inicio, agora))
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro("Não dá para agendar um horário que já passou.");
+                }
+
+                // 3) Expediente e almoço — a exclusion constraint não cobre isso. O intervalo inteiro precisa caber num turno.
                 var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
 
                 var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
                     .Where(h => h.ProfissionalId == dados.ProfissionalId && h.DiaSemana == diaSemana)
                     .ToListAsync(cancellationToken);
 
-                var cabeDentroDeUmIntervalo = horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim);
-
-                if (!cabeDentroDeUmIntervalo)
+                if (!RegrasDeHorario.CabeNoExpediente(horariosDoDia, diaLocal, dados.Inicio, fim, fuso))
                 {
                     await transacao.RollbackAsync(cancellationToken);
                     return ResultadoAgendamento.ComErro("Fora do expediente do profissional (ou cai no horário de almoço).");
                 }
 
-                // 3) Bloqueios/folgas.
+                // 4) Bloqueios/folgas.
                 var temBloqueio = await _dbContext.BloqueiosAgenda.AsNoTracking()
                     .AnyAsync(b => b.ProfissionalId == dados.ProfissionalId && b.InicioUtc < fim && b.FimUtc > dados.Inicio, cancellationToken);
 
@@ -314,7 +315,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 }
             }
 
-            // 4) Insere — se outra requisição venceu a corrida pro mesmo intervalo, a
+            // 5) Insere — se outra requisição venceu a corrida pro mesmo intervalo, a
             // exclusion constraint recusa aqui (seção 8.2.1), nunca antes.
             var agendamento = confirmarDeImediato
                 ? Agendamento.CriarConfirmado(
@@ -668,14 +669,13 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             var negocio = await _dbContext.Negocios.AsNoTracking()
                 .FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
             var fuso = TimeZoneInfo.FindSystemTimeZoneById(negocio.Fuso);
-            var (diaLocal, horaInicioLocal) = ConversorFusoHorario.ParaLocal(agendamento.Inicio, fuso);
-            var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(agendamento.Fim, fuso);
+            var (diaLocal, _) = ConversorFusoHorario.ParaLocal(agendamento.Inicio, fuso);
             var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
 
             var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
                 .Where(h => h.ProfissionalId == novoProfissionalId && h.DiaSemana == diaSemana)
                 .ToListAsync(cancellationToken);
-            if (!horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim))
+            if (!RegrasDeHorario.CabeNoExpediente(horariosDoDia, diaLocal, agendamento.Inicio, agendamento.Fim, fuso))
             {
                 await transacao.RollbackAsync(cancellationToken);
                 return ResultadoAgendamento.ComErro("Esse horário está fora do expediente do outro profissional.");
@@ -766,7 +766,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             var duracaoTotalMinutos = agendamento.Servicos.Sum(s => s.DuracaoMinutos);
             var novoFim = novoInicio.AddMinutes(duracaoTotalMinutos);
 
-            var (diaLocal, horaInicioLocal) = ConversorFusoHorario.ParaLocal(novoInicio, fuso);
+            var (diaLocal, _) = ConversorFusoHorario.ParaLocal(novoInicio, fuso);
             var agora = DateTimeOffset.UtcNow;
             List<RegraQuebrada> regrasQuebradas = [];
 
@@ -783,14 +783,19 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             }
             else
             {
-                var (_, horaFimLocal) = ConversorFusoHorario.ParaLocal(novoFim, fuso);
+                if (RegrasDeHorario.JaPassou(novoInicio, agora))
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoAgendamento.ComErro("Não dá para remarcar para um horário que já passou.");
+                }
+
                 var diaSemana = (DiaSemana)(int)diaLocal.DayOfWeek;
 
                 var horariosDoDia = await _dbContext.HorariosTrabalho.AsNoTracking()
                     .Where(h => h.ProfissionalId == agendamento.ProfissionalId && h.DiaSemana == diaSemana)
                     .ToListAsync(cancellationToken);
 
-                if (!horariosDoDia.Any(h => horaInicioLocal >= h.Inicio && horaFimLocal <= h.Fim))
+                if (!RegrasDeHorario.CabeNoExpediente(horariosDoDia, diaLocal, novoInicio, novoFim, fuso))
                 {
                     await transacao.RollbackAsync(cancellationToken);
                     return ResultadoAgendamento.ComErro("Fora do expediente do profissional (ou cai no horário de almoço).");
@@ -1146,7 +1151,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             return "Profissional inativo ou excluído não pode receber agendamento forçado.";
 
         // O encaixe "agora" continua permitido: a tolerância cobre o minuto em que a tela foi aberta.
-        if (inicio < agora - ToleranciaAgora)
+        if (RegrasDeHorario.JaPassou(inicio, agora))
             return "Não dá para forçar um horário que já passou.";
 
         return null;
