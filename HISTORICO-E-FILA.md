@@ -131,23 +131,25 @@ validações frontend conhecidas. D6 publicou o conjunto sem incidentes e sem mi
 O release D7 não alterou frontend, banco, migrations, schema, dependências ou
 infraestrutura. Railway, Vercel e CI ficaram saudáveis; não houve rollback.
 
-### Hardening D8.1 — implementado localmente, não publicado
+### Hardening D8.1 — homologado localmente, não publicado
 
 | Campo | Registro |
 |---|---|
 | Responsável | Codex |
 | Branch | `codex/fix-cache-404-negocio-inexistente` |
-| Base | `0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91` |
-| Commits | `bda0996` (histórico) e `fix: impede cache prolongado de negócio inexistente` (implementação) |
+| Base original | `0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91` |
+| Nova `origin/main` auditada | `f23cd8cdc719f1c4381ea59ea47291a66287cf78` — redução controlada do teste grátis para 15 dias |
+| Commits | `bda0996` (histórico), `a137fe9` (implementação) e `250579a` (reconciliação local da base) |
 | Resultado | Respostas 404 de slug inexistente ou inválido mantêm a página humana e passam a declarar `Cache-Control: no-store` na resposta final do Next.js |
-| Testes | 4/4 testes específicos e 83/83 testes direcionados passaram; lint, TypeScript e build passaram |
+| Testes | Após a reconciliação: 20/20 unitários e 44/44 integrações da mudança de 15 dias, 4/4 testes D8.1 e 83/83 regressões direcionadas; lint, TypeScript e build passaram |
 | Escopo | Somente frontend, proxy e testes Playwright; sem backend, API, banco, migrations ou dependências |
 | Produção | Não alterada; o snapshot publicado continua em `0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91` |
 
 O ajuste preserva a landing raiz, `app`, `www`, negócios válidos, redirecionamento de slug
 anterior, caminhos, query strings e a política existente quando a API está indisponível.
-O item F1 foi encerrado na branch local e ainda depende dos gates normais de integração e
-publicação.
+O item F1 foi encerrado e homologado na branch local sobre a nova `origin/main`, sem rebase
+ou perda dos commits originais. A publicação real e o snapshot de produção ainda dependem
+dos gates normais de providers, integração e release.
 
 ## Fila atual
 
