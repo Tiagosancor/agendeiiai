@@ -39,8 +39,15 @@ public sealed class AgendamentosForcadosController : ControllerBase
     [HttpPut("{id:guid}/mover")]
     public async Task<IActionResult> Mover(Guid id, MoverAgendamentoForcado dados, CancellationToken cancellationToken)
     {
-        var resultado = await _servicoAgendamentos.MoverForcadoAsync(id, dados.NovoInicio, dados.Motivo ?? string.Empty, cancellationToken);
-        return resultado.Sucesso ? NoContent() : Traduzir(resultado);
+        try
+        {
+            var resultado = await _servicoAgendamentos.MoverForcadoAsync(id, dados.NovoInicio, dados.Motivo ?? string.Empty, cancellationToken);
+            return resultado.Sucesso ? NoContent() : Traduzir(resultado);
+        }
+        catch (InvalidOperationException excecao) when (excecao is not Plataforma.Dominio.Comissoes.QuinzenaFechadaException)
+        {
+            return Problem(statusCode: StatusCodes.Status409Conflict, detail: excecao.Message);
+        }
     }
 
     private ObjectResult Traduzir(ResultadoAgendamento resultado) =>

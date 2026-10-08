@@ -64,7 +64,7 @@ public sealed class LinkNegocioTestes : IAsyncLifetime
         var clienteId = await (await admin.PostAsJsonAsync("/painel/clientes",
             new CriarCliente("Cliente do Link", $"719{Random.Shared.Next(10000000, 99999999)}", email))).Content.ReadFromJsonAsync<Guid>();
         (await admin.PostAsJsonAsync("/painel/encaixes", new LancarEncaixe(
-            profissionalId, clienteId, null, [servicoId], DateTimeOffset.UtcNow.AddDays(1), false, true))).StatusCode.Should().Be(HttpStatusCode.Created);
+            profissionalId, clienteId, null, [servicoId], SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(1), 12, 0), false, true))).StatusCode.Should().Be(HttpStatusCode.Created);
 
         var enviado = _fabrica.Services.GetRequiredService<EspiaEmail>().Enviados.Single(e => e.Destinatario == email);
         enviado.CorpoHtml.Should().Contain($"//{novo}.").And.NotContain($"//{antigo}.");

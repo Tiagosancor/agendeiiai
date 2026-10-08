@@ -36,9 +36,9 @@ public sealed class MeusAgendamentosController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> Obter(string token, CancellationToken cancellationToken)
     {
-        var agendamentoId = await ValidarTokenAsync(token);
+        var (agendamentoId, erro) = await AutorizarAsync(token);
         if (agendamentoId is null)
-            return LinkInvalido();
+            return erro!;
 
         var detalhe = await _gestao.ObterAsync(agendamentoId.Value, cancellationToken);
         return detalhe is null ? NaoEncontrado() : Ok(detalhe);
@@ -52,9 +52,9 @@ public sealed class MeusAgendamentosController : ControllerBase
     [HttpGet("horarios-livres")]
     public async Task<IActionResult> ListarHorariosLivres(string token, [FromQuery] DateOnly? data, CancellationToken cancellationToken)
     {
-        var agendamentoId = await ValidarTokenAsync(token);
+        var (agendamentoId, erro) = await AutorizarAsync(token);
         if (agendamentoId is null)
-            return LinkInvalido();
+            return erro!;
 
         if (data is null)
             return Problema(StatusCodes.Status400BadRequest, "data_invalida", "Informe a data (yyyy-MM-dd).");
@@ -69,9 +69,9 @@ public sealed class MeusAgendamentosController : ControllerBase
     [HttpPost("cancelar")]
     public async Task<IActionResult> Cancelar(string token, CancellationToken cancellationToken)
     {
-        var agendamentoId = await ValidarTokenAsync(token);
+        var (agendamentoId, erro) = await AutorizarAsync(token);
         if (agendamentoId is null)
-            return LinkInvalido();
+            return erro!;
 
         var detalhe = await _gestao.ObterAsync(agendamentoId.Value, cancellationToken);
         if (detalhe is null)
@@ -80,15 +80,13 @@ public sealed class MeusAgendamentosController : ControllerBase
         if (!detalhe.Acoes.Cancelar.Permitido)
             return AcaoNaoPermitida(detalhe.Acoes.Cancelar);
 
-        try
+        // A permissão é reavaliada dentro da transação que cancela; o status pode ter mudado depois do detalhe acima.
+        switch (await _servicoAgendamentos.CancelarPelaGestaoPublicaAsync(agendamentoId.Value, cancellationToken))
         {
-            if (!await _servicoAgendamentos.CancelarAsync(agendamentoId.Value, cancellationToken))
+            case ResultadoCancelamentoPublico.NaoEncontrado:
                 return NaoEncontrado();
-        }
-        catch (InvalidOperationException)
-        {
-            // O status mudou entre a decisão e a gravação (ex.: o salão concluiu o atendimento agora).
-            return AcaoNaoPermitida(AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.StatusNaoPermite, "Este agendamento não pode mais ser cancelado."));
+            case ResultadoCancelamentoPublico.StatusNaoPermite:
+                return AcaoNaoPermitida(AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.StatusNaoPermite, "Este agendamento não pode mais ser cancelado."));
         }
 
         return await SucessoAsync(agendamentoId.Value, cancellationToken);
@@ -100,9 +98,9 @@ public sealed class MeusAgendamentosController : ControllerBase
     [HttpPost("remarcar")]
     public async Task<IActionResult> Remarcar(string token, RemarcarRequisicao requisicao, CancellationToken cancellationToken)
     {
-        var agendamentoId = await ValidarTokenAsync(token);
+        var (agendamentoId, erro) = await AutorizarAsync(token);
         if (agendamentoId is null)
-            return LinkInvalido();
+            return erro!;
 
         var detalhe = await _gestao.ObterAsync(agendamentoId.Value, cancellationToken);
         if (detalhe is null)
@@ -137,9 +135,9 @@ public sealed class MeusAgendamentosController : ControllerBase
     [HttpGet("ics")]
     public async Task<IActionResult> BaixarIcs(string token, CancellationToken cancellationToken)
     {
-        var agendamentoId = await ValidarTokenAsync(token);
+        var (agendamentoId, erro) = await AutorizarAsync(token);
         if (agendamentoId is null)
-            return LinkInvalido();
+            return erro!;
 
         var detalhe = await _servicoAgendamentos.ObterDetalhePublicoAsync(agendamentoId.Value, cancellationToken);
         if (detalhe is null)
@@ -190,6 +188,13 @@ public sealed class MeusAgendamentosController : ControllerBase
         return new ObjectResult(problema) { StatusCode = status };
     }
 
-    private async Task<Guid?> ValidarTokenAsync(string token) =>
-        await _servicoToken.ValidarTokenAgendamentoAsync(token, _contextoNegocio.NegocioId!.Value);
+    /// <summary>Sem negócio resolvido é 404 (como slug inexistente); com negócio, token inválido é 401.</summary>
+    private async Task<(Guid? AgendamentoId, IActionResult? Erro)> AutorizarAsync(string token)
+    {
+        if (_contextoNegocio.NegocioId is not { } negocioId)
+            return (null, RespostasPublicas.NegocioNaoEncontrado(HttpContext));
+
+        var agendamentoId = await _servicoToken.ValidarTokenAgendamentoAsync(token, negocioId);
+        return agendamentoId is null ? (null, LinkInvalido()) : (agendamentoId, null);
+    }
 }

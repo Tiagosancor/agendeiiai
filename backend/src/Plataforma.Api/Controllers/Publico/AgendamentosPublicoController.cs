@@ -33,6 +33,9 @@ public sealed class AgendamentosPublicoController : ControllerBase
     [BloquearComAssinaturaSuspensa]
     public async Task<IActionResult> CriarReserva(CriarReservaRequisicao requisicao, CancellationToken cancellationToken)
     {
+        if (_contextoNegocio.NegocioId is null)
+            return RespostasPublicas.NegocioNaoEncontrado(HttpContext);
+
         var resultado = await _servicoAgendamentos.CriarReservaPublicaAsync(
             new CriarReservaPublica(requisicao.ProfissionalId, requisicao.ServicoIds, requisicao.Inicio), cancellationToken);
 
@@ -44,6 +47,9 @@ public sealed class AgendamentosPublicoController : ControllerBase
     [HttpPost("cupons/validar")]
     public async Task<IActionResult> ValidarCupom(ValidarCupomRequisicao requisicao, CancellationToken cancellationToken)
     {
+        if (_contextoNegocio.NegocioId is null)
+            return RespostasPublicas.NegocioNaoEncontrado(HttpContext);
+
         var resultado = await _servicoAgendamentos.PreVisualizarCupomAsync(requisicao.AgendamentoId, requisicao.Codigo, cancellationToken);
 
         return resultado.Sucesso
@@ -63,7 +69,8 @@ public sealed class AgendamentosPublicoController : ControllerBase
         if (!TelefoneE164.TentarCriar(requisicao.Telefone, out var telefone))
             return BadRequest(new ProblemDetails { Title = "Telefone inválido." });
 
-        var negocioId = _contextoNegocio.NegocioId!.Value;
+        if (_contextoNegocio.NegocioId is not { } negocioId)
+            return RespostasPublicas.NegocioNaoEncontrado(HttpContext);
 
         if (string.IsNullOrWhiteSpace(requisicao.TokenVerificacao)
             || !await _servicoToken.ValidarTokenVerificacaoAsync(requisicao.TokenVerificacao, negocioId, telefone!))

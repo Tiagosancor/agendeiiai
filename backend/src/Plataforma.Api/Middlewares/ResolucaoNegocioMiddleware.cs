@@ -82,6 +82,14 @@ public sealed class ResolucaoNegocioMiddleware
 
         if (candidatoSlug is null)
         {
+            // Rota pública que depende do negócio, sem negócio nenhum: mesmo 404 do slug que não existe (não distingue
+            // as duas situações). Antes seguia adiante e estourava 500 ao ler NegocioId.
+            if (ehRotaPublica && !EhRotaPublicaSemNegocio(contexto.Request.Path))
+            {
+                await EscreverNaoEncontradoAsync(contexto);
+                return;
+            }
+
             await _proximo(contexto);
             return;
         }
@@ -120,10 +128,21 @@ public sealed class ResolucaoNegocioMiddleware
         await _proximo(contexto);
     }
 
+    /// <summary>
+    /// As duas rotas que o frontend chama justamente para descobrir o negócio (slug na rota, não no host) — a única
+    /// exceção em /publico/**; todo o resto lê o negócio resolvido.
+    /// </summary>
+    private static bool EhRotaPublicaSemNegocio(PathString caminho) =>
+        caminho.StartsWithSegments("/publico/negocios-por-slug") || caminho.StartsWithSegments("/publico/slugs-anteriores");
+
     private static async Task EscreverNaoEncontradoAsync(HttpContext contexto)
     {
         contexto.Response.StatusCode = StatusCodes.Status404NotFound;
         contexto.Response.ContentType = "application/problem+json";
+
+        // Gestão por token: nenhuma resposta (nem o 404 do middleware) pode ficar em cache de navegador, proxy ou CDN.
+        if (contexto.Request.Path.StartsWithSegments("/publico/meus-agendamentos"))
+            contexto.Response.Headers.CacheControl = "no-store,no-cache";
 
         var problema = new ProblemDetails
         {

@@ -97,8 +97,16 @@ public sealed class GestaoPublicaAgendamento : IGestaoPublicaAgendamento
 
     public const string MensagemNaoPermitido = "Não é possível alterar este agendamento pelo link. Fale com o estabelecimento.";
 
+    /// <summary>
+    /// O domínio ainda deixa o painel cancelar Faltou/EmAtendimento (uso administrativo); o cliente, pelo link, não:
+    /// quem já está em atendimento ou faltou não tem o que cancelar sozinho.
+    /// </summary>
+    /// <summary>Fonte única da regra de status: a capability e o cancelamento efetivo (<c>CancelarPelaGestaoPublicaAsync</c>) usam esta.</summary>
+    internal static bool StatusPermiteCancelarPeloLink(Agendamento agendamento) =>
+        agendamento.PodeSerCancelado && agendamento.Status is not (StatusAgendamento.EmAtendimento or StatusAgendamento.Faltou);
+
     private AcaoGestaoPublica AvaliarCancelar(Agendamento agendamento, DateTimeOffset agora) =>
-        !agendamento.PodeSerCancelado
+        !StatusPermiteCancelarPeloLink(agendamento)
             ? AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.StatusNaoPermite, "Este agendamento não pode mais ser cancelado.")
             : Temporal(agendamento, agora, $"Cancele com pelo menos {_opcoes.AntecedenciaMinimaCancelamentoHoras}h de antecedência.");
 

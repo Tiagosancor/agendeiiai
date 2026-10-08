@@ -42,6 +42,10 @@ public sealed class EncaixeTestes : IAsyncLifetime
     {
         var (admin, negocioId, usuarioId, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
         var (profissionalId, servicos) = await CenarioDiaInteiroAsync(negocioId, duracoes: [15, 20]);
+        // Turno 00:00–23:59: perto da meia-noite os 35 min atravessariam o dia (recusado de propósito).
+        // Um fuso em que agora é perto do meio-dia deixa o teste independente da hora em que roda.
+        await _fabrica.NoBancoAsync(db => db.Database.ExecuteSqlRawAsync(
+            "UPDATE negocios SET fuso = {0} WHERE id = {1}", HardeningRelogioTestes.FusoPertoDoMeioDia(DateTimeOffset.UtcNow), negocioId));
         var antes = DateTimeOffset.UtcNow.AddMinutes(-1);
 
         var resposta = await LancarAsync(admin, new LancarEncaixe(profissionalId, null, new NovoClienteEncaixe("Walk-in", null),
@@ -165,7 +169,7 @@ public sealed class EncaixeTestes : IAsyncLifetime
         await admin.DefinirComissaoAsync(profissionalId, 20m);
         await admin.PutAsJsonAsync("/painel/fidelidade", new DefinirProgramaFidelidade(5, "Corte grátis"));
 
-        var id = await IdAsync(await LancarAsync(admin, Encaixar(profissionalId, servicos, SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(-1), 10, 0), "Balcão")));
+        var id = await IdAsync(await LancarAsync(admin, Encaixar(profissionalId, servicos, SemeadorDeComissoes.Local(SemeadorDeComissoes.Dia(1), 10, 0), "Balcão")));
         (await admin.PostAsync($"/painel/agendamentos/{id}/concluir", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await admin.PostAsJsonAsync("/painel/pagamentos", new RegistrarPagamento(id, 40m, "Dinheiro"))).StatusCode.Should().Be(HttpStatusCode.Created);
 

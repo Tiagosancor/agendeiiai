@@ -7,6 +7,13 @@ namespace Plataforma.Aplicacao.Agendamentos;
 /// insere. Se a constraint ainda assim recusar (perdeu a corrida), devolve conflito com
 /// sugestões — nunca deixa vazar exceção de banco (seção 8.2.4).
 /// </summary>
+public enum ResultadoCancelamentoPublico
+{
+    Cancelado,
+    NaoEncontrado,
+    StatusNaoPermite
+}
+
 public interface IServicoAgendamentos
 {
     /// <summary>Cria já confirmado — fluxo do painel (Sprint 2).</summary>
@@ -35,6 +42,13 @@ public interface IServicoAgendamentos
         Guid agendamentoId, string codigoCupom, CancellationToken cancellationToken = default);
 
     Task<bool> CancelarAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Cancelamento pelo link do cliente: reavalia, dentro da mesma transação que cancela, se o status ainda
+    /// permite à gestão pública cancelar (a decisão tomada antes do POST pode ter envelhecido). Não altera o
+    /// <see cref="CancelarAsync"/> do painel.
+    /// </summary>
+    Task<ResultadoCancelamentoPublico> CancelarPelaGestaoPublicaAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
 
     /// <summary>Cancela avisando também o cliente final (e-mail/WhatsApp) — usado na exclusão de profissional (seção 7).</summary>
     Task<bool> CancelarAvisandoClienteAsync(Guid agendamentoId, CancellationToken cancellationToken = default);
