@@ -98,7 +98,7 @@ public sealed class AssinaturasTestes : IAsyncLifetime
     public async Task Job_deixa_em_carencia_quem_acabou_o_teste_ha_menos_de_5_dias()
     {
         var id = await SemearAssinaturaAsync((plano, negocioId) =>
-            ServicoAssinatura.IniciarTeste(negocioId, plano, Periodicidade.Mensal, "teste", DateTimeOffset.UtcNow.AddDays(-32)));
+            ServicoAssinatura.IniciarTeste(negocioId, plano, Periodicidade.Mensal, "teste", DateTimeOffset.UtcNow.AddDays(-17)));
 
         await RodarJobAsync();
 
@@ -109,7 +109,7 @@ public sealed class AssinaturasTestes : IAsyncLifetime
     public async Task Job_avisa_o_administrador_uma_vez_so_por_prazo()
     {
         await SemearAssinaturaAsync((plano, negocioId) =>
-            ServicoAssinatura.IniciarTeste(negocioId, plano, Periodicidade.Mensal, "teste", DateTimeOffset.UtcNow.AddDays(-25)));
+            ServicoAssinatura.IniciarTeste(negocioId, plano, Periodicidade.Mensal, "teste", DateTimeOffset.UtcNow.AddDays(-10)));
 
         await RodarJobAsync();
         await RodarJobAsync();

@@ -35,7 +35,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const nomeProduto = process.env.MARCA_NOME_PRODUTO ?? "Plataforma";
   const titulo = `${nomeProduto}: agendamento online para barbearias, salões e clínicas`;
   const descricao =
-    "Seus clientes marcam sozinhos pelo link do seu negócio e confirmam com um código. Agenda por profissional, lembretes, financeiro e fidelidade. Teste grátis por 30 dias, sem cartão.";
+    "Seus clientes marcam sozinhos pelo link do seu negócio e confirmam com um código. Agenda por profissional, lembretes, financeiro e fidelidade. Teste grátis por 15 dias, sem cartão.";
   const listaCabecalhos = await headers();
   const host = listaCabecalhos.get("x-forwarded-host") ?? listaCabecalhos.get("host") ?? "localhost";
   const esquema = listaCabecalhos.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");

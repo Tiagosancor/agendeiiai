@@ -134,7 +134,7 @@ public sealed class AdministracaoETelaAssinaturaTestes : IAsyncLifetime
     public async Task Estender_teste_suspender_e_reativar_passam_pelo_servico_e_ficam_no_historico()
     {
         var (_, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
-        await DarAssinaturaAsync(negocioId, diasDesdeInicioDoTeste: 28);
+        await DarAssinaturaAsync(negocioId, diasDesdeInicioDoTeste: 13);
         using var plataforma = await ClienteDaPlataformaAsync();
 
         (await plataforma.PostAsJsonAsync($"/plataforma/negocios/{negocioId}/estender-teste", new { dias = 15 })).StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -200,7 +200,7 @@ public sealed class AdministracaoETelaAssinaturaTestes : IAsyncLifetime
     public async Task Aviso_do_painel_aparece_nos_ultimos_7_dias_do_teste()
     {
         var (cliente, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Recepcionista);
-        await DarAssinaturaAsync(negocioId, diasDesdeInicioDoTeste: 25);
+        await DarAssinaturaAsync(negocioId, diasDesdeInicioDoTeste: 10);
 
         var aviso = await cliente.GetFromJsonAsync<JsonElement>("/painel/assinatura/aviso");
 

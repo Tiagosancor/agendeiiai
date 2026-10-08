@@ -447,7 +447,7 @@ export function AssistenteCadastro({
             <section className="py-6 text-center">
               <h1 className="font-display mb-2 text-2xl font-bold">Tudo pronto!</h1>
               <p className="mb-1 text-gray-700 dark:text-neutral-300">
-                A conta de <strong>{nomeNegocio.trim()}</strong> foi criada e seu teste grátis de 30 dias já começou.
+                A conta de <strong>{nomeNegocio.trim()}</strong> foi criada e seu teste grátis de 15 dias já começou.
               </p>
               <p className="mb-6 text-sm text-gray-600 dark:text-neutral-400">
                 Seu link de agendamento: <strong>{linkPublico}</strong>
@@ -466,7 +466,7 @@ export function AssistenteCadastro({
             <div className="mb-2 flex items-center justify-between gap-3 text-sm">
               <span className="text-gray-600 dark:text-neutral-400">
                 {plano ? `${plano.nome} · ${periodicidade.toLowerCase()}` : "Escolha um plano"}
-                <span className="block text-xs font-medium text-marca-acento">30 dias grátis, sem cartão</span>
+                <span className="block text-xs font-medium text-marca-acento">15 dias grátis, sem cartão</span>
               </span>
               {precoPorMes !== null && (
                 <span className="text-right text-gray-600 dark:text-neutral-400">

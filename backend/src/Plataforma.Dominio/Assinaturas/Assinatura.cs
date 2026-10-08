@@ -9,7 +9,7 @@ namespace Plataforma.Dominio.Assinaturas;
 /// </summary>
 public class Assinatura : EntidadeBase, IEntidadeDoNegocio
 {
-    public const int DiasTeste = 30;
+    public const int DiasTeste = 15;
     public const int DiasCarencia = 5;
 
     /// <summary>Avisos por e-mail antes do fim do teste ou do vencimento (seção 7).</summary>

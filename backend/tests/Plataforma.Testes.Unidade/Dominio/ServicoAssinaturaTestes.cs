@@ -20,12 +20,12 @@ public sealed class ServicoAssinaturaTestes
             OrigemCobranca.Manual, null, "admin", agora);
 
     [Fact]
-    public void Iniciar_teste_da_30_dias_trava_o_preco_e_registra_historico()
+    public void Iniciar_teste_da_15_dias_trava_o_preco_e_registra_historico()
     {
         var assinatura = NovaEmTeste(Periodicidade.Anual);
 
         assinatura.Estado.Should().Be(EstadoAssinatura.EmTeste);
-        assinatura.FimTeste.Should().Be(Inicio.AddDays(30));
+        assinatura.FimTeste.Should().Be(Inicio.AddDays(15));
         assinatura.PrecoMensalTravado.Should().Be(38.90m);
         assinatura.ValorDoPeriodo.Should().Be(466.80m);
         assinatura.Historico.Should().ContainSingle(h => h.EstadoAnterior == null && h.EstadoNovo == EstadoAssinatura.EmTeste);
@@ -47,7 +47,7 @@ public sealed class ServicoAssinaturaTestes
     {
         var assinatura = NovaEmTeste();
 
-        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(29)).Should().BeFalse();
+        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(14)).Should().BeFalse();
         assinatura.Estado.Should().Be(EstadoAssinatura.EmTeste);
     }
 
@@ -56,14 +56,14 @@ public sealed class ServicoAssinaturaTestes
     {
         var assinatura = NovaEmTeste();
 
-        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(30)).Should().BeTrue();
+        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(15)).Should().BeTrue();
         assinatura.Estado.Should().Be(EstadoAssinatura.Atrasada);
-        assinatura.CarenciaAte.Should().Be(Inicio.AddDays(35));
+        assinatura.CarenciaAte.Should().Be(Inicio.AddDays(20));
         assinatura.PermiteOperar.Should().BeTrue();
 
-        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(34)).Should().BeFalse();
+        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(19)).Should().BeFalse();
 
-        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(35)).Should().BeTrue();
+        ServicoAssinatura.AtualizarPorTempo(assinatura, Inicio.AddDays(20)).Should().BeTrue();
         assinatura.Estado.Should().Be(EstadoAssinatura.Suspensa);
         assinatura.PermiteOperar.Should().BeFalse();
     }
@@ -214,18 +214,18 @@ public sealed class ServicoAssinaturaTestes
     {
         var assinatura = NovaEmTeste();
 
-        assinatura.AvisoPendente(Inicio.AddDays(30 - diasAntesDoFim)).Should().Be(esperado);
+        assinatura.AvisoPendente(Inicio.AddDays(15 - diasAntesDoFim)).Should().Be(esperado);
     }
 
     [Fact]
     public void Aviso_ja_enviado_nao_repete_e_prazo_novo_zera()
     {
         var assinatura = NovaEmTeste();
-        var agora = Inicio.AddDays(24);
+        var agora = Inicio.AddDays(9);
 
         assinatura.MarcarAvisoEnviado(7);
         assinatura.AvisoPendente(agora).Should().BeNull();
-        assinatura.AvisoPendente(Inicio.AddDays(28)).Should().Be(3);
+        assinatura.AvisoPendente(Inicio.AddDays(13)).Should().Be(3);
 
         ServicoAssinatura.EstenderTeste(assinatura, 10, "admin", agora);
         assinatura.UltimoAvisoDias.Should().BeNull();
