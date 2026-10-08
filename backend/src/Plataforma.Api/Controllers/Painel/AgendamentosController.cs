@@ -69,8 +69,16 @@ public sealed class AgendamentosController : ControllerBase
     [HttpPut("{id:guid}/mover")]
     public async Task<IActionResult> Mover(Guid id, MoverAgendamentoRequisicao dados, CancellationToken cancellationToken)
     {
-        var resultado = await _servicoAgendamentos.MoverAsync(id, dados.NovoInicio, cancellationToken);
-        return resultado.Sucesso ? NoContent() : TraduzirErro(resultado);
+        try
+        {
+            var resultado = await _servicoAgendamentos.MoverAsync(id, dados.NovoInicio, cancellationToken);
+            return resultado.Sucesso ? NoContent() : TraduzirErro(resultado);
+        }
+        catch (InvalidOperationException excecao) when (excecao is not Plataforma.Dominio.Comissoes.QuinzenaFechadaException)
+        {
+            // Status que não admite remarcar (ex.: cancelado pelo cliente agora há pouco) é 409, nunca 500.
+            return Problem(statusCode: StatusCodes.Status409Conflict, detail: excecao.Message);
+        }
     }
 
     [HttpPost("{id:guid}/iniciar")]

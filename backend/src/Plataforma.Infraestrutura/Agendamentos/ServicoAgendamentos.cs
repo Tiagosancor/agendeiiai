@@ -592,9 +592,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             {
                 // A decisão do link pode ter envelhecido (e o contexto pode ter a entidade rastreada com o status antigo):
                 // trava a linha, relê do banco e só então confere. Quem muda o status depois espera esta transação.
-                await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-                    $"SELECT 1 FROM agendamentos WHERE id = {agendamentoId} FOR UPDATE", cancellationToken);
-                await _dbContext.Entry(agendamento).ReloadAsync(cancellationToken);
+                await TravarLinhaERelerAsync(agendamento, cancellationToken);
 
                 if (!GestaoPublicaAgendamento.StatusPermiteCancelarPeloLink(agendamento))
                 {
@@ -783,6 +781,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             }
 
             await TravarAgendaDoProfissionalAsync(agendamento.ProfissionalId, cancellationToken);
+            await TravarLinhaERelerAsync(agendamento, cancellationToken);
 
             var negocio = await _dbContext.Negocios.AsNoTracking()
                 .FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
@@ -872,16 +871,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         return resultado;
     }
 
-    public async Task<bool> IniciarAtendimentoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
-    {
-        var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
-        if (agendamento is null)
-            return false;
-
-        agendamento.IniciarAtendimento();
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return true;
-    }
+    public Task<bool> IniciarAtendimentoAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
+        MudarStatusComLinhaTravadaAsync(agendamentoId, a => a.IniciarAtendimento(), cancellationToken);
 
     public Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
         ExecutarNaTravaDeQuinzenasAsync(() => ConcluirAsync(agendamentoId, cancellationToken), cancellationToken);
@@ -894,6 +885,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         if (agendamento is null)
             return false;
 
+        await TravarLinhaERelerAsync(agendamento, cancellationToken);
         await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
 
         // Percentual vigente agora (seção 7): fica gravado em cada linha, e mudar depois não mexe nela.
@@ -929,6 +921,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         if (agendamento is null)
             return false;
 
+        await TravarLinhaERelerAsync(agendamento, cancellationToken);
         await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
 
         var comissaoAnterior = agendamento.Servicos.Sum(s => s.ComissaoValor ?? 0m);
@@ -951,15 +944,39 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         return true;
     }
 
-    public async Task<bool> MarcarFaltouAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
-    {
-        var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
-        if (agendamento is null)
-            return false;
+    public Task<bool> MarcarFaltouAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
+        MudarStatusComLinhaTravadaAsync(agendamentoId, a => a.MarcarFaltou(), cancellationToken);
 
-        agendamento.MarcarFaltou();
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return true;
+    /// <summary>
+    /// Todo escritor de status do agendamento serializa na linha: trava (<c>FOR UPDATE</c>), relê do banco e só então aplica a
+    /// transição do domínio. Quem chega depois enxerga o que o outro confirmou (ex.: o cancelamento do link) e é recusado
+    /// em vez de gravar por cima do estado antigo que tinha lido.
+    /// </summary>
+    private Task<bool> MudarStatusComLinhaTravadaAsync(Guid agendamentoId, Action<Agendamento> transicao, CancellationToken cancellationToken)
+    {
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        return estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
+            if (agendamento is null)
+                return false;
+
+            await TravarLinhaERelerAsync(agendamento, cancellationToken);
+            transicao(agendamento);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return true;
+        });
+    }
+
+    /// <summary>Exige transação aberta. A linha fica travada até o fim dela; a releitura descarta a cópia rastreada, que pode ser antiga.</summary>
+    private async Task TravarLinhaERelerAsync(Agendamento agendamento, CancellationToken cancellationToken)
+    {
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM agendamentos WHERE id = {agendamento.Id} FOR UPDATE", cancellationToken);
+        await _dbContext.Entry(agendamento).ReloadAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<AgendamentoResumo>> ListarAgendaDoDiaAsync(
