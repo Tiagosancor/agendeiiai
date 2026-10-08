@@ -17,7 +17,7 @@ import { PlanosSite } from "@/components/site/PlanosSite";
  * número inventado (regra de conteúdo da seção 6.4).
  */
 
-const CTA = "Testar grátis por 30 dias";
+const CTA = "Testar grátis por 15 dias";
 const IMAGEM_HERO = "/site/assistente-horarios.webp";
 
 const ANCORAS = [
@@ -134,10 +134,10 @@ const DUVIDAS = [
   {
     pergunta: "Como funciona o teste grátis?",
     resposta:
-      "Você cria a conta, escolhe o plano pelo número de profissionais e usa tudo por 30 dias. Não pedimos cartão de crédito no cadastro.",
+      "Você cria a conta, escolhe o plano pelo número de profissionais e usa tudo por 15 dias. Não pedimos cartão de crédito no cadastro.",
   },
   {
-    pergunta: "O que acontece depois dos 30 dias?",
+    pergunta: "O que acontece depois dos 15 dias?",
     resposta:
       "Avisamos antes do fim do teste. Para continuar, é só assinar pela tela Assinatura do painel. Se não assinar, há alguns dias de tolerância; depois disso o agendamento online fica pausado até o pagamento. Seus dados e a página do negócio continuam guardados.",
   },
@@ -246,12 +246,12 @@ export function SiteProduto({ nomeProduto, planos, whatsApp }: { nomeProduto: st
           </div>
         </section>
         <section id="planos" aria-labelledby="titulo-planos" className="site-secao">
-          <div className="site-container"><h2 id="titulo-planos" className={classeTitulo}>Um preço pelo tamanho <span className="site-gradiente">da sua equipe</span></h2><p className="site-subtitulo">Todos os planos têm os mesmos recursos. O que muda é só quantos profissionais atendem pela agenda. 30 dias grátis em qualquer um.</p><PlanosSite planos={planos} whatsApp={whatsApp} /></div>
+          <div className="site-container"><h2 id="titulo-planos" className={classeTitulo}>Um preço pelo tamanho <span className="site-gradiente">da sua equipe</span></h2><p className="site-subtitulo">Todos os planos têm os mesmos recursos. O que muda é só quantos profissionais atendem pela agenda. 15 dias grátis em qualquer um.</p><PlanosSite planos={planos} whatsApp={whatsApp} /></div>
         </section>
         <section id="duvidas" aria-labelledby="titulo-duvidas" className="site-secao">
           <div className="site-container"><h2 id="titulo-duvidas" className={`${classeTitulo} site-titulo-faq`}>Dúvidas frequentes</h2><div className="site-faq">{DUVIDAS.map(d => <details key={d.pergunta}><summary>{d.pergunta}<span aria-hidden="true">+</span></summary><p>{d.resposta}</p></details>)}</div></div>
         </section>
-        <section aria-labelledby="titulo-final" className="site-final"><div className="site-container site-final-grid"><div className="site-final-mensagem"><Logo nomeProduto={nomeProduto} final /><div><h2 id="titulo-final">Comece hoje e veja sua agenda se organizar.</h2><p>Teste grátis por 30 dias. Sem cartão de crédito.</p></div></div><Link href="/cadastro" className={classeCta}>{CTA}<span aria-hidden="true">→</span></Link></div></section>
+        <section aria-labelledby="titulo-final" className="site-final"><div className="site-container site-final-grid"><div className="site-final-mensagem"><Logo nomeProduto={nomeProduto} final /><div><h2 id="titulo-final">Comece hoje e veja sua agenda se organizar.</h2><p>Teste grátis por 15 dias. Sem cartão de crédito.</p></div></div><Link href="/cadastro" className={classeCta}>{CTA}<span aria-hidden="true">→</span></Link></div></section>
       </main>
       <footer id="contato"><div className="site-container site-rodape"><nav aria-label="Rodapé">{ANCORAS.map(a => <a key={a.href} href={a.href}>{a.rotulo}</a>)}{linkWhatsApp && <a href={linkWhatsApp} target="_blank" rel="noopener noreferrer">Contato pelo WhatsApp</a>}<Link href="/termos">Termos de Uso</Link><Link href="/privacidade">Política de Privacidade</Link><Link href="/painel/login">Entrar no painel</Link></nav><p>© {new Date().getFullYear()} {nomeVisualDaMarca(nomeProduto)}. Todos os direitos reservados.</p></div></footer>
     </div>

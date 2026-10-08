@@ -29,7 +29,7 @@ export default function PaginaTermos() {
 
       <h2>3. Teste grátis, planos e pagamento</h2>
       <ul>
-        <li>Toda conta nova tem 30 dias de teste grátis, sem cartão de crédito.</li>
+        <li>Toda conta nova tem 15 dias de teste grátis, sem cartão de crédito.</li>
         <li>Os planos diferem só pelo número máximo de profissionais ativos. Preços e faixas vigentes estão no site; o preço da sua assinatura fica mantido enquanto ela estiver em dia.</li>
         <li>Hoje o pagamento é feito por PIX e confirmado manualmente. A assinatura pode ser mensal ou anual.</li>
         <li>Sem pagamento após o vencimento, há um período de tolerância. Depois dele, a conta é suspensa: o agendamento online e o painel ficam bloqueados (exceto a tela de assinatura) até a regularização. Os dados não são apagados pela suspensão.</li>

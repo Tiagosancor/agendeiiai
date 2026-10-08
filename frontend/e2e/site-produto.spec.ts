@@ -43,7 +43,7 @@ test("SEO e Open Graph do produto só no domínio raiz, nunca na página do neg�
   await page.goto(RAIZ);
   await expect(page).toHaveTitle(/agendamento online para barbearias/);
   await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", /\/site\/og\.png$/);
-  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /Teste grátis por 30 dias/);
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute("content", /Teste grátis por 15 dias/);
   // Pelo navegador: o Chromium resolve *.localhost sozinho; o fetch do Node depende do DNS da máquina.
   expect((await page.goto(`${RAIZ}/site/og.png`))?.ok()).toBeTruthy();
 

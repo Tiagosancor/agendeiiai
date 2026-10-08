@@ -49,7 +49,7 @@ public sealed class BloqueiosAssinaturaTestes : IAsyncLifetime
         var inicioTeste = situacao switch
         {
             Situacao.EmTeste => agora,
-            Situacao.Carencia => agora.AddDays(-32),
+            Situacao.Carencia => agora.AddDays(-17),
             _ => agora.AddDays(-45),
         };
 

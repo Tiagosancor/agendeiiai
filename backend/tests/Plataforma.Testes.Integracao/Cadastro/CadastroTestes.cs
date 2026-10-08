@@ -112,7 +112,7 @@ public sealed class CadastroTestes : IAsyncLifetime
         var assinatura = await NoBancoAsync(db => db.Assinaturas.IgnoreQueryFilters().SingleAsync(a => a.NegocioId == negocioId));
         assinatura.Estado.Should().Be(EstadoAssinatura.EmTeste);
         assinatura.PrecoMensalTravado.Should().Be(79.90m);
-        assinatura.FimTeste.Should().BeCloseTo(DateTimeOffset.UtcNow.AddDays(30), TimeSpan.FromMinutes(1));
+        assinatura.FimTeste.Should().BeCloseTo(DateTimeOffset.UtcNow.AddDays(15), TimeSpan.FromMinutes(1));
 
         (await _cliente.PostAsJsonAsync("/painel/auth/login", new RequisicaoLogin(email, SenhaValida))).StatusCode.Should().Be(HttpStatusCode.OK);
 
