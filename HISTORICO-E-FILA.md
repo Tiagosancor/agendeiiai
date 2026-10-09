@@ -2,7 +2,7 @@
 
 Última atualização: 2026-10-09
 Estado Git verificado: `main` = `origin/main` =
-`d1cc803a222cda947832ab7d3d69d612e46ccd38`
+`21375e6b12e8b26483ee886b631b51c1faa7007b`
 
 ## Finalidade deste documento
 
@@ -164,7 +164,7 @@ testes de integração, sem ignorados. A CI do merge passou, Railway e Vercel pu
 commit correto, `/health`, landing e login responderam 200. Não houve incidente, rollback,
 migration, operação manual no banco, comunicação real ou mutação de dados de produção.
 
-### F2 / D9 — polimento D4.1 homologado localmente
+### F2 / D9 — polimento D4.1 publicado
 
 | Item | Resultado |
 |---|---|
@@ -172,7 +172,10 @@ migration, operação manual no banco, comunicação real ou mutação de dados 
 | Base de produção | `d1cc803a222cda947832ab7d3d69d612e46ccd38` |
 | Documento herdado | `dbb2e21256c92d83ffe95daf3bc227e0a9ce2265` |
 | Implementação | `19fc5e9` — `feat: aprimora experiencia pos-agendamento` |
-| Situação | Implementada e homologada localmente; não publicada |
+| Homologação documental | `b4fcc40c17365b4966202a47e21157e08522052e` |
+| Pull request | PR #2, CI Backend e Frontend aprovadas, Vercel Preview saudável |
+| Release | `21375e6b12e8b26483ee886b631b51c1faa7007b` |
+| Situação | Publicada e validada sem incidentes |
 
 Os oito pontos da auditoria foram reproduzidos e corrigidos sem alterar contratos ou
 regras: a ação de remarcação ganhou prioridade no mobile; a revisão explicita
@@ -185,8 +188,14 @@ A validação registrou lint sem errors e com 12 warnings preexistentes de `<img
 TypeScript e build aprovados, 7/7 testes novos, 94/94 testes de pós-agendamento e service
 worker, 32/32 regressões públicas e 1/1 smoke full-stack local com backend real e
 provedores Fake. Não houve alteração de backend, banco, migration, schema, dependência,
-lockfile, infraestrutura, provider ou configuração de deploy. Produção não foi acessada
-e nenhuma comunicação real foi enviada.
+lockfile, infraestrutura, provider ou configuração de deploy.
+
+O merge preservou exatamente a árvore homologada. CI Backend e Frontend passaram; Vercel
+e Railway publicaram automaticamente o commit correto; `/health`, landing, privacidade,
+login, assets e `sw.js` responderam 200, sem novos erros JavaScript ou respostas 5xx. O
+fluxo pós-agendamento não foi exercitado em produção por não existir token ou fixture
+segura. Não houve migration, operação manual no banco, comunicação real, mutação de dados,
+incidente ou rollback.
 
 ## Fila atual
 
@@ -261,6 +270,7 @@ Não transformar esse item em novo redesign do painel.
 - Redesign amplo do painel.
 - Redesign do agendamento público.
 - Redesign do pós-agendamento D4.
+- Polimento pós-agendamento F2/D9 publicado e validado.
 - Corrida do cancelamento público tratada na D7.
 - Validação de horário passado e intervalo completo tratada na D7.
 - Ausência de contexto de negócio nas rotas públicas tratada na D7.
