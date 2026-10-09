@@ -64,13 +64,21 @@ export function RemarcacaoAgendamento({ token, fuso, inicio, bloqueado, remarcan
   }
   const carregando = !!data && !resultado && !erro;
   const hora = (iso: string) => new Intl.DateTimeFormat("pt-BR", { timeZone: resultado?.fuso ?? fuso, hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+  const datasProximas = proximosDiasDoNegocio(7, fuso);
+  const hoje = datasProximas[0];
+  const mesVisivel = data && new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${data}T12:00:00Z`));
 
   return <section id="remarcacao" aria-labelledby="titulo-remarcacao" className="gestao-remarcacao">
     <span className="gestao-etapa">{revisando ? "02 · Revise seu novo horário" : "01 · Escolha seu novo horário"}</span>
     <h2 id="titulo-remarcacao" ref={titulo} tabIndex={-1}>{revisando ? "Confirme a remarcação" : "Escolha uma nova data e horário"}</h2>
     {!revisando ? <>
+      <p className="gestao-mes-visivel" aria-live="polite">{mesVisivel}</p>
       <div className="gestao-faixa-datas" role="group" aria-label="Próximas datas">
-        {proximosDiasDoNegocio(7, fuso).map(dia => <button key={dia} type="button" className={`${controleGestao} gestao-dia`} aria-pressed={data === dia} aria-label={new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${dia}T12:00:00Z`))} disabled={bloqueado} onClick={() => { invalidar(); setData(dia); }}><span>{formatarDiaDaFaixa(dia)}</span><strong>{dia.slice(8)}</strong></button>)}
+        {datasProximas.map(dia => {
+          const rotuloCompleto = new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${dia}T12:00:00Z`));
+          return <button key={dia} type="button" className={`${controleGestao} gestao-dia`} aria-pressed={data === dia} aria-label={dia === hoje ? `Hoje, ${rotuloCompleto}` : rotuloCompleto} disabled={bloqueado} onClick={() => { invalidar(); setData(dia); }}><span>{dia === hoje ? "Hoje" : formatarDiaDaFaixa(dia)}</span><strong>{dia.slice(8)}</strong></button>;
+        })}
       </div>
       <label htmlFor="data-remarcacao" className="block">Data da remarcação</label>
       <input ref={campo} id="data-remarcacao" type="date" value={data} disabled={bloqueado} aria-describedby="fuso-estabelecimento" className={controleGestao} onChange={e => { invalidar(); setData(e.target.value); }} />
@@ -86,9 +94,11 @@ export function RemarcacaoAgendamento({ token, fuso, inicio, bloqueado, remarcan
       </fieldset>}
       <button className={`${controleGestao} gestao-primario`} disabled={!slot || bloqueado} onClick={() => { setRevisando(true); requestAnimationFrame(() => titulo.current?.focus()); }}>Revisar remarcação</button>
     </> : <form onSubmit={enviar} className="gestao-revisao">
-      <div className="gestao-review-periodo"><strong>DE</strong><p>Horário atual: {formatarHorarioEstabelecimento(inicio, fuso)}</p></div>
-      <div className="gestao-review-periodo" data-destino="true"><strong>PARA</strong><p>Novo horário: {formatarHorarioEstabelecimento(slot!, resultado!.fuso)}</p></div>
-      <p>Horários do estabelecimento ({resultado!.fuso}).</p>
+      <div className="gestao-comparacao" aria-label="Comparação entre o horário atual e o novo horário">
+        <div className="gestao-review-periodo"><strong>DE</strong><p>Horário atual: {formatarHorarioEstabelecimento(inicio, fuso)}</p></div>
+        <span className="gestao-comparacao-seta" aria-hidden="true">→</span>
+        <div className="gestao-review-periodo" data-destino="true"><strong>PARA</strong><p>Novo horário: {formatarHorarioEstabelecimento(slot!, resultado!.fuso)}</p></div>
+      </div>
       <button type="button" disabled={bloqueado} className={controleGestao} onClick={() => { setRevisando(false); requestAnimationFrame(() => campo.current?.focus()); }}>Voltar à seleção</button>
       <button type="submit" disabled={bloqueado} className={`${controleGestao} gestao-primario`}>{remarcando ? "Remarcando..." : "Confirmar novo horário"}</button>
     </form>}

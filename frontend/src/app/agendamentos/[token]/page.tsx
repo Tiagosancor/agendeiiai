@@ -106,20 +106,29 @@ function GestaoAgendamento({ token }: { token: string }) {
 
   const { detalhe, fuso } = dados;
   const acoes = detalhe.acoes;
+  const somenteConsulta = ["Cancelado", "Concluido", "Faltou", "Expirado"].includes(detalhe.status)
+    && acoes?.remarcar?.permitido !== true
+    && acoes?.cancelar?.permitido !== true;
   return <main className="gestao-pagina">
     <div className="gestao-intro"><h1 ref={titulo} tabIndex={-1}>{detalhe.nomeNegocio}</h1><p>Consulte seu compromisso e organize seu próximo horário.</p></div>
     <div className="gestao-grid">
-    {aguardandoAtualizacao ? <article className="gestao-compromisso"><h2>Atualizando seu agendamento</h2><p>Detalhes aguardando atualização.</p></article> : <CompromissoAgendamento detalhe={detalhe} fuso={fuso} />}
-    <section className="gestao-acoes" aria-labelledby="gestao-acoes-titulo">
-    <h2 id="gestao-acoes-titulo">Organize seu agendamento</h2>
-    <p id="fuso-estabelecimento" className="gestao-contexto">Horários do estabelecimento ({fuso}).</p>
-    {!aguardandoAtualizacao && detalhe.regras?.limiteParaAlterarEm && <p className="gestao-regra">Limite para alterações: {formatarHorarioEstabelecimento(detalhe.regras.limiteParaAlterarEm, fuso)}</p>}
+    <div className="gestao-resumo-coluna">
+      {aguardandoAtualizacao ? <article className="gestao-compromisso"><h2>Atualizando seu agendamento</h2><p>Detalhes aguardando atualização.</p></article> : <CompromissoAgendamento detalhe={detalhe} fuso={fuso} />}
+      {!processando && mensagem?.tipo === "sucesso" && <p className="gestao-aviso gestao-feedback-compromisso" data-tipo="sucesso" role="status">{mensagem.texto}</p>}
+    </div>
+    <section className="gestao-acoes" data-consulta={somenteConsulta || undefined} aria-labelledby="gestao-acoes-titulo">
+    <h2 id="gestao-acoes-titulo">{somenteConsulta ? "Detalhes do agendamento" : "Organize seu agendamento"}</h2>
+    {somenteConsulta && <p className="gestao-consultivo">Este agendamento está encerrado. Os dados abaixo permanecem disponíveis para consulta.</p>}
+    <div className="gestao-apoio">
+      <p id="fuso-estabelecimento" className="gestao-contexto">Horários do estabelecimento ({fuso}).</p>
+      {!aguardandoAtualizacao && detalhe.regras?.limiteParaAlterarEm && <p className="gestao-regra">Limite para alterações: {formatarHorarioEstabelecimento(detalhe.regras.limiteParaAlterarEm, fuso)}</p>}
+    </div>
     {processando ? <p className="gestao-aviso" role="status">{processando === "cancelar" ? "Cancelando agendamento..." : processando === "remarcar" ? "Remarcando agendamento..." : "Atualizando detalhes..."}</p>
-      : mensagem && <p className="gestao-aviso" data-tipo={mensagem.tipo} role={mensagem.tipo === "erro" ? "alert" : "status"}>{mensagem.texto}</p>}
+      : mensagem?.tipo !== "sucesso" && mensagem && <p className="gestao-aviso" data-tipo={mensagem.tipo} role={mensagem.tipo === "erro" ? "alert" : "status"}>{mensagem.texto}</p>}
     {aguardandoAtualizacao ? <button className={controleGestao} disabled={!!processando} onClick={repetirAtualizacao}>{processando ? "Atualizando..." : "Atualizar detalhes"}</button> : <>
       {!acoes && <p role="status">As opções de alteração não estão disponíveis. Tente consultar novamente mais tarde.</p>}
       {acoes?.remarcar?.permitido === true ? <>
-        <button ref={abrir} className={`${controleGestao} gestao-primario`} aria-expanded={aberto} aria-controls="remarcacao" disabled={!!processando} onClick={() => setAberto(v => !v)}>{aberto ? "Fechar remarcação" : "Remarcar agendamento"}</button>
+        <button ref={abrir} className={`${controleGestao} ${aberto ? "gestao-fechar-remarcacao" : "gestao-primario"}`} aria-expanded={aberto} aria-controls="remarcacao" disabled={!!processando} onClick={() => setAberto(v => !v)}>{aberto ? "Fechar remarcação" : "Remarcar agendamento"}</button>
         {aberto && <RemarcacaoAgendamento token={token} fuso={fuso} inicio={detalhe.inicio} bloqueado={!!processando} remarcando={processando === "remarcar"} confirmar={slot => agir("remarcar", slot)} />}
       </> : acoes?.remarcar?.motivo && <p className="gestao-motivo">Remarcação: {acoes.remarcar.motivo}</p>}
       {acoes?.cancelar?.permitido === true ? <button className={`${controleGestao} gestao-cancelar`} disabled={!!processando} onClick={() => agir("cancelar")}>{processando === "cancelar" ? "Cancelando..." : "Cancelar agendamento"}</button>
