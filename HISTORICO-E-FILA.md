@@ -164,29 +164,31 @@ testes de integração, sem ignorados. A CI do merge passou, Railway e Vercel pu
 commit correto, `/health`, landing e login responderam 200. Não houve incidente, rollback,
 migration, operação manual no banco, comunicação real ou mutação de dados de produção.
 
+### F2 / D9 — polimento D4.1 homologado localmente
+
+| Item | Resultado |
+|---|---|
+| Branch | `codex/polimento-pos-agendamento-d4-1` |
+| Base de produção | `d1cc803a222cda947832ab7d3d69d612e46ccd38` |
+| Documento herdado | `dbb2e21256c92d83ffe95daf3bc227e0a9ce2265` |
+| Implementação | `19fc5e9` — `feat: aprimora experiencia pos-agendamento` |
+| Situação | Implementada e homologada localmente; não publicada |
+
+Os oito pontos da auditoria foram reproduzidos e corrigidos sem alterar contratos ou
+regras: a ação de remarcação ganhou prioridade no mobile; a revisão explicita
+`DE → PARA`; fechar a remarcação tornou-se secundário; o sucesso aparece junto ao
+compromisso atualizado; estados encerrados ficaram consultivos; o fuso IANA deixou de ser
+repetido; a coluna da remarcação recebeu mais espaço em 768px; e a faixa de datas passou
+a informar o mês e identificar hoje por texto.
+
+A validação registrou lint sem errors e com 12 warnings preexistentes de `<img>`,
+TypeScript e build aprovados, 7/7 testes novos, 94/94 testes de pós-agendamento e service
+worker, 32/32 regressões públicas e 1/1 smoke full-stack local com backend real e
+provedores Fake. Não houve alteração de backend, banco, migration, schema, dependência,
+lockfile, infraestrutura, provider ou configuração de deploy. Produção não foi acessada
+e nenhuma comunicação real foi enviada.
+
 ## Fila atual
-
-### F2 — melhorias D4.1 da experiência pós-agendamento
-
-- **Responsável:** Codex.
-- **Camada:** UI/UX e testes Playwright.
-- **Situação:** pendente; 0 V0, 0 V1, 7 V2 e 1 V3 na auditoria original.
-- **Regra:** executar como polimento pontual, sem novo redesign e sem reconstruir regras no
-  frontend.
-
-Itens confirmados:
-
-1. aproximar a ação **Remarcar** do compromisso em 375/390px;
-2. tornar a comparação **DE → PARA** mais imediata;
-3. reduzir a competição visual de **Fechar remarcação**;
-4. aproximar a confirmação explícita de sucesso do compromisso atualizado;
-5. tornar estados encerrados e sem ações mais claramente consultivos;
-6. reduzir repetição e peso técnico do fuso IANA e de textos auxiliares;
-7. melhorar a proporção das colunas da remarcação em 768px;
-8. reforçar discretamente o contexto de mês e a indicação de “hoje”.
-
-Antes de implementar, reproduzir os itens na versão atual para evitar corrigir algo que já
-tenha mudado por outra fase.
 
 ### F3 — ressalvas visuais P2 do painel
 
@@ -267,11 +269,10 @@ Não transformar esse item em novo redesign do painel.
 
 ## Próxima sequência recomendada
 
-1. Codex: F2, polimento D4.1 do pós-agendamento.
-2. Codex: F3, P2 pontuais do painel, após nova verificação visual.
-3. Claude Code: B1, resposta 400 para horários inválidos.
-4. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
-5. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
+1. Codex: F3, P2 pontuais do painel, após nova verificação visual.
+2. Claude Code: B1, resposta 400 para horários inválidos.
+3. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
+4. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
 
 A ordem pode ser alterada pelo usuário. Cada item deve usar branch própria, preservar os
 gates de release e não misturar frontend visual com correção backend sem necessidade.
