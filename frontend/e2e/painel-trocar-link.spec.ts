@@ -66,6 +66,7 @@ test("Administrador troca o link com aviso e o endereço antigo redireciona (301
   expect(new URL(page.url()).search).toBe("?origem=cartao");
   const redirecionamento = await resposta!.request().redirectedFrom()!.response();
   expect(redirecionamento!.status()).toBe(301);
+  expect(redirecionamento!.headers()["cache-control"]).toBe("private, max-age=3600");
 
   // A página nova é a do negócio.
   await page.goto(`http://${novo}.agendeiiai.localhost:3000/`);
