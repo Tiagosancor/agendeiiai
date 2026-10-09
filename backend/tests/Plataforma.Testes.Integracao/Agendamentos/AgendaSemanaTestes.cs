@@ -95,23 +95,30 @@ public sealed class AgendaSemanaTestes : IAsyncLifetime
         var (_, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
         var cenario = await _fabrica.CriarCenarioPadraoAsync(negocioId);
         var outroProfissional = await _fabrica.CriarProfissionalAsync(negocioId, "Outro");
+        // Instantes fixos, longe da meia-noite local: o teste não depende da hora em que a suíte roda. (Antes era
+        // "agora − 30 min" e somava as listas de ontem e de hoje — entre 00:10 e 00:30 o atendimento cruzava a virada e
+        // aparecia nas duas, o que é o comportamento correto da listagem por sobreposição.)
         var hoje = Dia(0);
+        var dia = Dia(2);
 
-        var meu = await _fabrica.SemearAgendamentoAsync(negocioId, cenario.ProfissionalId, DateTimeOffset.UtcNow.AddMinutes(-30));
-        var dele = await _fabrica.SemearAgendamentoAsync(negocioId, outroProfissional, DateTimeOffset.UtcNow.AddMinutes(-30));
+        var meu = await _fabrica.SemearAgendamentoAsync(negocioId, cenario.ProfissionalId, Local(dia, 10, 0));
+        var dele = await _fabrica.SemearAgendamentoAsync(negocioId, outroProfissional, Local(dia, 10, 0));
 
         using var profissional = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Profissional, cenario.ProfissionalId);
 
         // Sem "gerenciar agenda": a agenda geral é 403, a própria responde.
         (await profissional.GetAsync($"/painel/agenda?profissionalId={cenario.ProfissionalId}&data={hoje:yyyy-MM-dd}"))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        var dia = await profissional.GetFromJsonAsync<List<AgendamentoResumo>>($"/painel/minha-agenda?data={Dia(-1):yyyy-MM-dd}")
-            ?? [];
-        dia.AddRange((await profissional.GetFromJsonAsync<List<AgendamentoResumo>>($"/painel/minha-agenda?data={hoje:yyyy-MM-dd}"))!);
-        dia.Should().ContainSingle(a => a.Id == meu).And.NotContain(a => a.Id == dele);
+        var doDia = (await profissional.GetFromJsonAsync<List<AgendamentoResumo>>($"/painel/minha-agenda?data={dia:yyyy-MM-dd}"))!;
+        doDia.Should().ContainSingle(a => a.Id == meu).And.NotContain(a => a.Id == dele);
+        // A véspera e o dia seguinte não trazem o atendimento: os dias não se sobrepõem.
+        foreach (var vizinho in new[] { dia.AddDays(-1), dia.AddDays(1) })
+            (await profissional.GetFromJsonAsync<List<AgendamentoResumo>>($"/painel/minha-agenda?data={vizinho:yyyy-MM-dd}"))!
+                .Should().NotContain(a => a.Id == meu || a.Id == dele, vizinho.ToString("yyyy-MM-dd"));
 
-        var semana = await profissional.GetFromJsonAsync<AgendaSemana>($"/painel/minha-agenda/semana?inicio={Dia(-1):yyyy-MM-dd}");
+        var semana = await profissional.GetFromJsonAsync<AgendaSemana>($"/painel/minha-agenda/semana?inicio={dia:yyyy-MM-dd}");
         semana!.ProfissionalId.Should().Be(cenario.ProfissionalId);
+        semana.Dias.SelectMany(d => d.Agendamentos).Where(a => a.Id == meu).Should().ContainSingle();
 
         // Iniciar e concluir o próprio; o do outro não existe para ele.
         (await profissional.PostAsync($"/painel/minha-agenda/{meu}/iniciar", null)).StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -130,5 +137,27 @@ public sealed class AgendaSemanaTestes : IAsyncLifetime
         using var recepcao = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Recepcionista);
         (await recepcao.GetAsync($"/painel/minha-agenda?data={hoje:yyyy-MM-dd}")).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await recepcao.PostAsync($"/painel/minha-agenda/{dele}/iniciar", null)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Virada_do_dia_cada_dia_lista_cada_atendimento_uma_vez_pela_sobreposicao_no_fuso_do_negocio()
+    {
+        var (_, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var cenario = await _fabrica.CriarCenarioPadraoAsync(negocioId);
+        using var profissional = await _fabrica.LogarNovoUsuarioAsync(negocioId, Perfil.Profissional, cenario.ProfissionalId);
+        var dia = Dia(3);
+
+        // Instantes fixos em America/Sao_Paulo (UTC−3), 20 min cada: antes, atravessando e depois da meia-noite local.
+        var antes = await _fabrica.SemearAgendamentoAsync(negocioId, cenario.ProfissionalId, Local(dia, 23, 30));
+        var atravessa = await _fabrica.SemearAgendamentoAsync(negocioId, cenario.ProfissionalId, Local(dia, 23, 50));
+        var depois = await _fabrica.SemearAgendamentoAsync(negocioId, cenario.ProfissionalId, Local(dia.AddDays(1), 0, 10));
+
+        var noDia = (await profissional.GetFromJsonAsync<List<AgendamentoResumo>>($"/painel/minha-agenda?data={dia:yyyy-MM-dd}"))!;
+        var noSeguinte = (await profissional.GetFromJsonAsync<List<AgendamentoResumo>>($"/painel/minha-agenda?data={dia.AddDays(1):yyyy-MM-dd}"))!;
+
+        noDia.Select(a => a.Id).Should().BeEquivalentTo([antes, atravessa]);
+        noSeguinte.Select(a => a.Id).Should().BeEquivalentTo([atravessa, depois]);
+        noDia.Should().OnlyHaveUniqueItems(a => a.Id);
+        noSeguinte.Should().OnlyHaveUniqueItems(a => a.Id);
     }
 }
