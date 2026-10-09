@@ -1,8 +1,8 @@
 # Histórico e fila do projeto — Agendeiiai
 
-Última atualização: 2026-10-08
+Última atualização: 2026-10-09
 Estado Git verificado: `main` = `origin/main` =
-`0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91`
+`d1cc803a222cda947832ab7d3d69d612e46ccd38`
 
 ## Finalidade deste documento
 
@@ -131,25 +131,38 @@ validações frontend conhecidas. D6 publicou o conjunto sem incidentes e sem mi
 O release D7 não alterou frontend, banco, migrations, schema, dependências ou
 infraestrutura. Railway, Vercel e CI ficaram saudáveis; não houve rollback.
 
-### Hardening D8.1 — homologado localmente, não publicado
+### Hardening D8 — concluído, integrado e publicado
 
-| Campo | Registro |
-|---|---|
-| Responsável | Codex |
-| Branch | `codex/fix-cache-404-negocio-inexistente` |
-| Base original | `0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91` |
-| Nova `origin/main` auditada | `f23cd8cdc719f1c4381ea59ea47291a66287cf78` — redução controlada do teste grátis para 15 dias |
-| Commits | `bda0996` (histórico), `a137fe9` (implementação) e `250579a` (reconciliação local da base) |
-| Resultado | Respostas 404 de slug inexistente ou inválido mantêm a página humana e passam a declarar `Cache-Control: no-store` na resposta final do Next.js |
-| Testes | Após a reconciliação: 20/20 unitários e 44/44 integrações da mudança de 15 dias, 4/4 testes D8.1 e 83/83 regressões direcionadas; lint, TypeScript e build passaram |
-| Escopo | Somente frontend, proxy e testes Playwright; sem backend, API, banco, migrations ou dependências |
-| Produção | Não alterada; o snapshot publicado continua em `0b8d3d653ba92f6a7cf6f6cf1472b97c0b4d6a91` |
+| Marco | Commit | Resultado |
+|---|---|---|
+| Ajuste comercial incorporado à base | `f23cd8c` | Teste grátis reduzido de 30 para 15 dias de forma controlada, sem migration |
+| Histórico inicial da D8.1 | `bda0996` | Histórico e fila passaram a ser preservados no repositório |
+| Cache de negócio inexistente | `a137fe9` | Respostas 404 humanas de slug inexistente ou inválido passaram a declarar `Cache-Control: no-store` |
+| Reconciliação da base | `250579a` | Nova `main` incorporada à branch D8.1 sem conflito nem perda funcional |
+| Atualização documental do RC | `adcb75f` | Base, hashes e estado de homologação registrados antes do release |
+| Release D8.1 | `085a4be90b783283e7f6c9bf8b0f9591707b2570` | Correção de cache publicada e validada em Vercel e Railway |
+| Testes temporais | `5dc70b01aee34b738a56571c2bf247a3443cea59` | Dois testes de integração tornados determinísticos, sem alteração de produção |
+| Integração dos testes | `d1cc803a222cda947832ab7d3d69d612e46ccd38` | PR #1 integrado com CI verde e providers saudáveis |
 
-O ajuste preserva a landing raiz, `app`, `www`, negócios válidos, redirecionamento de slug
-anterior, caminhos, query strings e a política existente quando a API está indisponível.
-O item F1 foi encerrado e homologado na branch local sobre a nova `origin/main`, sem rebase
-ou perda dos commits originais. A publicação real e o snapshot de produção ainda dependem
-dos gates normais de providers, integração e release.
+A D8.1 preservou landing, painel, `www`, negócios válidos, redirecionamento de slug
+anterior, caminhos, query strings e a política de indisponibilidade da API. O release
+alterou somente `frontend/src/proxy.ts`, dois testes Playwright e este histórico. Slug
+inexistente válido e slug inválido retornam página humana com HTTP 404 e
+`Cache-Control: no-store`; não houve alteração de backend, banco, migration, schema,
+dependência ou infraestrutura.
+
+O primeiro run da CI backend do release (`37873076443`) falhou sem log acessível. Uma
+reexecução autorizada identificou falhas diferentes e não determinísticas em
+`EncaixeTestes` e `AgendaSemanaTestes`, ambas causadas por cenários de teste dependentes da
+virada do dia. O código de produção estava correto: o encaixe que ultrapassava o expediente
+devia responder 400, e a agenda diária devia listar em ambos os dias um atendimento que
+atravessava a meia-noite.
+
+A correção ficou restrita aos dois arquivos de teste. O PR #1 validou Backend e Frontend e
+foi integrado por `d1cc803`. A validação local registrou 314/314 testes unitários e 346/346
+testes de integração, sem ignorados. A CI do merge passou, Railway e Vercel publicaram o
+commit correto, `/health`, landing e login responderam 200. Não houve incidente, rollback,
+migration, operação manual no banco, comunicação real ou mutação de dados de produção.
 
 ## Fila atual
 
@@ -226,6 +239,20 @@ Não transformar esse item em novo redesign do painel.
 - **Situação:** baixa prioridade; não abrir ciclo próprio.
 - **Arquivos citados:** `IServicoAgendamentos.cs` e `GestaoPublicaAgendamento.cs`.
 
+### B4 — abstração central de relógio
+
+- **Responsável:** Claude Code.
+- **Camada:** backend, domínio, jobs e testes.
+- **Situação:** backlog técnico de baixa prioridade; não há bug funcional aberto.
+- **Origem:** a D8 identificou testes que dependiam do relógio real e da virada do dia. Os
+  dois casos comprovadamente instáveis já foram corrigidos sem alterar produção.
+- **Objetivo futuro:** auditar a adoção de `TimeProvider` ou abstração equivalente para
+  serviços e jobs que hoje leem diretamente o relógio do sistema, permitindo testes
+  determinísticos de regras temporais.
+- **Regra:** não abrir refatoração transversal sem escopo próprio, análise de impacto e
+  testes de regressão; os usos restantes de horário atual não foram classificados como
+  defeito.
+
 ## Itens encerrados que não devem voltar automaticamente à fila
 
 - Redesign amplo da landing.
@@ -244,6 +271,7 @@ Não transformar esse item em novo redesign do painel.
 2. Codex: F3, P2 pontuais do painel, após nova verificação visual.
 3. Claude Code: B1, resposta 400 para horários inválidos.
 4. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
+5. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
 
 A ordem pode ser alterada pelo usuário. Cada item deve usar branch própria, preservar os
 gates de release e não misturar frontend visual com correção backend sem necessidade.
