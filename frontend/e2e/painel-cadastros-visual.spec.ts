@@ -35,10 +35,23 @@ for (const tema of ["light", "dark"]) {
           secao: document.querySelector(".painel-cadastro > section:last-of-type")?.getBoundingClientRect().width }));
         expect(dimensoes.pagina, `${rota} ${largura}px: ${JSON.stringify(dimensoes)}`).toBeLessThanOrEqual(dimensoes.viewport);
         expect(await registro.evaluate(el => getComputedStyle(el).display)).toBe(largura < 768 ? "grid" : "table-row");
-        if (largura < 768) {
+        if (largura <= 768) {
           for (const controle of await registro.locator("button, a").all()) {
             expect((await controle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
           }
+        }
+        if (largura === 768) {
+          const controles = registro.locator('td[data-label="Ações"] button, td[data-label="Ações"] a');
+          const caixas = await controles.evaluateAll(elementos => elementos.map(elemento => {
+            const caixa = elemento.getBoundingClientRect();
+            return { x: caixa.x, y: caixa.y, right: caixa.right, bottom: caixa.bottom };
+          }));
+          for (let indice = 1; indice < caixas.length; indice++) {
+            expect(caixas[indice].x >= caixas[indice - 1].right || caixas[indice].y >= caixas[indice - 1].bottom).toBe(true);
+          }
+          const primeiroControle = controles.first();
+          await primeiroControle.focus();
+          expect(await primeiroControle.evaluate(elemento => getComputedStyle(elemento).outlineStyle)).not.toBe("none");
         }
         if ([390, 1440].includes(largura)) await page.screenshot({ path: testInfo.outputPath(`${rota}-${tema}-${largura}.png`) });
       }

@@ -26,16 +26,20 @@ export function AvisoAssinatura() {
   return (
     <div
       data-testid="aviso-assinatura"
+      data-estado={aviso.estado}
+      data-destacado={aviso.destacado}
       role="status"
-      className={
-        aviso.destacado
-          ? "border-b border-red-200 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-          : "border-b border-marca-acento/30 bg-marca-acento/10 text-gray-800 dark:text-neutral-200"
-      }
+      className="painel-aviso-assinatura"
     >
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
-        <span>{texto}</span>
-        <Link href="/painel/assinatura" className="font-semibold underline">
+      <div className="painel-aviso-assinatura-conteudo">
+        <span className="painel-aviso-assinatura-icone" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <circle cx="12" cy="12" r="8.5" />
+            <path d="M12 7.5v5l3 1.8" />
+          </svg>
+        </span>
+        <span className="painel-aviso-assinatura-mensagem">{texto}</span>
+        <Link href="/painel/assinatura" className="painel-aviso-assinatura-acao">
           Assinar agora
         </Link>
       </div>

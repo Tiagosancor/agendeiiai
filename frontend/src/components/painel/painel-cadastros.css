@@ -68,6 +68,12 @@
 .painel-cadastro-ficha [class~="bg-amber-50"] { background: var(--painel-elevado); border-color: var(--painel-borda); }
 .painel-cadastro-ficha [data-testid^="dia-horario-"] { padding: 20px; }
 .painel-cadastro-ficha [class~="items-center"][class~="justify-between"] { flex-wrap: wrap; gap: 12px; }
+@media (min-width: 768px) and (max-width: 1023px) {
+  .painel-cadastro-tabela td[data-label="Ações"] :is(button, a)[class~="hover:underline"] {
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+}
 @media (max-width: 767px) {
   .painel-cadastro { gap: 20px; }
   .painel-cadastro:not(.painel-cadastro-ficha) { gap: 16px; }
