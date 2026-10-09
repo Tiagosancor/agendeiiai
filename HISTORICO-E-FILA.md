@@ -197,23 +197,35 @@ fluxo pós-agendamento não foi exercitado em produção por não existir token 
 segura. Não houve migration, operação manual no banco, comunicação real, mutação de dados,
 incidente ou rollback.
 
+### F3 / D10 — polimento visual P2 do painel homologado localmente
+
+| Item | Resultado |
+|---|---|
+| Branch | `codex/polimento-painel-p2` |
+| Base de produção | `21375e6b12e8b26483ee886b631b51c1faa7007b` |
+| Documento herdado | `f4eedd34b9eb79ca05d7649e4eba5f9ec4bf34de` |
+| Implementação | `1706ac2` — `style: refina estados e controles do painel` |
+| Situação | Implementada e homologada localmente; não publicada |
+
+A auditoria confirmou que as ações textuais das tabelas de cadastros mediam 34px em
+768px. O ajuste elevou apenas esses alvos para 44px entre 768 e 1023px, preservando a
+densidade do desktop e os cards mobile. O `AvisoAssinatura` recebeu acabamento alinhado
+aos tokens do AppShell, com hierarquia, ícone, estado destacado, foco e resposta mobile,
+sem alterar regras de exibição, textos, prazos, link ou chamada de API.
+
+Os estados compartilhados de carregamento, vazio e status já estavam coerentes e não
+foram alterados. A duplicação entre folhas de estilo foi deliberadamente preservada porque
+a consolidação ampliaria o acoplamento entre módulos sem benefício comprovado nesta fase.
+
+A validação registrou lint com 0 errors e 12 warnings preexistentes de `<img>`, TypeScript,
+build e `git diff --check` aprovados, além de 41/41 testes Playwright passando. Foram
+cobertos 375px, 390px, 768px e desktop, temas claro/escuro, movimento reduzido, foco,
+overflow, Agenda, sessão, permissões, Assinatura, cadastros, módulos operacionais,
+benefícios, Meu negócio e autenticação. Não houve alteração de backend, banco,
+migration, schema, dependência, lockfile, infraestrutura, provider, produção ou
+comunicação real.
+
 ## Fila atual
-
-### F3 — ressalvas visuais P2 do painel
-
-- **Responsável:** Codex.
-- **Camada:** UI/UX, acessibilidade e manutenção frontend.
-- **Situação:** pendente, não bloqueante.
-
-Itens registrados na homologação do painel:
-
-1. alguns controles de ação chegam a aproximadamente 34px no tablet;
-2. `AvisoAssinatura` ainda apresenta acabamento visual legado;
-3. estados transversais ainda não estão completamente uniformizados;
-4. há duplicação de CSS a reduzir somente quando houver benefício claro e testes de
-   regressão.
-
-Não transformar esse item em novo redesign do painel.
 
 ### B1 — PUT de horários inválidos devolve 500
 
@@ -271,6 +283,7 @@ Não transformar esse item em novo redesign do painel.
 - Redesign do agendamento público.
 - Redesign do pós-agendamento D4.
 - Polimento pós-agendamento F2/D9 publicado e validado.
+- Polimento visual P2 do painel F3/D10 homologado localmente; aguarda gate de integração.
 - Corrida do cancelamento público tratada na D7.
 - Validação de horário passado e intervalo completo tratada na D7.
 - Ausência de contexto de negócio nas rotas públicas tratada na D7.
@@ -279,7 +292,7 @@ Não transformar esse item em novo redesign do painel.
 
 ## Próxima sequência recomendada
 
-1. Codex: F3, P2 pontuais do painel, após nova verificação visual.
+1. Gate compartilhado: revisar e autorizar push/PR da F3 quando desejado.
 2. Claude Code: B1, resposta 400 para horários inválidos.
 3. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
 4. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
