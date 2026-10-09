@@ -192,3 +192,64 @@ test.describe("D4 fuso do dispositivo diferente", () => {
     await revisar(page); await expect(page.locator('[data-destino="true"]')).toContainText("09:15");
   });
 });
+
+test("D4.1 mobile prioriza a ação principal antes dos detalhes auxiliares", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await preparar(page);
+  const acao = await page.getByRole("button", { name: "Remarcar agendamento", exact: true }).boundingBox();
+  const contexto = await page.locator(".gestao-contexto").boundingBox();
+  expect(acao).not.toBeNull();
+  expect(contexto).not.toBeNull();
+  expect(acao!.y).toBeLessThan(contexto!.y);
+  await semOverflow(page);
+});
+
+test("D4.1 fechar remarcação é secundário e devolve foco ao acionador", async ({ page }) => {
+  await preparar(page);
+  await abrir(page);
+  const fechar = page.getByRole("button", { name: "Fechar remarcação", exact: true });
+  await expect(fechar).toHaveClass(/gestao-fechar-remarcacao/);
+  await fechar.click();
+  await expect(page.getByRole("button", { name: "Remarcar agendamento", exact: true })).toBeFocused();
+  await expect(page.locator("#remarcacao")).toHaveCount(0);
+});
+
+test("D4.1 faixa de datas informa mês e identifica hoje sem depender de cor", async ({ page }) => {
+  await preparar(page);
+  await abrir(page);
+  await expect(page.locator(".gestao-mes-visivel")).toHaveText("outubro de 2026");
+  await expect(page.getByRole("group", { name: "Próximas datas" }).getByRole("button", { name: /^Hoje,/ })).toHaveCount(1);
+});
+
+test("D4.1 revisão conecta DE e PARA e exibe o fuso apenas uma vez", async ({ page }) => {
+  await preparar(page);
+  await revisar(page);
+  await expect(page.locator(".gestao-comparacao-seta")).toHaveText("→");
+  await expect(page.getByText("Horários do estabelecimento (America/Sao_Paulo).", { exact: true })).toHaveCount(1);
+});
+
+test("D4.1 sucesso permanece junto ao compromisso atualizado", async ({ page }) => {
+  await preparar(page);
+  await revisar(page);
+  await page.getByRole("button", { name: "Confirmar novo horário" }).click();
+  await expect(page.locator(".gestao-resumo-coluna > .gestao-feedback-compromisso")).toHaveText("Agendamento remarcado.");
+  await expect(page.locator(".gestao-resumo-coluna .gestao-hora")).toHaveText("09:15");
+});
+
+test("D4.1 estados encerrados assumem apresentação consultiva", async ({ page }) => {
+  await preparar(page, { detalhe: { ...detalhe, status: "Concluido", acoes: { remarcar: { permitido: false, motivo: "Alteração não permitida." }, cancelar: { permitido: false, motivo: "Cancelamento não permitido." } } } });
+  await expect(page.getByRole("heading", { name: "Detalhes do agendamento" })).toBeVisible();
+  await expect(page.getByText("Este agendamento está encerrado. Os dados abaixo permanecem disponíveis para consulta.")).toBeVisible();
+});
+
+test("D4.1 tablet reserva mais largura para a remarcação", async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 900 });
+  await preparar(page);
+  await abrir(page);
+  const resumo = await page.locator(".gestao-resumo-coluna").boundingBox();
+  const acoes = await page.locator(".gestao-acoes").boundingBox();
+  expect(resumo).not.toBeNull();
+  expect(acoes).not.toBeNull();
+  expect(acoes!.width).toBeGreaterThan(resumo!.width);
+  await semOverflow(page);
+});

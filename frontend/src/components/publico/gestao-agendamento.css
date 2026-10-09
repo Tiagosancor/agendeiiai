@@ -8,6 +8,7 @@
 .gestao-intro p { font-size: 14px; color: var(--publico-suave); margin-top: 4px; }
 .gestao-intro h1 { font-size: clamp(24px, 3vw, 34px); font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
 .gestao-grid { display: grid; gap: 18px; align-items: start; }
+.gestao-resumo-coluna { min-width: 0; display: grid; gap: 12px; }
 .gestao-compromisso, .gestao-acoes, .gestao-estado-inicial { min-width: 0; border: 1px solid var(--publico-borda); background: var(--publico-superficie); border-radius: 22px; box-shadow: var(--publico-sombra); padding: 22px; }
 .gestao-status { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--publico-borda); border-radius: 99px; padding: 6px 12px; font-size: 14px; font-weight: 650; background: var(--publico-elevado); }
 .gestao-status[data-estado="Agendado"], .gestao-status[data-estado="Concluido"] { background: #e5f6f0; color: #17694e; border-color: #b9e5d7; }
@@ -28,21 +29,28 @@
 .gestao-total { font-size: 19px; font-weight: 650; }
 .gestao-acoes { display: grid; gap: 14px; }
 .gestao-acoes > h2 { font-size: 20px; font-weight: 650; }
+.gestao-apoio { display: grid; gap: 6px; }
 .gestao-contexto, .gestao-regra { color: var(--publico-suave); font-size: 14px; line-height: 1.6; }
+.gestao-consultivo { padding: 14px 16px; border-left: 3px solid var(--publico-link); border-radius: 4px 12px 12px 4px; background: var(--publico-elevado); font-size: 14px; line-height: 1.55; }
 .gestao-publica .gestao-controle { min-height: 48px; min-width: 44px; padding: 11px 14px; font-size: 16px; border: 1px solid var(--publico-borda); border-radius: 12px; background: var(--publico-superficie); color: var(--publico-texto); cursor: pointer; font-weight: 550; }
 .gestao-publica .gestao-controle:hover:not(:disabled) { border-color: var(--publico-foco); background: var(--publico-elevado); }
 .gestao-publica .gestao-controle:disabled { opacity: .65; cursor: default; }
 .gestao-publica .gestao-primario { background: #2563eb; color: white; border-color: #2563eb; }
 .gestao-publica .gestao-primario:hover:not(:disabled) { background: #1d4ed8; color: white; }
+.gestao-publica .gestao-fechar-remarcacao { justify-self: start; min-height: 44px; background: transparent; color: var(--publico-suave); border-color: transparent; box-shadow: none; font-size: 14px; }
+.gestao-publica .gestao-fechar-remarcacao:hover:not(:disabled) { color: var(--publico-texto); border-color: var(--publico-borda); background: var(--publico-elevado); }
 .gestao-publica .gestao-cancelar { color: #9c3447; border-color: transparent; box-shadow: none; }
 [data-theme="dark"] .gestao-publica .gestao-cancelar { color: #ffb9c1; }
 .gestao-publica .gestao-cancelar:hover:not(:disabled) { background: var(--publico-elevado); border-color: var(--publico-borda); }
 .gestao-aviso { padding: 14px 16px; border-radius: 14px; border: 1px solid var(--publico-borda); background: var(--publico-elevado); font-size: 14px; overflow-wrap: anywhere; }
 .gestao-aviso[role="alert"] { background: #fff3f3; color: #8f222c; border-color: #f0b4b4; }
+.gestao-feedback-compromisso[data-tipo="sucesso"] { background: #e9f8f2; color: #17694e; border-color: #b9e5d7; }
+[data-theme="dark"] .gestao-feedback-compromisso[data-tipo="sucesso"] { background: #163f39; color: #a7ead2; border-color: #2d6255; }
 [data-theme="dark"] .gestao-aviso[role="alert"] { background: #342232; border-color: #77444e; color: #ffb9c1; }
 .gestao-remarcacao { border-top: 1px solid var(--publico-borda); padding-top: 20px; display: grid; gap: 12px; }
 .gestao-remarcacao h2 { font-size: 19px; font-weight: 650; }
 .gestao-etapa { font-size: 12px; font-weight: 650; color: var(--publico-link); text-transform: uppercase; letter-spacing: .08em; }
+.gestao-mes-visivel { color: var(--publico-suave); font-size: 14px; font-weight: 650; text-transform: capitalize; }
 .gestao-faixa-datas { display: flex; overflow-x: auto; gap: 8px; padding: 4px 3px 10px; margin-inline: -3px; scroll-padding: 3px; }
 .gestao-publica .gestao-dia { flex: 0 0 62px; min-height: 76px; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 2px; padding: 8px; }
 .gestao-dia strong { font-size: 20px; }
@@ -50,6 +58,8 @@
 .gestao-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .gestao-publica .gestao-slot[aria-pressed="true"]::after { content: " ✓"; }
 .gestao-revisao { display: grid; gap: 12px; }
+.gestao-comparacao { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: stretch; gap: 8px; }
+.gestao-comparacao-seta { align-self: center; color: var(--publico-link); font-size: 22px; font-weight: 700; }
 .gestao-review-periodo { padding: 15px; border: 1px solid var(--publico-borda); border-radius: 14px; background: var(--publico-elevado); }
 .gestao-review-periodo strong { display: block; font-size: 12px; color: var(--publico-suave); margin-bottom: 4px; letter-spacing: .08em; }
 .gestao-review-periodo[data-destino="true"] { border-color: var(--publico-foco); }
@@ -57,9 +67,19 @@
 .gestao-estado-inicial h1 { font-size: 26px; line-height: 1.2; font-weight: 650; }
 .gestao-estado-simbolo { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; background: var(--publico-elevado); color: var(--publico-link); font-size: 24px; }
 .gestao-rodape { max-width: 1040px; margin: 0 auto; padding: 24px 20px; font-size: 12px; color: var(--publico-suave); text-align: center; }
+@media (max-width: 767px) {
+  .gestao-acoes > h2 { order: 1; }
+  .gestao-acoes > .gestao-primario, .gestao-acoes > .gestao-fechar-remarcacao { order: 2; }
+  .gestao-acoes > .gestao-remarcacao { order: 3; }
+  .gestao-acoes > .gestao-apoio, .gestao-acoes > .gestao-consultivo { order: 4; }
+  .gestao-acoes > .gestao-aviso, .gestao-acoes > [role="status"], .gestao-acoes > .gestao-motivo { order: 5; }
+  .gestao-acoes > .gestao-cancelar { order: 6; }
+  .gestao-comparacao { grid-template-columns: 1fr; }
+  .gestao-comparacao-seta { justify-self: center; transform: rotate(90deg); line-height: 1; }
+}
 @media (min-width: 768px) {
   .gestao-pagina { width: calc(100% - 64px); margin-top: 36px; }
-  .gestao-grid { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; }
+  .gestao-grid { grid-template-columns: minmax(0, .88fr) minmax(0, 1.12fr); gap: 24px; }
   .gestao-compromisso, .gestao-acoes { padding: 28px; }
 }
 @media (min-width: 1024px) { .gestao-grid { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 32px; } }
