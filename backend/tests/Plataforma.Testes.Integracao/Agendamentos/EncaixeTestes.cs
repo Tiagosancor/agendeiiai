@@ -139,10 +139,24 @@ public sealed class EncaixeTestes : IAsyncLifetime
         var comAceite = await ClienteComEmailAsync(admin, "com-aceite@teste.com");
         var espia = _fabrica.Services.GetRequiredService<EspiaEmail>();
 
-        // Daqui a 40 e 45 min: dentro da janela do lembrete (60 min).
-        var inicio = DateTimeOffset.UtcNow.AddMinutes(40);
-        var idSem = await IdAsync(await LancarAsync(admin, new LancarEncaixe(profissionalId, semAceite, null, servicos, inicio, false, false)));
-        var idCom = await IdAsync(await LancarAsync(admin, new LancarEncaixe(profissionalId, comAceite, null, servicos, inicio.AddMinutes(20), false, true)));
+        // O job de lembretes usa o relógio real, então os horários precisam ser "daqui a pouco" — e, com turno até 23:59,
+        // perto da meia-noite local eles atravessariam o dia (400 correto, teste quebrado). O fuso em que agora fica perto do
+        // meio-dia (±1h30, provado em HardeningRelogioTestes) deixa 40–75 min à frente sempre dentro do mesmo dia local.
+        var agora = DateTimeOffset.UtcNow;
+        var fuso = HardeningRelogioTestes.FusoPertoDoMeioDia(agora);
+        await _fabrica.NoBancoAsync(db => db.Database.ExecuteSqlRawAsync("UPDATE negocios SET fuso = {0} WHERE id = {1}", fuso, negocioId));
+
+        // Daqui a 40 e 60 min (15 min cada): dentro da janela do lembrete (60 min).
+        var inicio = agora.AddMinutes(40);
+        var zona = TimeZoneInfo.FindSystemTimeZoneById(fuso);
+        TimeZoneInfo.ConvertTime(inicio, zona).Date.Should().Be(TimeZoneInfo.ConvertTime(inicio.AddMinutes(35), zona).Date,
+            "os dois encaixes precisam caber no mesmo dia local do turno");
+        var respostaSem = await LancarAsync(admin, new LancarEncaixe(profissionalId, semAceite, null, servicos, inicio, false, false));
+        respostaSem.StatusCode.Should().Be(HttpStatusCode.Created, await respostaSem.Content.ReadAsStringAsync());
+        var idSem = await IdAsync(respostaSem);
+        var respostaCom = await LancarAsync(admin, new LancarEncaixe(profissionalId, comAceite, null, servicos, inicio.AddMinutes(20), false, true));
+        respostaCom.StatusCode.Should().Be(HttpStatusCode.Created, await respostaCom.Content.ReadAsStringAsync());
+        var idCom = await IdAsync(respostaCom);
 
         espia.Enviados.Should().NotContain(e => e.Destinatario == "sem-aceite@teste.com");
         espia.Enviados.Should().ContainSingle(e => e.Destinatario == "com-aceite@teste.com" && e.Assunto.Contains("confirmado"));
