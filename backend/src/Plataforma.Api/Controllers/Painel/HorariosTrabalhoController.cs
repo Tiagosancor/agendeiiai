@@ -10,6 +10,8 @@ namespace Plataforma.Api.Controllers.Painel;
 [Authorize(Policy = nameof(Permissao.GerenciarProfissionais))]
 public sealed class HorariosTrabalhoController : ControllerBase
 {
+    internal const string MensagemIntervaloInvalido = "O fim do intervalo precisa ser depois do início.";
+
     private readonly IGerenciadorHorariosTrabalho _gerenciador;
 
     public HorariosTrabalhoController(IGerenciadorHorariosTrabalho gerenciador)
@@ -26,6 +28,15 @@ public sealed class HorariosTrabalhoController : ControllerBase
     public async Task<IActionResult> Definir(
         Guid profissionalId, IReadOnlyList<IntervaloTrabalho> intervalos, CancellationToken cancellationToken)
     {
+        if (intervalos.Any(intervalo => intervalo.Fim <= intervalo.Inicio))
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = MensagemIntervaloInvalido,
+            });
+        }
+
         await _gerenciador.DefinirAsync(profissionalId, intervalos, cancellationToken);
         return NoContent();
     }
