@@ -232,16 +232,28 @@ publicaram automaticamente `a5f1d72`. `/health`, landing, login, privacidade e `
 responderam 200. Não houve migration, operação de banco, comunicação real, mutação de
 dados, incidente ou rollback.
 
+### B1 — validação de horários profissionais homologada localmente
+
+| Item | Resultado |
+|---|---|
+| Branch | `fix/validacao-horarios-profissional` |
+| Base de produção | `a5f1d72dbf92ace753e0928b58c6fb7053caa6a6` |
+| Documento herdado | `83917148626a3f0a47bd5054e3afd2b91f7ae7e1` |
+| Implementação | `09a6eb0` — `fix: valida intervalos de trabalho invalidos` |
+| Situação | Corrigida e homologada localmente; ainda não integrada nem publicada |
+
+O `PUT /painel/profissionais/{id}/horarios` agora recusa com HTTP 400 e mensagem segura
+qualquer intervalo cujo fim seja igual ou anterior ao início, incluindo turnos que
+atravessariam a meia-noite. A validação acontece na entrada da API antes de o gerenciador
+alterar horários rastreados; a regra equivalente do domínio permanece como defesa final.
+
+A cobertura confirma os três casos inválidos, ausência de gravação, preservação do horário
+anterior e isolamento de outro tenant, além do caminho válido já existente. A homologação
+local registrou build sem warnings ou errors, 314/314 testes unitários e 349/349 testes de
+integração aprovados. Não houve alteração de frontend, banco, schema, migration,
+dependência, Docker ou infraestrutura.
+
 ## Fila atual
-
-### B1 — PUT de horários inválidos devolve 500
-
-- **Responsável:** Claude Code.
-- **Camada:** backend/API/validação.
-- **Situação:** pendente de ciclo próprio.
-- **Problema confirmado:** `PUT /painel/profissionais/{id}/horarios` com `fim <= início`
-  devolve 500 para requisição direta. O dado não é gravado.
-- **Objetivo:** validação explícita e resposta 400 apropriada, com testes.
 
 ### B2 — concorrências fora do escopo homologado da D7
 
@@ -299,9 +311,8 @@ dados, incidente ou rollback.
 
 ## Próxima sequência recomendada
 
-1. Claude Code: B1, resposta 400 para horários inválidos.
-2. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
-3. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
+1. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
+2. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
 
 A ordem pode ser alterada pelo usuário. Cada item deve usar branch própria, preservar os
 gates de release e não misturar frontend visual com correção backend sem necessidade.
