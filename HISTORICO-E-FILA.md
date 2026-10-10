@@ -1,8 +1,8 @@
 # Histórico e fila do projeto — Agendeiiai
 
-Última atualização: 2026-10-09
+Última atualização: 2026-10-10
 Estado Git verificado: `main` = `origin/main` =
-`21375e6b12e8b26483ee886b631b51c1faa7007b`
+`a5f1d72dbf92ace753e0928b58c6fb7053caa6a6`
 
 ## Finalidade deste documento
 
@@ -197,7 +197,7 @@ fluxo pós-agendamento não foi exercitado em produção por não existir token 
 segura. Não houve migration, operação manual no banco, comunicação real, mutação de dados,
 incidente ou rollback.
 
-### F3 / D10 — polimento visual P2 do painel homologado localmente
+### F3 / D10 — polimento visual P2 do painel publicado
 
 | Item | Resultado |
 |---|---|
@@ -205,7 +205,10 @@ incidente ou rollback.
 | Base de produção | `21375e6b12e8b26483ee886b631b51c1faa7007b` |
 | Documento herdado | `f4eedd34b9eb79ca05d7649e4eba5f9ec4bf34de` |
 | Implementação | `1706ac2` — `style: refina estados e controles do painel` |
-| Situação | Implementada e homologada localmente; não publicada |
+| Homologação documental | `76725c7a226cf7574f67e9b1d6afa972f318ac0c` |
+| Pull request | PR #3, CI Backend e Frontend aprovadas |
+| Release | `a5f1d72dbf92ace753e0928b58c6fb7053caa6a6` |
+| Situação | Publicada e validada sem incidentes |
 
 A auditoria confirmou que as ações textuais das tabelas de cadastros mediam 34px em
 768px. O ajuste elevou apenas esses alvos para 44px entre 768 e 1023px, preservando a
@@ -222,8 +225,12 @@ build e `git diff --check` aprovados, além de 41/41 testes Playwright passando.
 cobertos 375px, 390px, 768px e desktop, temas claro/escuro, movimento reduzido, foco,
 overflow, Agenda, sessão, permissões, Assinatura, cadastros, módulos operacionais,
 benefícios, Meu negócio e autenticação. Não houve alteração de backend, banco,
-migration, schema, dependência, lockfile, infraestrutura, provider, produção ou
-comunicação real.
+migration, schema, dependência, lockfile ou infraestrutura.
+
+O merge preservou a árvore homologada. CI Backend e Frontend passaram; Vercel e Railway
+publicaram automaticamente `a5f1d72`. `/health`, landing, login, privacidade e `sw.js`
+responderam 200. Não houve migration, operação de banco, comunicação real, mutação de
+dados, incidente ou rollback.
 
 ## Fila atual
 
@@ -283,7 +290,7 @@ comunicação real.
 - Redesign do agendamento público.
 - Redesign do pós-agendamento D4.
 - Polimento pós-agendamento F2/D9 publicado e validado.
-- Polimento visual P2 do painel F3/D10 homologado localmente; aguarda gate de integração.
+- Polimento visual P2 do painel F3/D10 publicado e validado.
 - Corrida do cancelamento público tratada na D7.
 - Validação de horário passado e intervalo completo tratada na D7.
 - Ausência de contexto de negócio nas rotas públicas tratada na D7.
@@ -292,10 +299,9 @@ comunicação real.
 
 ## Próxima sequência recomendada
 
-1. Gate compartilhado: revisar e autorizar push/PR da F3 quando desejado.
-2. Claude Code: B1, resposta 400 para horários inválidos.
-3. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
-4. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
+1. Claude Code: B1, resposta 400 para horários inválidos.
+2. Claude Code: auditar B2 somente quando o usuário abrir esse ciclo.
+3. Claude Code: avaliar B4 apenas em ciclo técnico próprio e de baixa prioridade.
 
 A ordem pode ser alterada pelo usuário. Cada item deve usar branch própria, preservar os
 gates de release e não misturar frontend visual com correção backend sem necessidade.
