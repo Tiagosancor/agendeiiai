@@ -13,9 +13,10 @@ public sealed record ResultadoAplicacaoCupom(bool Sucesso, decimal Desconto = 0m
 /// <summary>
 /// Cupom de desconto (seção 7): código, tipo (percentual ou valor fixo), validade, limite
 /// de usos e escopo (todos os serviços ou uma seleção). A revalidação no servidor (nunca
-/// confiar no que o cliente calculou) é <see cref="TentarAplicar"/>; o incremento de uso é
-/// feito de forma atômica pela infraestrutura (seção 8.2, mesmo espírito da reserva de
-/// horário: nunca confiar só na checagem prévia).
+/// confiar no que o cliente calculou) é <see cref="TentarAplicar"/>. Esta classe não protege
+/// o contador sozinha: quem chama <see cref="TentarAplicar"/> e <see cref="RegistrarUso"/>
+/// precisa ter a linha do cupom travada e relida na mesma transação (infraestrutura,
+/// <c>TravaCupom</c>), senão duas confirmações simultâneas gastam o mesmo último uso.
 /// </summary>
 public class Cupom : EntidadeBase, IEntidadeDoNegocio
 {

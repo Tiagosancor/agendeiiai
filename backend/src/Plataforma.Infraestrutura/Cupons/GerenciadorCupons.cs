@@ -34,36 +34,37 @@ public sealed class GerenciadorCupons : IGerenciadorCupons
         return cupom.Id;
     }
 
-    public async Task<bool> AtualizarAsync(Guid cupomId, AtualizarCupom dados, CancellationToken cancellationToken = default)
-    {
-        var cupom = await _dbContext.Cupons.FindAsync([cupomId], cancellationToken);
-        if (cupom is null)
-            return false;
-
-        cupom.AtualizarCondicoes(dados.ValidoAte, dados.LimiteUsos, dados.ServicoIdsEscopo);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return true;
-    }
+    public Task<bool> AtualizarAsync(Guid cupomId, AtualizarCupom dados, CancellationToken cancellationToken = default) =>
+        AlterarComLinhaTravadaAsync(cupomId, c => c.AtualizarCondicoes(dados.ValidoAte, dados.LimiteUsos, dados.ServicoIdsEscopo), cancellationToken);
 
     public Task<bool> DesativarAsync(Guid cupomId, CancellationToken cancellationToken = default) =>
-        AlterarAtivoAsync(cupomId, ativo: false, cancellationToken);
+        AlterarComLinhaTravadaAsync(cupomId, c => c.Desativar(), cancellationToken);
 
     public Task<bool> AtivarAsync(Guid cupomId, CancellationToken cancellationToken = default) =>
-        AlterarAtivoAsync(cupomId, ativo: true, cancellationToken);
+        AlterarComLinhaTravadaAsync(cupomId, c => c.Ativar(), cancellationToken);
 
-    private async Task<bool> AlterarAtivoAsync(Guid cupomId, bool ativo, CancellationToken cancellationToken)
+    /// <summary>
+    /// Mesma trava de linha da confirmação pública (<see cref="TravaCupom"/>): editar, desativar ou reduzir o limite
+    /// espera a confirmação em andamento terminar, e a confirmação seguinte já vê o cupom alterado.
+    /// </summary>
+    private Task<bool> AlterarComLinhaTravadaAsync(Guid cupomId, Action<Cupom> alteracao, CancellationToken cancellationToken)
     {
-        var cupom = await _dbContext.Cupons.FindAsync([cupomId], cancellationToken);
-        if (cupom is null)
-            return false;
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
 
-        if (ativo)
-            cupom.Ativar();
-        else
-            cupom.Desativar();
+        return estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return true;
+            var cupom = await TravaCupom.TravarPorIdAsync(_dbContext, negocioId, cupomId, cancellationToken);
+            if (cupom is null)
+                return false;
+
+            alteracao(cupom);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return true;
+        });
     }
 
     private static CupomResumo Mapear(Cupom cupom) => new(

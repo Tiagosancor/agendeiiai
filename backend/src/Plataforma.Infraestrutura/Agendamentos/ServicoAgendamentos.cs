@@ -15,6 +15,7 @@ using Plataforma.Dominio.Cupons;
 using Plataforma.Dominio.Notificacoes;
 using Plataforma.Infraestrutura.Comissoes;
 using Plataforma.Infraestrutura.Comum;
+using Plataforma.Infraestrutura.Cupons;
 using Plataforma.Infraestrutura.Negocios;
 using Plataforma.Infraestrutura.Notificacoes;
 using Plataforma.Infraestrutura.Opcoes;
@@ -424,10 +425,16 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var repeticaoDoMesmoCliente = false;
+        var tentativa = 0;
 
         var resultado = await estrategia.ExecuteAsync(async () =>
         {
             repeticaoDoMesmoCliente = false;
+
+            // Nova tentativa da estratégia (falha transitória): o que a anterior deixou pendente no contexto — o contador
+            // do cupom já somado, o cliente novo — foi desfeito no banco e não pode ir junto no próximo SaveChanges.
+            if (tentativa++ > 0)
+                _dbContext.ChangeTracker.Clear();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             var agendamento = await _dbContext.Agendamentos
@@ -470,10 +477,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             // Cupom revalidado no servidor (seção 6.2.4/7) — se inválido, ignora o desconto
             // sem falhar o agendamento (o passo "Aplicar" do assistente já avisou o cliente antes).
+            // Linha do cupom travada e relida (depois da do agendamento): o último uso não sai duas vezes
+            // e o contador grava a soma de todos, nunca um valor lido antes de outra confirmação.
             if (!string.IsNullOrWhiteSpace(dados.CodigoCupom))
             {
-                var cupom = await _dbContext.Cupons.FirstOrDefaultAsync(
-                    c => c.NegocioId == negocioId && c.Codigo == dados.CodigoCupom.Trim().ToUpperInvariant(), cancellationToken);
+                var cupom = await TravaCupom.TravarPorCodigoAsync(_dbContext, negocioId, dados.CodigoCupom, cancellationToken);
 
                 if (cupom is not null)
                 {
