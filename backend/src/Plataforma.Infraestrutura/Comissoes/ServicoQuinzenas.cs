@@ -412,8 +412,10 @@ public sealed class ServicoQuinzenas : IServicoQuinzenas
     private Task<ResultadoQuinzena> NaTravaAsync(Func<Task<ResultadoQuinzena>> acao, CancellationToken cancellationToken)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await _trava.TravarNegocioAsync(cancellationToken);
             var resultado = await acao();

@@ -118,8 +118,10 @@ public sealed class ServicoVendas : IServicoVendas
 
         var negocioId = _contextoNegocio.NegocioId!.Value;
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             var venda = VendaProduto.Criar(negocioId, DateTimeOffset.UtcNow, clienteId, dados.AgendamentoId, vendedor, _usuarioAtual.UsuarioId);
@@ -250,8 +252,10 @@ public sealed class ServicoVendas : IServicoVendas
 
         var negocioId = _contextoNegocio.NegocioId!.Value;
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             // A comissão da venda pode ter entrado no fechamento de uma quinzena: mesma trava de concluir/reabrir atendimento.

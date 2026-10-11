@@ -137,8 +137,10 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
         Guid produtoId, Func<Produto, DateTimeOffset, MovimentoEstoque> movimentar, CancellationToken cancellationToken)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             var produto = await TravarProdutoAsync(produtoId, cancellationToken);
             if (produto is null)

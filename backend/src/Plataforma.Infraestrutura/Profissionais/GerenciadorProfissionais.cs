@@ -98,7 +98,9 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
                 _dbContext.Usuarios.Add(novoUsuario);
             }
 
-            usuarioExistente?.VincularProfissional(profissional.Id);
+            // Relido aqui dentro: numa nova tentativa da estratégia, a instância lida lá fora já saiu do contexto.
+            if (usuarioExistente is not null)
+                (await _dbContext.Usuarios.FirstAsync(u => u.Id == usuarioExistente.Id, cancellationToken)).VincularProfissional(profissional.Id);
             await SalvarComVinculoAsync(novoUsuario?.Email, cancellationToken);
         }, cancellationToken);
 
@@ -238,7 +240,8 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
 
         await DentroDoLimiteDoPlanoAsync(async () =>
         {
-            profissional.Ativar();
+            // Relido aqui dentro: numa nova tentativa da estratégia, a instância lida lá fora já saiu do contexto.
+            (await _dbContext.Profissionais.FirstAsync(p => p.Id == profissionalId, cancellationToken)).Ativar();
             await _dbContext.SaveChangesAsync(cancellationToken);
         }, cancellationToken);
 
@@ -254,9 +257,11 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     {
         var negocioId = _contextoNegocio.NegocioId!.Value;
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
 
         await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             await _dbContext.Database.ExecuteSqlInterpolatedAsync(

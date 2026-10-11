@@ -51,9 +51,11 @@ public sealed class GerenciadorCupons : IGerenciadorCupons
     {
         var negocioId = _contextoNegocio.NegocioId!.Value;
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
 
         return estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             var cupom = await TravaCupom.TravarPorIdAsync(_dbContext, negocioId, cupomId, cancellationToken);
