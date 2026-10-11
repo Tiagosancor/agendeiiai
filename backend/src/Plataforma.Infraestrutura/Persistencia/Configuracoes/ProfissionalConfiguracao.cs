@@ -16,6 +16,14 @@ public sealed class ProfissionalConfiguracao : IEntityTypeConfiguration<Profissi
         builder.Property(p => p.Telefone).HasMaxLength(20);
         builder.Property(p => p.Email).HasMaxLength(320);
         builder.Property(p => p.Funcao).HasMaxLength(100);
+
+        // Só a chave do arquivo (IArmazenamentoArquivos); a URL pública é montada na resposta.
+        builder.Property(p => p.FotoArquivo).HasMaxLength(64);
+
+        // Cor da coluna na agenda: nula = automática no painel. O domínio já normaliza; o check é a última barreira
+        // contra qualquer coisa que não seja #rrggbb chegar a um estilo da tela.
+        builder.Property(p => p.CorAgenda).HasMaxLength(7);
+        builder.ToTable(t => t.HasCheckConstraint("ck_profissionais_cor_agenda", "cor_agenda IS NULL OR cor_agenda ~ '^#[0-9a-f]{6}$'"));
         builder.Property(p => p.Ativo).IsRequired();
         builder.Property(p => p.AcertoPorQuinzena).HasDefaultValue(false).IsRequired();
         builder.Property(p => p.PercentualComissao).HasColumnType("numeric(5,2)").HasDefaultValue(0m).IsRequired();

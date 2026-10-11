@@ -12,9 +12,13 @@ public interface IConsultaGradeAgenda
 /// <summary><c>Horarios</c> = rótulos das linhas ("09:00"), na mesma ordem das células de cada coluna.</summary>
 public sealed record GradeAgenda(DateOnly Data, IReadOnlyList<string> Horarios, IReadOnlyList<ColunaGrade> Profissionais);
 
-/// <summary><c>DeFolga</c> = sem expediente no dia, ou com o expediente inteiro bloqueado (o filtro "esconder quem está de folga").</summary>
+/// <summary>
+/// <c>DeFolga</c> = sem expediente no dia, ou com o expediente inteiro bloqueado (o filtro "esconder quem está de folga").
+/// <c>FotoUrl</c> e <c>CorAgenda</c> são só para o cabeçalho da coluna; <c>CorAgenda</c> nula = o painel usa a cor automática.
+/// </summary>
 public sealed record ColunaGrade(
-    Guid ProfissionalId, string Nome, bool DeFolga, IReadOnlyList<CelulaGrade> Celulas, IReadOnlyList<AgendamentoNaGrade> Agendamentos);
+    Guid ProfissionalId, string Nome, bool DeFolga, IReadOnlyList<CelulaGrade> Celulas, IReadOnlyList<AgendamentoNaGrade> Agendamentos,
+    string? FotoUrl = null, string? CorAgenda = null);
 
 /// <summary>
 /// Um horário de 15 minutos de um profissional. <c>Estado</c>: ver <see cref="EstadoCelulaGrade"/>;

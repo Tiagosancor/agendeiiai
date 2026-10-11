@@ -23,4 +23,7 @@ public static class LimitesImagem
 
     /// <summary>Lado maior da imagem de fundo depois de reprocessada.</summary>
     public const int LadoMaximoFundo = 1920;
+
+    /// <summary>Lado maior da foto do profissional (avatar na agenda e na página pública) depois de reprocessada.</summary>
+    public const int LadoMaximoAvatar = 512;
 }

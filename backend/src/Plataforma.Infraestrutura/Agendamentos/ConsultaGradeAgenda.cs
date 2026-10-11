@@ -2,9 +2,11 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Arquivos;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Comum;
 using Plataforma.Infraestrutura.Persistencia;
+using Plataforma.Infraestrutura.Profissionais;
 
 namespace Plataforma.Infraestrutura.Agendamentos;
 
@@ -21,11 +23,13 @@ public sealed class ConsultaGradeAgenda : IConsultaGradeAgenda
 
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
+    private readonly IArmazenamentoArquivos _arquivos;
 
-    public ConsultaGradeAgenda(PlataformaDbContext dbContext, IContextoNegocio contextoNegocio)
+    public ConsultaGradeAgenda(PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IArmazenamentoArquivos arquivos)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
+        _arquivos = arquivos;
     }
 
     public async Task<GradeAgenda> ObterAsync(DateOnly data, CancellationToken cancellationToken = default)
@@ -40,7 +44,7 @@ public sealed class ConsultaGradeAgenda : IConsultaGradeAgenda
         var profissionais = await _dbContext.Profissionais.AsNoTracking()
             .Where(p => p.Ativo && !p.Excluido)
             .OrderBy(p => p.Nome)
-            .Select(p => new { p.Id, p.Nome })
+            .Select(p => new { p.Id, p.Nome, p.FotoArquivo, p.FotoUrl, p.CorAgenda })
             .ToListAsync(cancellationToken);
         var ids = profissionais.Select(p => p.Id).ToList();
 
@@ -117,7 +121,8 @@ public sealed class ConsultaGradeAgenda : IConsultaGradeAgenda
                 a.ClienteId is not null && clientes.TryGetValue(a.ClienteId.Value, out var nome) ? nome : "Reservando...",
                 a.Servicos.Select(s => s.Nome).ToList(), a.Status.ToString(), a.Forcado, a.Inicio, a.Fim)).ToList();
 
-            return new ColunaGrade(profissional.Id, profissional.Nome, deFolga, celulas, resumo);
+            return new ColunaGrade(profissional.Id, profissional.Nome, deFolga, celulas, resumo,
+                FotoProfissional.UrlEfetiva(_arquivos, profissional.FotoArquivo, profissional.FotoUrl), profissional.CorAgenda);
         }).ToList();
 
         return new GradeAgenda(data, linhas.Select(l => l.Rotulo).ToList(), colunas);

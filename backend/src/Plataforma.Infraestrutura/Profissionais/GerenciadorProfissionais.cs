@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Arquivos;
 using Plataforma.Aplicacao.Auditoria;
 using Plataforma.Aplicacao.Autenticacao;
 using Plataforma.Aplicacao.Cadastros;
@@ -30,10 +31,13 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     private readonly IRegistroAuditoria _auditoria;
     private readonly ISenhaHasher _senhaHasher;
     private readonly IServicoRedefinicaoSenha _redefinicaoSenha;
+    private readonly IArmazenamentoArquivos _arquivos;
+    private readonly IProcessadorImagem _processadorImagem;
 
     public GerenciadorProfissionais(
         PlataformaDbContext dbContext, ICriptografiaCpf criptografiaCpf, IContextoNegocio contextoNegocio,
-        IRegistroAuditoria auditoria, ISenhaHasher senhaHasher, IServicoRedefinicaoSenha redefinicaoSenha)
+        IRegistroAuditoria auditoria, ISenhaHasher senhaHasher, IServicoRedefinicaoSenha redefinicaoSenha,
+        IArmazenamentoArquivos arquivos, IProcessadorImagem processadorImagem)
     {
         _dbContext = dbContext;
         _criptografiaCpf = criptografiaCpf;
@@ -41,14 +45,60 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         _auditoria = auditoria;
         _senhaHasher = senhaHasher;
         _redefinicaoSenha = redefinicaoSenha;
+        _arquivos = arquivos;
+        _processadorImagem = processadorImagem;
     }
 
     public async Task<IReadOnlyList<ProfissionalResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
-        await _dbContext.Profissionais
+        (await _dbContext.Profissionais
             .Where(p => !p.Excluido)
             .OrderBy(p => p.Nome)
-            .Select(p => new ProfissionalResumo(p.Id, p.Nome, p.Ativo, p.FotoUrl, p.Funcao))
-            .ToListAsync(cancellationToken);
+            .Select(p => new { p.Id, p.Nome, p.Ativo, p.FotoArquivo, p.FotoUrl, p.Funcao, p.CorAgenda })
+            .ToListAsync(cancellationToken))
+        .Select(p => new ProfissionalResumo(
+            p.Id, p.Nome, p.Ativo, FotoProfissional.UrlEfetiva(_arquivos, p.FotoArquivo, p.FotoUrl), p.Funcao, p.CorAgenda))
+        .ToList();
+
+    public async Task<string?> DefinirFotoAsync(Guid profissionalId, byte[] conteudo, CancellationToken cancellationToken = default)
+    {
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
+        if (profissional is null)
+            return null;
+
+        // Valida e reprocessa antes de gravar qualquer coisa (WebP, sem metadados, no tamanho de avatar): arquivo recusado
+        // não deixa rastro, e o original nunca é guardado.
+        var imagem = _processadorImagem.Processar(conteudo, LimitesImagem.LadoMaximoAvatar);
+        var chave = await _arquivos.SalvarAsync(profissional.NegocioId, imagem.TipoConteudo, imagem.Conteudo, cancellationToken);
+
+        var anterior = profissional.DefinirFotoArquivo(chave);
+        _auditoria.Registrar(AcoesAuditoria.Editar, nameof(Profissional), profissional.Id, "Campos: foto");
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Só depois da referência nova gravada: se o SaveChanges falhar, a foto antiga continua no ar.
+        if (anterior is not null)
+            await _arquivos.RemoverAsync(anterior, cancellationToken);
+
+        return _arquivos.UrlPublica(chave);
+    }
+
+    public async Task<bool> RemoverFotoAsync(Guid profissionalId, CancellationToken cancellationToken = default)
+    {
+        var profissional = await BuscarAsync(profissionalId, cancellationToken);
+        if (profissional is null)
+            return false;
+
+        var tinhaFoto = profissional.FotoArquivo is not null || profissional.FotoUrl is not null;
+        var anterior = profissional.RemoverFotos();
+        if (tinhaFoto)
+            _auditoria.Registrar(AcoesAuditoria.Editar, nameof(Profissional), profissional.Id, "Campos: foto");
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Só o arquivo que o sistema guarda é apagado; uma URL externa antiga apenas deixa de ser usada.
+        if (anterior is not null)
+            await _arquivos.RemoverAsync(anterior, cancellationToken);
+
+        return true;
+    }
 
     public async Task<ProfissionalDetalhe?> ObterAsync(Guid profissionalId, CancellationToken cancellationToken = default)
     {
@@ -73,6 +123,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         var negocioId = _contextoNegocio.NegocioId!.Value;
         var profissional = Profissional.Criar(
             negocioId, dados.Nome, dados.Telefone, dados.Email, cpf: cpfProtegido, funcao: dados.Funcao);
+        profissional.DefinirCorAgenda(dados.CorAgenda);
 
         // Os dois caminhos da seção 7 levam ao mesmo par vinculado: login novo criado aqui, ou um usuário que
         // acabou de ser cadastrado em "Usuários" com perfil Profissional.
@@ -201,6 +252,14 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         {
             profissional.DefinirFoto(string.IsNullOrWhiteSpace(dados.FotoUrl) ? null : dados.FotoUrl.Trim());
             alterados.Add("foto");
+        }
+
+        if (dados.CorAgenda is not null)
+        {
+            var corAnterior = profissional.CorAgenda;
+            profissional.DefinirCorAgenda(dados.CorAgenda);
+            if (profissional.CorAgenda != corAnterior)
+                alterados.Add("cor da agenda");
         }
 
         if (alterados.Count > 0)
@@ -340,6 +399,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
             return ResultadoExclusao.Bloqueado(MensagemFuturos(futuros.Count));
 
         var temHistorico = await TemHistoricoAsync(profissionalId, cancellationToken);
+        var fotoEnviada = profissional.FotoArquivo;
 
         // Usuário do painel ligado a este profissional deixa de estar ligado a ele — e, se só entrava como ele
         // (perfil Profissional), perde o acesso (seção 7). Excluir o usuário junto é outra ação, explícita, em
@@ -373,6 +433,11 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // A foto é dado pessoal (sai nos dois casos): o arquivo enviado vai embora depois que a exclusão foi gravada.
+        if (fotoEnviada is not null)
+            await _arquivos.RemoverAsync(fotoEnviada, cancellationToken);
+
         return ResultadoExclusao.Concluido(temHistorico);
     }
 
@@ -404,7 +469,8 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     private Task<Profissional?> BuscarAsync(Guid profissionalId, CancellationToken cancellationToken) =>
         _dbContext.Profissionais.FirstOrDefaultAsync(p => p.Id == profissionalId && !p.Excluido, cancellationToken);
 
-    private static ProfissionalDetalhe Mapear(Profissional profissional) => new(
+    private ProfissionalDetalhe Mapear(Profissional profissional) => new(
         profissional.Id, profissional.Nome, profissional.Telefone, profissional.Email, profissional.Ativo,
-        profissional.FotoUrl, profissional.Cpf?.Mascarado, profissional.Funcao, profissional.Endereco);
+        FotoProfissional.UrlEfetiva(_arquivos, profissional.FotoArquivo, profissional.FotoUrl), profissional.Cpf?.Mascarado,
+        profissional.Funcao, profissional.Endereco, CorAgenda: profissional.CorAgenda);
 }

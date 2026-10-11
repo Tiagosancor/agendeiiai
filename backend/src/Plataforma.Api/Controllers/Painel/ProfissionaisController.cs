@@ -82,11 +82,31 @@ public sealed class ProfissionaisController : ControllerBase
         _ => null,
     };
 
-    /// <summary>Corrigir a ficha exige também <see cref="Permissao.EditarCadastros"/> (seção 7).</summary>
+    /// <summary>Corrigir a ficha exige também <see cref="Permissao.EditarCadastros"/> (seção 7). Dado inválido (ex.: cor fora de #RRGGBB) é 400.</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = nameof(Permissao.EditarCadastros))]
-    public async Task<IActionResult> Atualizar(Guid id, AtualizarProfissional dados, CancellationToken cancellationToken) =>
-        await _gerenciador.AtualizarDadosAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+    public async Task<IActionResult> Atualizar(Guid id, AtualizarProfissional dados, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _gerenciador.AtualizarDadosAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+        }
+        catch (ArgumentException excecao)
+        {
+            return BadRequest(new ProblemDetails { Title = excecao.Message });
+        }
+    }
+
+    /// <summary>Foto do profissional (seção 7): JPG, PNG ou WebP até 5 MB, regravada em WebP no tamanho de avatar.</summary>
+    [HttpPut("{id:guid}/foto")]
+    [RequestSizeLimit(FotoEnviada.LimiteRequisicao)]
+    [RequestFormLimits(MultipartBodyLengthLimit = FotoEnviada.LimiteRequisicao)]
+    public Task<IActionResult> EnviarFoto(Guid id, IFormFile? arquivo, CancellationToken cancellationToken) =>
+        FotoEnviada.EnviarAsync(this, arquivo, conteudo => _gerenciador.DefinirFotoAsync(id, conteudo, cancellationToken), cancellationToken);
+
+    [HttpDelete("{id:guid}/foto")]
+    public async Task<IActionResult> RemoverFoto(Guid id, CancellationToken cancellationToken) =>
+        await _gerenciador.RemoverFotoAsync(id, cancellationToken) ? NoContent() : NotFound();
 
     [HttpPost("{id:guid}/desativar")]
     public async Task<IActionResult> Desativar(Guid id, CancellationToken cancellationToken) =>
