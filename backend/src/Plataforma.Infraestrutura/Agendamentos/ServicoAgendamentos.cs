@@ -243,9 +243,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         // EnableRetryOnFailure (seção 8.5.6) exige que transações manuais rodem dentro de
         // uma estratégia de execução — senão o EF Core lança na hora.
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
 
         return await estrategia.ExecuteAsync(async () =>
         {
+            // Nova tentativa não pode inserir também o agendamento da anterior (conflito falso, forçado em dobro).
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await TravarAgendaDoProfissionalAsync(dados.ProfissionalId, cancellationToken);
 
@@ -355,9 +358,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     public Task<ResultadoAgendamento> ConfirmarReservaAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
 
         return estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             var agendamento = await _dbContext.Agendamentos
@@ -425,7 +430,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var repeticaoDoMesmoCliente = false;
-        var tentativa = 0;
+        var tentativas = new TentativasDaTransacao(_dbContext);
 
         var resultado = await estrategia.ExecuteAsync(async () =>
         {
@@ -433,8 +438,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             // Nova tentativa da estratégia (falha transitória): o que a anterior deixou pendente no contexto — o contador
             // do cupom já somado, o cliente novo — foi desfeito no banco e não pode ir junto no próximo SaveChanges.
-            if (tentativa++ > 0)
-                _dbContext.ChangeTracker.Clear();
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             var agendamento = await _dbContext.Agendamentos
@@ -653,7 +657,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     public Task<ResultadoCancelamentoPublico> CancelarPelaGestaoPublicaAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
         CancelarNaTravaAsync(agendamentoId, pelaGestaoPublica: true, cancellationToken);
 
-    private async Task<ResultadoCancelamentoPublico> CancelarNaTravaAsync(Guid agendamentoId, bool pelaGestaoPublica, CancellationToken cancellationToken)
+    private async Task<ResultadoCancelamentoPublico> CancelarNaTravaAsync(
+        Guid agendamentoId, bool pelaGestaoPublica, CancellationToken cancellationToken, bool avisandoCliente = false)
     {
         var resultado = ResultadoCancelamentoPublico.NaoEncontrado;
 
@@ -680,6 +685,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
             agendamento.Cancelar();
+
+            // Entra no mesmo SaveChanges do cancelamento (seção 7: toda ação da exclusão fica no log) — registrado aqui
+            // dentro, e não antes, para cada tentativa da estratégia gravar o seu (a limpeza da nova tentativa o apagaria).
+            if (avisandoCliente)
+                _auditoria.Registrar(AcoesAuditoria.CancelarAgendamento, "Agendamento", agendamentoId, "Cancelado avisando o cliente");
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             resultado = ResultadoCancelamentoPublico.Cancelado;
             return true;
@@ -693,11 +704,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
     public async Task<bool> CancelarAvisandoClienteAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
     {
-        // Entra no mesmo SaveChanges do cancelamento (seção 7: toda ação da exclusão fica no log).
-        if (await _dbContext.Agendamentos.AnyAsync(a => a.Id == agendamentoId, cancellationToken))
-            _auditoria.Registrar(AcoesAuditoria.CancelarAgendamento, "Agendamento", agendamentoId, "Cancelado avisando o cliente");
-
-        if (!await CancelarAsync(agendamentoId, cancellationToken))
+        if (await CancelarNaTravaAsync(agendamentoId, pelaGestaoPublica: false, cancellationToken, avisandoCliente: true)
+            != ResultadoCancelamentoPublico.Cancelado)
             return false;
 
         var agendamento = await _dbContext.Agendamentos.AsNoTracking()
@@ -726,9 +734,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         Guid agendamentoId, Guid profissionalOrigemId, Guid novoProfissionalId, CancellationToken cancellationToken = default)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
 
         var resultado = await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await TravarAgendaDoProfissionalAsync(novoProfissionalId, cancellationToken);
 
@@ -851,9 +861,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             return ResultadoAgendamento.ComErro(erroMotivo);
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
 
         var resultado = await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             // FindAsync não carrega Servicos (não aceita Include) — sem isso, duracaoTotalMinutos
@@ -1043,8 +1055,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private Task<bool> MudarStatusComLinhaTravadaAsync(Guid agendamentoId, Action<Agendamento> transicao, CancellationToken cancellationToken)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
@@ -1345,8 +1359,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private Task<bool> ExecutarNaTravaDeQuinzenasAsync(Func<Task<bool>> acao, CancellationToken cancellationToken)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return estrategia.ExecuteAsync(async () =>
         {
+            // A ação carrega tudo de novo: sem isso, cancelar relia o "Cancelado" desfeito (500) e concluir não regravava a comissão.
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await _travaQuinzenas.TravarNegocioAsync(cancellationToken);
             var resultado = await acao();
