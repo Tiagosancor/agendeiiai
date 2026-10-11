@@ -460,23 +460,32 @@ public sealed class ConcorrenciaTransferenciaConfirmacaoTestes : IAsyncLifetime
         return false;
     }
 
-    /// <summary>Gatilho só no banco de teste: qualquer UPDATE nessas linhas falha com o SQLSTATE da exclusion constraint.</summary>
+    /// <summary>
+    /// Gatilho só no banco de teste: qualquer UPDATE nessas linhas falha com o SQLSTATE da exclusion constraint.
+    /// DDL não aceita parâmetro no nome do objeto, então o SQL é montado aqui — só com valores gerados pelo próprio teste
+    /// (um nome aleatório e GUIDs), nunca com entrada externa.
+    /// </summary>
     private async Task<IAsyncDisposable> InjetarViolacaoDeExclusaoAsync(params Guid[] ids)
     {
         var nome = "b21_falha_" + Guid.NewGuid().ToString("N")[..8];
-        var lista = string.Join(", ", ids.Select(i => $"'{i}'"));
+        var lista = string.Join(", ", ids.Select(i => "'" + i.ToString("D") + "'"));
+        var criarFuncao = "CREATE FUNCTION " + nome
+            + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'simulada' USING ERRCODE = '23P01'; END $$";
+        var criarGatilho = "CREATE TRIGGER " + nome + " BEFORE UPDATE ON agendamentos FOR EACH ROW WHEN (OLD.id IN (" + lista
+            + ")) EXECUTE FUNCTION " + nome + "()";
+        var removerGatilho = "DROP TRIGGER IF EXISTS " + nome + " ON agendamentos";
+        var removerFuncao = "DROP FUNCTION IF EXISTS " + nome + "()";
+
         await _fabrica.NoBancoAsync(async db =>
         {
-            await db.Database.ExecuteSqlRawAsync(
-                $"CREATE FUNCTION {nome}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'simulada' USING ERRCODE = '23P01'; END $$");
-            await db.Database.ExecuteSqlRawAsync(
-                $"CREATE TRIGGER {nome} BEFORE UPDATE ON agendamentos FOR EACH ROW WHEN (OLD.id IN ({lista})) EXECUTE FUNCTION {nome}()");
+            await db.Database.ExecuteSqlRawAsync(criarFuncao);
+            await db.Database.ExecuteSqlRawAsync(criarGatilho);
             return 0;
         });
         return new Remocao(() => _fabrica.NoBancoAsync(async db =>
         {
-            await db.Database.ExecuteSqlRawAsync($"DROP TRIGGER IF EXISTS {nome} ON agendamentos");
-            await db.Database.ExecuteSqlRawAsync($"DROP FUNCTION IF EXISTS {nome}()");
+            await db.Database.ExecuteSqlRawAsync(removerGatilho);
+            await db.Database.ExecuteSqlRawAsync(removerFuncao);
             return 0;
         }));
     }
