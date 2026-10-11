@@ -40,4 +40,6 @@ public static class AcoesAuditoria
     public const string LancarConsumoInterno = "LancarConsumoInterno";
     public const string EditarLancamentoSaldo = "EditarLancamentoSaldo";
     public const string ExcluirLancamentoSaldo = "ExcluirLancamentoSaldo";
+    public const string ConfigurarLembreteRetorno = "ConfigurarLembreteRetorno";
+    public const string AlterarAceiteLembreteRetorno = "AlterarAceiteLembreteRetorno";
 }

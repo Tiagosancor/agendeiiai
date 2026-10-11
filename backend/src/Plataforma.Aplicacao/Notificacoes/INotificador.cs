@@ -58,6 +58,12 @@ public interface INotificador
     /// <summary>Resumo diário de estoque baixo e esgotado aos Administradores (seção 7) — um e-mail por negócio, nunca um por produto.</summary>
     Task EnviarAlertaEstoqueAsync(DadosAlertaEstoque dados, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Lembrete de retorno ao cliente ("faz N dias desde o seu último atendimento") — só WhatsApp, com a mensagem já montada a
+    /// partir do modelo do negócio. Devolve o resultado do canal para o job registrar o envio (nunca lança por falha do provedor).
+    /// </summary>
+    Task<ResultadoEnvioWhatsApp> EnviarLembreteRetornoAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default);
+
     /// <summary>Convite para o profissional criar a senha do próprio acesso (seção 7).</summary>
     Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default);
 }
