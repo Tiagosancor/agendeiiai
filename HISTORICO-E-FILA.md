@@ -1,8 +1,8 @@
 # Histórico e fila do projeto — Agendeiiai
 
-Última atualização: 2026-10-10
+Última atualização: 2026-10-11
 Estado Git verificado: `main` = `origin/main` =
-`a5f1d72dbf92ace753e0928b58c6fb7053caa6a6`
+`9423e0894f9d22edf035d53610ac404f66d0401c`
 
 ## Finalidade deste documento
 
@@ -232,7 +232,7 @@ publicaram automaticamente `a5f1d72`. `/health`, landing, login, privacidade e `
 responderam 200. Não houve migration, operação de banco, comunicação real, mutação de
 dados, incidente ou rollback.
 
-### B1 — validação de horários profissionais homologada localmente
+### B1 — validação de horários profissionais publicada
 
 | Item | Resultado |
 |---|---|
@@ -240,7 +240,10 @@ dados, incidente ou rollback.
 | Base de produção | `a5f1d72dbf92ace753e0928b58c6fb7053caa6a6` |
 | Documento herdado | `83917148626a3f0a47bd5054e3afd2b91f7ae7e1` |
 | Implementação | `09a6eb0` — `fix: valida intervalos de trabalho invalidos` |
-| Situação | Corrigida e homologada localmente; ainda não integrada nem publicada |
+| Homologação documental | `9eb191abac3488d1455b569fdd25b6d3145045f4` |
+| Pull request | PR #4, CI Backend e Frontend aprovadas |
+| Release | `9423e0894f9d22edf035d53610ac404f66d0401c` |
+| Situação | Publicada e validada sem incidentes |
 
 O `PUT /painel/profissionais/{id}/horarios` agora recusa com HTTP 400 e mensagem segura
 qualquer intervalo cujo fim seja igual ou anterior ao início, incluindo turnos que
@@ -252,6 +255,15 @@ anterior e isolamento de outro tenant, além do caminho válido já existente. A
 local registrou build sem warnings ou errors, 314/314 testes unitários e 349/349 testes de
 integração aprovados. Não houve alteração de frontend, banco, schema, migration,
 dependência, Docker ou infraestrutura.
+
+O merge preservou a árvore homologada e integrou somente o controller, seus testes de
+integração e este histórico. A CI #56 (`38144231493`) passou no commit de merge, com
+Backend (.NET) em 7m02s e Frontend (Next.js) em 46s. Railway publicou o commit correto
+com status SUCCESS e sem erros nos logs; a Vercel concluiu o deployment automático.
+`/health`, landing, login e privacidade responderam 200, sem respostas 5xx observadas.
+O endpoint de alteração de horários não foi exercitado em produção para evitar mutação de
+dados. Não houve migration, operação manual no banco, comunicação real, incidente ou
+rollback.
 
 ## Fila atual
 
@@ -306,6 +318,7 @@ dependência, Docker ou infraestrutura.
 - Corrida do cancelamento público tratada na D7.
 - Validação de horário passado e intervalo completo tratada na D7.
 - Ausência de contexto de negócio nas rotas públicas tratada na D7.
+- Validação de intervalos de trabalho inválidos B1 publicada e validada.
 - Migration para D2–D7: não houve e não é pendência.
 - Mobile: adiado por decisão explícita, não iniciado.
 
