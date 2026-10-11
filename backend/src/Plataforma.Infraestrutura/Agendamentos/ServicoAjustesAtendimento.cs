@@ -38,8 +38,10 @@ public sealed class ServicoAjustesAtendimento : IServicoAjustesAtendimento
             return Task.FromResult(ResultadoAjusteValor.Falha(ErroAjusteValor.DadosInvalidos, "Escolha desconto ou acréscimo, em R$ ou %."));
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await _travaQuinzenas.TravarNegocioAsync(cancellationToken);
 

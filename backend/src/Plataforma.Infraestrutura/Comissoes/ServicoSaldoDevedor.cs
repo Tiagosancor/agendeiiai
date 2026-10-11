@@ -89,8 +89,10 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
         var negocioId = _contextoNegocio.NegocioId!.Value;
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             var produto = await TravaProduto.TravarAsync(_dbContext, negocioId, produtoId, cancellationToken);
             if (produto is null)
@@ -261,8 +263,10 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
         Func<LancamentoSaldoDevedor, decimal, Task> acao, CancellationToken cancellationToken)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
         {
+            tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await _trava.TravarNegocioAsync(cancellationToken);
 
