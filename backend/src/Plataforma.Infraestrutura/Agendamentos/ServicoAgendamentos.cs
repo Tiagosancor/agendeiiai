@@ -1,5 +1,6 @@
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
@@ -350,20 +351,69 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         });
     }
 
-    public async Task<ResultadoAgendamento> ConfirmarReservaAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
+    public Task<ResultadoAgendamento> ConfirmarReservaAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
     {
-        var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
 
-        if (agendamento is null)
-            return ResultadoAgendamento.ComErro("Reserva não encontrada.");
+        return estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        if (agendamento.Status != StatusAgendamento.Reservado || agendamento.ReservadoAte < DateTimeOffset.UtcNow)
-            return ResultadoAgendamento.ComErro("Essa reserva já expirou ou não existe mais.");
+            var agendamento = await _dbContext.Agendamentos
+                .Include(a => a.Servicos)
+                .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
+            if (agendamento is null)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Reserva não encontrada.");
+            }
 
-        agendamento.ConfirmarReserva();
-        await _dbContext.SaveChangesAsync(cancellationToken);
+            // Expirada, cancelada ou já confirmada desde a leitura: decide sobre o estado atual, com a linha travada.
+            await TravarLinhaERelerAsync(agendamento, cancellationToken);
 
-        return ResultadoAgendamento.ComSucesso(agendamento.Id);
+            if (agendamento.Status != StatusAgendamento.Reservado || agendamento.ReservadoAte < DateTimeOffset.UtcNow)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Essa reserva já expirou ou não existe mais.");
+            }
+
+            if (agendamento.ClienteId is null)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("A reserva precisa de um cliente vinculado antes de ser confirmada.");
+            }
+
+            agendamento.ConfirmarReserva();
+            return await GravarConfirmacaoAsync(agendamento, transacao, cancellationToken);
+        });
+    }
+
+    /// <summary>
+    /// Grava a confirmação. Se a exclusion constraint recusar (o horário foi tomado numa corrida), devolve o 409 de
+    /// sempre com os próximos horários — nunca deixa o 23P01 virar 500.
+    /// </summary>
+    private async Task<ResultadoAgendamento> GravarConfirmacaoAsync(
+        Agendamento agendamento, IDbContextTransaction transacao, CancellationToken cancellationToken)
+    {
+        var (profissionalId, inicio, duracao) = (agendamento.ProfissionalId, agendamento.Inicio, agendamento.Servicos.Sum(s => s.DuracaoMinutos));
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return ResultadoAgendamento.ComSucesso(agendamento.Id);
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeExclusao())
+        {
+            await transacao.RollbackAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
+
+            var negocio = await _dbContext.Negocios.AsNoTracking()
+                .FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
+            var (diaLocal, _) = ConversorFusoHorario.ParaLocal(inicio, TimeZoneInfo.FindSystemTimeZoneById(negocio.Fuso));
+            return await ConflitoComProximosAsync(
+                "Esse horário acabou de ser preenchido. Escolha outro.", profissionalId, diaLocal, duracao, cancellationToken);
+        }
     }
 
     public async Task<ResultadoAgendamento> ConfirmarReservaPublicaAsync(
@@ -373,16 +423,38 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         var telefone = TelefoneE164.Criar(dados.TelefoneCliente);
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var repeticaoDoMesmoCliente = false;
 
         var resultado = await estrategia.ExecuteAsync(async () =>
         {
+            repeticaoDoMesmoCliente = false;
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
             var agendamento = await _dbContext.Agendamentos
                 .Include(a => a.Servicos)
                 .FirstOrDefaultAsync(a => a.Id == dados.AgendamentoId, cancellationToken);
 
-            if (agendamento is null || agendamento.Status != StatusAgendamento.Reservado || agendamento.ReservadoAte < DateTimeOffset.UtcNow)
+            if (agendamento is null)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Essa reserva já expirou ou não existe mais.");
+            }
+
+            // Expirada pelo job, cancelada na exclusão do profissional ou confirmada por outra requisição desde a
+            // leitura: trava a linha e decide sobre o estado atual. Quem chega depois vê o que o outro gravou.
+            await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+            // A mesma confirmação repetida (duplo clique, nova tentativa) pelo mesmo telefone devolve o mesmo resultado,
+            // sem gravar, sem registrar cupom e sem avisar de novo. Outro telefone não toma a reserva de ninguém.
+            if (agendamento.Status == StatusAgendamento.Agendado && agendamento.ClienteId is { } clienteAtual
+                && await _dbContext.Clientes.AnyAsync(c => c.Id == clienteAtual && c.Telefone == telefone, cancellationToken))
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                repeticaoDoMesmoCliente = true;
+                return ResultadoAgendamento.ComSucesso(agendamento.Id);
+            }
+
+            if (agendamento.Status != StatusAgendamento.Reservado || agendamento.ReservadoAte < DateTimeOffset.UtcNow)
             {
                 await transacao.RollbackAsync(cancellationToken);
                 return ResultadoAgendamento.ComErro("Essa reserva já expirou ou não existe mais.");
@@ -419,13 +491,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             agendamento.RegistrarConsentimento(DateTimeOffset.UtcNow, dados.IpCliente, VersaoTermos.Atual);
             agendamento.ConfirmarReserva();
-            await _dbContext.SaveChangesAsync(cancellationToken);
-            await transacao.CommitAsync(cancellationToken);
-
-            return ResultadoAgendamento.ComSucesso(agendamento.Id);
+            return await GravarConfirmacaoAsync(agendamento, transacao, cancellationToken);
         });
 
-        if (resultado.Sucesso)
+        if (resultado.Sucesso && !repeticaoDoMesmoCliente)
             await NotificarConfirmacaoAsync(resultado.AgendamentoId!.Value, cancellationToken);
 
         return resultado;
@@ -646,7 +715,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     }
 
     public async Task<ResultadoAgendamento> TransferirAsync(
-        Guid agendamentoId, Guid novoProfissionalId, CancellationToken cancellationToken = default)
+        Guid agendamentoId, Guid profissionalOrigemId, Guid novoProfissionalId, CancellationToken cancellationToken = default)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
 
@@ -662,6 +731,17 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             {
                 await transacao.RollbackAsync(cancellationToken);
                 return ResultadoAgendamento.ComErro("Agendamento não encontrado.");
+            }
+
+            // Cancelado, iniciado, concluído, remarcado ou transferido por outra requisição desde a leitura: trava a linha
+            // (depois da trava do destino, a mesma ordem de sempre) e valida tudo daqui para baixo com o estado atual.
+            await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+            if (agendamento.ProfissionalId != profissionalOrigemId
+                || agendamento.Status is not (StatusAgendamento.Agendado or StatusAgendamento.Reservado))
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComConflito("Esse agendamento mudou enquanto você transferia. Atualize a lista.", []);
             }
 
             if (agendamento.ProfissionalId == novoProfissionalId)

@@ -57,7 +57,7 @@ public interface IServicoAgendamentos
     /// Passa o agendamento para outro profissional no mesmo horário (exclusão de profissional,
     /// seção 7): o novo precisa executar todos os serviços, estar no expediente e livre.
     /// </summary>
-    Task<ResultadoAgendamento> TransferirAsync(Guid agendamentoId, Guid novoProfissionalId, CancellationToken cancellationToken = default);
+    Task<ResultadoAgendamento> TransferirAsync(Guid agendamentoId, Guid profissionalOrigemId, Guid novoProfissionalId, CancellationToken cancellationToken = default);
 
     Task<ResultadoAgendamento> MoverAsync(Guid agendamentoId, DateTimeOffset novoInicio, CancellationToken cancellationToken = default);
 

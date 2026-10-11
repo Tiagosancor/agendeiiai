@@ -59,7 +59,7 @@ public sealed class AgendamentosController : ControllerBase
     public async Task<IActionResult> ConfirmarReserva(Guid id, CancellationToken cancellationToken)
     {
         var resultado = await _servicoAgendamentos.ConfirmarReservaAsync(id, cancellationToken);
-        return resultado.Sucesso ? NoContent() : BadRequest(new ProblemDetails { Title = resultado.MensagemErro });
+        return resultado.Sucesso ? NoContent() : TraduzirErro(resultado);
     }
 
     [HttpPost("{id:guid}/cancelar")]

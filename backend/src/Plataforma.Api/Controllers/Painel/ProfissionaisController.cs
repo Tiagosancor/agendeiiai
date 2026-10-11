@@ -136,7 +136,7 @@ public sealed class ProfissionaisController : ControllerBase
         if (!await EhAgendamentoFuturoDoProfissionalAsync(id, agendamentoId, cancellationToken))
             return NotFound();
 
-        var resultado = await _servicoAgendamentos.TransferirAsync(agendamentoId, dados.NovoProfissionalId, cancellationToken);
+        var resultado = await _servicoAgendamentos.TransferirAsync(agendamentoId, id, dados.NovoProfissionalId, cancellationToken);
         if (resultado.Sucesso)
             return NoContent();
 
