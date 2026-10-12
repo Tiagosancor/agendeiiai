@@ -72,7 +72,7 @@ public class LancamentoSaldoDevedor : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Baixa o estoque (produto já travado pelo chamador) e lança o valor como saldo devedor do profissional.</summary>
     public static (LancamentoSaldoDevedor Lancamento, MovimentoEstoque Movimento) CriarConsumo(
         PessoaComissao pessoa, Produto produto, int quantidade, decimal valorUnitario, DateOnly data, string? observacao, Guid? usuarioId,
-        DateTimeOffset agora)
+        DateTimeOffset agora, Guid? id = null)
     {
         if (!produto.Ativo)
             throw new ArgumentException($"{produto.Nome} está inativo.", nameof(produto));
@@ -81,6 +81,7 @@ public class LancamentoSaldoDevedor : EntidadeBase, IEntidadeDoNegocio
         var movimento = produto.RegistrarSaida(TipoMovimentoEstoque.ConsumoInterno, quantidade, valorUnitario, observacao, usuarioId, agora);
         var lancamento = new LancamentoSaldoDevedor
         {
+            Id = id ?? Guid.NewGuid(),
             NegocioId = produto.NegocioId,
             ProfissionalId = pessoa.ProfissionalId,
             UsuarioId = pessoa.UsuarioId,

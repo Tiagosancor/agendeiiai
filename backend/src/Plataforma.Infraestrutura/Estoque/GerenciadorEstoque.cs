@@ -110,19 +110,19 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
     }
 
     public Task<ProdutoResumo?> RegistrarEntradaAsync(Guid produtoId, RegistrarEntrada dados, CancellationToken cancellationToken = default) =>
-        MovimentarAsync(produtoId, (produto, agora) =>
+        MovimentarAsync(produtoId, (produto, agora, movimentoId) =>
         {
             var movimento = produto.RegistrarEntrada(
-                dados.Quantidade, dados.CustoUnitario, dados.Fornecedor, dados.Observacao, _usuarioAtual.UsuarioId, agora);
+                dados.Quantidade, dados.CustoUnitario, dados.Fornecedor, dados.Observacao, _usuarioAtual.UsuarioId, agora, movimentoId);
             _auditoria.Registrar(AcoesAuditoria.EntradaEstoque, nameof(Produto), produto.Id,
                 $"{produto.Nome}: +{dados.Quantidade} ({movimento.QuantidadeAntes} → {movimento.QuantidadeDepois})");
             return movimento;
         }, cancellationToken);
 
     public Task<ProdutoResumo?> RegistrarAjusteAsync(Guid produtoId, RegistrarAjuste dados, CancellationToken cancellationToken = default) =>
-        MovimentarAsync(produtoId, (produto, agora) =>
+        MovimentarAsync(produtoId, (produto, agora, movimentoId) =>
         {
-            var movimento = produto.RegistrarAjuste(dados.QuantidadeContada, dados.Motivo, _usuarioAtual.UsuarioId, agora);
+            var movimento = produto.RegistrarAjuste(dados.QuantidadeContada, dados.Motivo, _usuarioAtual.UsuarioId, agora, movimentoId);
             _auditoria.Registrar(AcoesAuditoria.AjusteEstoque, nameof(Produto), produto.Id,
                 $"{produto.Nome}: {movimento.QuantidadeAntes} → {movimento.QuantidadeDepois}. Motivo: {movimento.Observacao}");
             return movimento;
@@ -131,11 +131,13 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
     /// <summary>
     /// Todo movimento roda com a linha do produto travada (<c>FOR UPDATE</c>) dentro da transação: duas saídas
     /// simultâneas no limite do estoque são enfileiradas, e a segunda já vê a quantidade que sobrou (mesma
-    /// cautela da seção 8.2). O check do banco (quantidade ≥ 0) é a última barreira.
+    /// cautela da seção 8.2). O check do banco (quantidade ≥ 0) é a última barreira. O Id do movimento nasce aqui, antes da
+    /// estratégia: numa nova tentativa (COMMIT ambíguo, B7) o movimento já gravado é reconhecido por ele e não é reaplicado.
     /// </summary>
     private async Task<ProdutoResumo?> MovimentarAsync(
-        Guid produtoId, Func<Produto, DateTimeOffset, MovimentoEstoque> movimentar, CancellationToken cancellationToken)
+        Guid produtoId, Func<Produto, DateTimeOffset, Guid, MovimentoEstoque> movimentar, CancellationToken cancellationToken)
     {
+        var movimentoId = Guid.NewGuid();
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
@@ -149,7 +151,10 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
                 return null;
             }
 
-            _dbContext.MovimentosEstoque.Add(movimentar(produto, DateTimeOffset.UtcNow));
+            if (tentativas.Repetida && await _dbContext.MovimentosEstoque.AsNoTracking().AnyAsync(m => m.Id == movimentoId, cancellationToken))
+                return Mapear(produto);
+
+            _dbContext.MovimentosEstoque.Add(movimentar(produto, DateTimeOffset.UtcNow, movimentoId));
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
             return Mapear(produto);

@@ -68,14 +68,15 @@ public class Produto : EntidadeBase, IEntidadeDoNegocio
 
     /// <summary>Reposição/compra: soma ao estoque, com o custo daquela compra (pode diferir do cadastrado).</summary>
     public MovimentoEstoque RegistrarEntrada(
-        int quantidade, decimal custoUnitario, string? fornecedor, string? observacao, Guid? usuarioId, DateTimeOffset agora)
+        int quantidade, decimal custoUnitario, string? fornecedor, string? observacao, Guid? usuarioId, DateTimeOffset agora,
+        Guid? movimentoId = null)
     {
         if (quantidade <= 0)
             throw new ArgumentException("A quantidade da entrada precisa ser maior que zero.", nameof(quantidade));
         if (custoUnitario < 0)
             throw new ArgumentException("O custo não pode ser negativo.", nameof(custoUnitario));
 
-        return Movimentar(TipoMovimentoEstoque.Entrada, quantidade, decimal.Round(custoUnitario, 2), usuarioId, agora, observacao, fornecedor);
+        return Movimentar(TipoMovimentoEstoque.Entrada, quantidade, decimal.Round(custoUnitario, 2), usuarioId, agora, observacao, fornecedor, movimentoId);
     }
 
     /// <summary>
@@ -83,7 +84,8 @@ public class Produto : EntidadeBase, IEntidadeDoNegocio
     /// <see cref="EstoqueInsuficienteException"/> com a quantidade disponível.
     /// </summary>
     public MovimentoEstoque RegistrarSaida(
-        TipoMovimentoEstoque tipo, int quantidade, decimal valorUnitario, string? observacao, Guid? usuarioId, DateTimeOffset agora)
+        TipoMovimentoEstoque tipo, int quantidade, decimal valorUnitario, string? observacao, Guid? usuarioId, DateTimeOffset agora,
+        Guid? movimentoId = null)
     {
         if (tipo is not (TipoMovimentoEstoque.Venda or TipoMovimentoEstoque.ConsumoInterno))
             throw new ArgumentException("Saída de estoque é venda ou consumo interno.", nameof(tipo));
@@ -92,11 +94,11 @@ public class Produto : EntidadeBase, IEntidadeDoNegocio
         if (quantidade > QuantidadeEstoque)
             throw new EstoqueInsuficienteException(Nome, QuantidadeEstoque);
 
-        return Movimentar(tipo, -quantidade, decimal.Round(valorUnitario, 2), usuarioId, agora, observacao, fornecedor: null);
+        return Movimentar(tipo, -quantidade, decimal.Round(valorUnitario, 2), usuarioId, agora, observacao, fornecedor: null, movimentoId);
     }
 
     /// <summary>Correção manual de contagem (perda, quebra, balanço físico): informa a quantidade contada, com motivo.</summary>
-    public MovimentoEstoque RegistrarAjuste(int quantidadeContada, string motivo, Guid? usuarioId, DateTimeOffset agora)
+    public MovimentoEstoque RegistrarAjuste(int quantidadeContada, string motivo, Guid? usuarioId, DateTimeOffset agora, Guid? movimentoId = null)
     {
         if (quantidadeContada < 0)
             throw new ArgumentException("A quantidade contada não pode ser negativa.", nameof(quantidadeContada));
@@ -105,14 +107,15 @@ public class Produto : EntidadeBase, IEntidadeDoNegocio
         if (quantidadeContada == QuantidadeEstoque)
             throw new ArgumentException("A quantidade contada é igual à do estoque: não há o que ajustar.", nameof(quantidadeContada));
 
-        return Movimentar(TipoMovimentoEstoque.Ajuste, quantidadeContada - QuantidadeEstoque, null, usuarioId, agora, motivo.Trim(), fornecedor: null);
+        return Movimentar(TipoMovimentoEstoque.Ajuste, quantidadeContada - QuantidadeEstoque, null, usuarioId, agora, motivo.Trim(), fornecedor: null, movimentoId);
     }
 
     private MovimentoEstoque Movimentar(
-        TipoMovimentoEstoque tipo, int variacao, decimal? valorUnitario, Guid? usuarioId, DateTimeOffset agora, string? observacao, string? fornecedor)
+        TipoMovimentoEstoque tipo, int variacao, decimal? valorUnitario, Guid? usuarioId, DateTimeOffset agora, string? observacao, string? fornecedor,
+        Guid? movimentoId = null)
     {
         var antes = QuantidadeEstoque;
         QuantidadeEstoque = antes + variacao;
-        return MovimentoEstoque.Criar(NegocioId, Id, tipo, variacao, valorUnitario, antes, QuantidadeEstoque, usuarioId, agora, observacao, fornecedor);
+        return MovimentoEstoque.Criar(NegocioId, Id, tipo, variacao, valorUnitario, antes, QuantidadeEstoque, usuarioId, agora, observacao, fornecedor, movimentoId);
     }
 }

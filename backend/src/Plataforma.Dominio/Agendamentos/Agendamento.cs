@@ -110,8 +110,11 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     }
 
     private Agendamento(
-        Guid negocioId, Guid profissionalId, Guid? clienteId, DateTimeOffset inicio, DateTimeOffset fim, StatusAgendamento status)
+        Guid negocioId, Guid profissionalId, Guid? clienteId, DateTimeOffset inicio, DateTimeOffset fim, StatusAgendamento status,
+        Guid? id)
     {
+        if (id is { } idInformado)
+            Id = idInformado;
         NegocioId = negocioId;
         ProfissionalId = profissionalId;
         ClienteId = clienteId;
@@ -124,10 +127,10 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     public static Agendamento CriarConfirmado(
         Guid negocioId, Guid profissionalId, Guid clienteId, DateTimeOffset inicio,
         IReadOnlyCollection<ItemServicoAgendamento> servicos, string? observacoes = null,
-        OrigemAgendamento origem = OrigemAgendamento.Painel)
+        OrigemAgendamento origem = OrigemAgendamento.Painel, Guid? id = null)
     {
         var agendamento = new Agendamento(
-            negocioId, profissionalId, clienteId, inicio, CalcularFim(inicio, servicos), StatusAgendamento.Agendado)
+            negocioId, profissionalId, clienteId, inicio, CalcularFim(inicio, servicos), StatusAgendamento.Agendado, id)
         {
             Observacoes = observacoes,
             Origem = origem,
@@ -144,10 +147,11 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// </summary>
     public static Agendamento CriarReserva(
         Guid negocioId, Guid profissionalId, Guid? clienteId, DateTimeOffset inicio,
-        IReadOnlyCollection<ItemServicoAgendamento> servicos, DateTimeOffset agora, TimeSpan duracaoDaReserva)
+        IReadOnlyCollection<ItemServicoAgendamento> servicos, DateTimeOffset agora, TimeSpan duracaoDaReserva,
+        Guid? id = null)
     {
         var agendamento = new Agendamento(
-            negocioId, profissionalId, clienteId, inicio, CalcularFim(inicio, servicos), StatusAgendamento.Reservado)
+            negocioId, profissionalId, clienteId, inicio, CalcularFim(inicio, servicos), StatusAgendamento.Reservado, id)
         {
             ReservadoAte = agora + duracaoDaReserva,
             Origem = OrigemAgendamento.LinkPublico,

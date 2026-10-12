@@ -57,7 +57,8 @@ public class VendaProduto : EntidadeBase, IEntidadeDoNegocio
     }
 
     public static VendaProduto Criar(
-        Guid negocioId, DateTimeOffset data, Guid? clienteId, Guid? agendamentoId, Vendedor vendedor, Guid? lancadaPorUsuarioId)
+        Guid negocioId, DateTimeOffset data, Guid? clienteId, Guid? agendamentoId, Vendedor vendedor, Guid? lancadaPorUsuarioId,
+        Guid? id = null)
     {
         if (vendedor.ProfissionalId is null == vendedor.UsuarioId is null)
             throw new ArgumentException("A venda tem exatamente um vendedor.", nameof(vendedor));
@@ -66,6 +67,7 @@ public class VendaProduto : EntidadeBase, IEntidadeDoNegocio
 
         return new VendaProduto
         {
+            Id = id ?? Guid.NewGuid(),
             NegocioId = negocioId,
             Data = data,
             ClienteId = clienteId,
