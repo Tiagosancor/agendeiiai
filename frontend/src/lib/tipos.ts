@@ -298,6 +298,20 @@ export interface ClienteResumo {
   email: string | null;
   observacoes: string | null;
   excluido: boolean;
+  aceitaLembreteRetorno: boolean;
+}
+
+export interface ConfiguracaoLembreteRetorno {
+  ativo: boolean;
+  dias: number;
+  horario: string;
+  mensagem: string;
+}
+
+export interface RelatorioLembreteRetorno {
+  dias: number;
+  enviados: number;
+  geraramAgendamento: number;
 }
 
 export interface ExportacaoAgendamento {

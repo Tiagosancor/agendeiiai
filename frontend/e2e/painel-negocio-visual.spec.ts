@@ -31,7 +31,7 @@ for (const tema of ["light", "dark"]) {
         expect((await campo.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       }
       expect((await page.getByRole("button", { name: "Salvar alterações", exact: true }).boundingBox())!.height).toBeGreaterThanOrEqual(44);
-      for (const campo of await page.locator('input[type="time"]').all()) {
+      for (const campo of await page.locator('.painel-negocio-horarios input[type="time"]').all()) {
         await expect(campo).toHaveAttribute("aria-label", /^(Abertura|Fechamento) — /);
         const caixa = (await campo.boundingBox())!;
         expect(caixa.x).toBeGreaterThanOrEqual(0);

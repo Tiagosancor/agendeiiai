@@ -18,7 +18,7 @@ for (const tema of ["light", "dark"]) {
       ["usuarios", "Usuários", "Novo usuário", 5],
       ["profissionais", "Profissionais", "Novo profissional", 3],
       ["servicos", "Serviços", "Novo serviço", 8],
-      ["clientes", "Clientes", "Novo cliente", 4],
+      ["clientes", "Clientes", "Novo cliente", 5],
     ] as const) {
       await page.goto(`${BASE}/painel/${rota}`);
       const tabela = page.locator(".painel-cadastro-tabela");

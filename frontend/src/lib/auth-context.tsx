@@ -10,7 +10,7 @@ interface RespostaLogin {
 }
 
 interface OpcoesChamada {
-  metodo?: "GET" | "POST" | "PUT" | "DELETE";
+  metodo?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   corpo?: unknown;
 }
 

@@ -5,9 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BotaoTema } from "@/components/BotaoTema";
 import { MarcaPainel } from "./IdentidadePainel";
+import { useAutenticacao } from "@/lib/auth-context";
 
 // As mesmas rotas do layout anterior. Autorizações continuam nas telas e na API.
-const ITENS_MENU = [
+type ItemMenu = readonly [href: string, rotulo: string, desenho: string];
+
+const ITENS_MENU: readonly ItemMenu[] = [
   ["/painel", "Início", "M3 10l9-7 9 7v10H3zM9 20v-7h6v7"],
   ["/painel/agenda", "Agenda", "M5 5h14v15H5zM8 2v6M16 2v6M5 10h14M8 14h3"],
   ["/painel/usuarios", "Usuários", "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M19 8a4 4 0 0 1 0 8M22 21v-2M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0"],
@@ -22,9 +25,10 @@ const ITENS_MENU = [
   ["/painel/estoque", "Estoque", "M3 7l9-5 9 5v10l-9 5-9-5zM3 7l9 5 9-5M12 12v10M7 4l10 6"],
   ["/painel/negocio", "Meu negócio", "M3 9l2-6h14l2 6M3 9v4h18V9M5 13v8h14v-8M9 21v-6h6v6"],
   ["/painel/assinatura", "Assinatura", "M3 5h18v14H3zM3 10h18M7 15h3"],
-] as const;
+];
 
 export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSair: () => Promise<void> }) {
+  const { temPermissao } = useAutenticacao();
   const caminho = usePathname();
   const [aberto, setAberto] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
@@ -72,7 +76,13 @@ export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSa
     {aberto && <div className="painel-menu-fundo" onClick={() => setAberto(false)} aria-hidden="true" />}
     <aside ref={sidebar} id="navegacao-painel" className={`painel-sidebar ${aberto ? "painel-sidebar-aberta" : ""}`} role={aberto ? "dialog" : undefined} aria-modal={aberto ? true : undefined} aria-label="Menu principal">
       <div className="painel-sidebar-marca"><MarcaPainel /><button type="button" className="painel-menu-controle painel-menu-fechar" aria-label="Fechar menu" onClick={() => setAberto(false)}>✕</button></div>
-      <nav aria-label="Navegação do painel"><ul>{ITENS_MENU.map(([href, rotulo, desenho]) => {
+      <nav aria-label="Navegação do painel"><ul>{ITENS_MENU.flatMap<ItemMenu>((item) => {
+        const [href] = item;
+        if (href === "/painel/assinatura" && temPermissao("GerenciarConfiguracoesDoNegocio")) {
+          return [["/painel/configuracoes/notificacoes", "Notificações", "M18 8A6 6 0 0 0 6 8c0 7-3 7h18c-3 0-3-7-3-7M10 19a2 2 0 0 0 4 0"] as ItemMenu, item];
+        }
+        return [item];
+      }).map(([href, rotulo, desenho]) => {
         const ativo = caminho === href || (href !== "/painel" && caminho.startsWith(`${href}/`));
         return <li key={href}><Link href={href} aria-current={ativo ? "page" : undefined} onClick={() => setAberto(false)}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={desenho} /></svg><span>{rotulo}</span>

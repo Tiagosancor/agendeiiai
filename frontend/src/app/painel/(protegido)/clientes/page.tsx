@@ -6,6 +6,7 @@ import { CabecalhoCadastro, CarregandoCadastro } from "@/components/painel/Cadas
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { ClienteResumo, ExportacaoCliente, ProgressoFidelidade } from "@/lib/tipos";
+import { criarLembreteRetornoService } from "@/services/lembrete-retorno-service";
 
 function baixarJson(nomeArquivo: string, dados: unknown) {
   const blob = new Blob([JSON.stringify(dados, null, 2)], { type: "application/json" });
@@ -18,12 +19,15 @@ function baixarJson(nomeArquivo: string, dados: unknown) {
 }
 
 export default function PaginaClientes() {
-  const { chamarApi } = useAutenticacao();
+  const { chamarApi, temPermissao } = useAutenticacao();
   const [clientes, setClientes] = useState<ClienteResumo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [clienteEditando, setClienteEditando] = useState<ClienteResumo | null>(null);
   const [clienteFidelidade, setClienteFidelidade] = useState<ClienteResumo | null>(null);
+  const [alterandoAceite, setAlterandoAceite] = useState<string | null>(null);
+  const podeGerenciarLembrete = temPermissao("GerenciarConfiguracoesDoNegocio");
+  const lembreteRetornoService = criarLembreteRetornoService(chamarApi);
 
   const carregar = useCallback(async () => {
     try {
@@ -52,6 +56,21 @@ export default function PaginaClientes() {
     await carregar();
   }
 
+  async function alterarAceiteLembrete(cliente: ClienteResumo, aceita: boolean) {
+    setErro(null);
+    setAlterandoAceite(cliente.id);
+    try {
+      await lembreteRetornoService.definirAceiteCliente(cliente.id, aceita);
+      setClientes((atuais) => atuais?.map((item) => item.id === cliente.id
+        ? { ...item, aceitaLembreteRetorno: aceita }
+        : item) ?? null);
+    } catch {
+      setErro("Não foi possível alterar o lembrete de retorno deste cliente.");
+    } finally {
+      setAlterandoAceite(null);
+    }
+  }
+
   return (
     <div className="painel-cadastro">
       <CabecalhoCadastro titulo="Clientes" descricao="Gerencie os clientes cadastrados no seu negócio.">
@@ -65,12 +84,13 @@ export default function PaginaClientes() {
       {!clientes && !erro && <CarregandoCadastro />}
       <div className={classeCartao}>
         <div className="overflow-x-auto">
-          <table role="table" aria-label="Clientes cadastrados" className="painel-cadastro-tabela w-full min-w-137.5">
+          <table role="table" aria-label="Clientes cadastrados" className="painel-cadastro-tabela w-full min-w-175">
             <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
               <tr role="row">
                 <th role="columnheader" scope="col" className={classeTh}>Nome</th>
                 <th role="columnheader" scope="col" className={classeTh}>Telefone</th>
                 <th role="columnheader" scope="col" className={classeTh}>E-mail</th>
+                <th role="columnheader" scope="col" className={classeTh}>Lembrete de retorno</th>
                 <th role="columnheader" scope="col" className={classeTh}>Ações</th>
               </tr>
             </thead>
@@ -80,6 +100,23 @@ export default function PaginaClientes() {
                   <td role="cell" data-label="Nome" className={classeTd}>{cliente.nome}</td>
                   <td role="cell" data-label="Telefone" className={classeTd}>{cliente.telefone ?? "—"}</td>
                   <td role="cell" data-label="E-mail" className={classeTd}>{cliente.email ?? "—"}</td>
+                  <td role="cell" data-label="Lembrete de retorno" className={classeTd}>
+                    {cliente.excluido ? (
+                      <span>—</span>
+                    ) : podeGerenciarLembrete ? (
+                      <label className="painel-cliente-lembrete">
+                        <input
+                          type="checkbox"
+                          checked={cliente.aceitaLembreteRetorno}
+                          disabled={alterandoAceite === cliente.id}
+                          onChange={(evento) => alterarAceiteLembrete(cliente, evento.target.checked)}
+                        />
+                        <span>{cliente.aceitaLembreteRetorno ? "Aceita" : "Não aceita"}</span>
+                      </label>
+                    ) : (
+                      <span>{cliente.aceitaLembreteRetorno ? "Aceita" : "Não aceita"}</span>
+                    )}
+                  </td>
                   <td role="cell" data-label="Ações" className={`${classeTd} space-x-3`}>
                     {cliente.excluido ? (
                       <span className="text-xs text-gray-400">Dados excluídos</span>
@@ -104,7 +141,7 @@ export default function PaginaClientes() {
               ))}
               {clientes?.length === 0 && (
                 <tr role="row">
-                  <td className={classeTd} colSpan={4}>
+                  <td className={classeTd} colSpan={5}>
                     Nenhum cliente cadastrado ainda.
                   </td>
                 </tr>
