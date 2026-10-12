@@ -12,6 +12,7 @@ import { AvisoLimitePlano, ModalCriarProfissional } from "@/components/painel/Mo
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { ENDERECO_VAZIO, type Endereco, type ProfissionalDetalhe, type ProfissionalResumo } from "@/lib/tipos";
 import { ErroApi } from "@/lib/api";
+import { CampoFotoProfissional } from "@/components/painel/CampoFotoProfissional";
 
 export default function PaginaProfissionais() {
   const { chamarApi, temPermissao } = useAutenticacao();
@@ -166,7 +167,7 @@ function ModalEditarProfissional({
   const [telefone, setTelefone] = useState(profissional.telefone ?? "");
   const [email, setEmail] = useState(profissional.email ?? "");
   const [cpf, setCpf] = useState("");
-  const [fotoUrl, setFotoUrl] = useState(profissional.fotoUrl ?? "");
+  const [corAgenda, setCorAgenda] = useState(profissional.corAgenda ?? "");
   const [endereco, setEndereco] = useState<Endereco>(profissional.endereco ?? ENDERECO_VAZIO);
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -185,7 +186,7 @@ function ModalEditarProfissional({
           email: email || null,
           cpf: cpf || null,
           endereco,
-          fotoUrl,
+          corAgenda,
         },
       });
       await aoSalvar();
@@ -219,10 +220,16 @@ function ModalEditarProfissional({
           <span className={classeLabel}>CPF {profissional.cpfMascarado ? `(atual: ${profissional.cpfMascarado})` : ""}</span>
           <input className={classeInput} value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="Deixe em branco para manter" />
         </label>
-        <label>
-          <span className={classeLabel}>Foto (endereço da imagem)</span>
-          <input type="url" className={classeInput} value={fotoUrl} onChange={(e) => setFotoUrl(e.target.value)} placeholder="https://..." />
-        </label>
+        <CampoFotoProfissional rota={`/painel/profissionais/${profissional.id}/foto`} fotoInicial={profissional.fotoUrl} />
+        <div className="space-y-2">
+          <span className={classeLabel}>Cor na agenda</span>
+          <div className="flex items-center gap-3">
+            <input aria-label="Escolher cor na agenda" type="color" value={corAgenda || "#2563eb"} onChange={(e) => setCorAgenda(e.target.value)} className="h-11 w-16 cursor-pointer rounded-lg border border-gray-300 bg-white p-1 dark:border-neutral-700 dark:bg-neutral-900" />
+            <input aria-label="Cor hexadecimal na agenda" className={`${classeInput} max-w-36`} value={corAgenda} onChange={(e) => setCorAgenda(e.target.value)} placeholder="Automática" pattern="#[0-9A-Fa-f]{6}" />
+            {corAgenda && <button type="button" className="text-sm text-gray-600 underline dark:text-neutral-300" onClick={() => setCorAgenda("")}>Usar automática</button>}
+          </div>
+          <p className="text-xs text-gray-500 dark:text-neutral-400">Identifica a coluna deste profissional. Sem escolha, o sistema usa uma cor automática estável.</p>
+        </div>
         <CamposEndereco valor={endereco} aoMudar={setEndereco} />
         <p className="text-xs text-gray-500 dark:text-neutral-400">
           Serviços que executa e preços próprios: em{" "}

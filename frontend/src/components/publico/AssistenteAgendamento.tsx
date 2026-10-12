@@ -7,7 +7,7 @@ import { dataNoFuso, proximosDiasDoNegocio, formatarDiaDaFaixa, formatarHoraDoNe
 import "./assistente-agendamento.css";
 import "./experiencia-publica.css";
 import { identidadePublica } from "./identidade-publica";
-import { fundoDoNegocio } from "@/lib/fundo";
+import { fundoDoNegocio, urlArquivo } from "@/lib/fundo";
 import type {
   CategoriaComServicosPublicos,
   ConfirmarAgendamentoPublico,
@@ -513,7 +513,7 @@ export function AssistenteAgendamento({ aberto, aoFechar, negocio, categorias, p
                 >
                   {p.fotoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.fotoUrl} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+                    <img src={urlArquivo(p.fotoUrl) ?? undefined} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
                   ) : (
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 font-semibold text-gray-600 dark:bg-neutral-800 dark:text-neutral-300">
                       {p.nome.charAt(0)}

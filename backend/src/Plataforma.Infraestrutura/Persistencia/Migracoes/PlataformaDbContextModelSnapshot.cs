@@ -2266,6 +2266,11 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("atualizado_em");
 
+                    b.Property<string>("CorAgenda")
+                        .HasMaxLength(7)
+                        .HasColumnType("character varying(7)")
+                        .HasColumnName("cor_agenda");
+
                     b.Property<DateTimeOffset>("CriadoEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
@@ -2282,6 +2287,11 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.Property<DateTimeOffset?>("ExcluidoEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("excluido_em");
+
+                    b.Property<string>("FotoArquivo")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("foto_arquivo");
 
                     b.Property<string>("FotoUrl")
                         .HasColumnType("text")
@@ -2324,6 +2334,8 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
                     b.ToTable("profissionais", null, t =>
                         {
+                            t.HasCheckConstraint("ck_profissionais_cor_agenda", "cor_agenda IS NULL OR cor_agenda ~ '^#[0-9a-f]{6}$'");
+
                             t.HasCheckConstraint("ck_profissionais_percentual_comissao", "percentual_comissao >= 0 AND percentual_comissao <= 100");
 
                             t.HasCheckConstraint("ck_profissionais_percentual_comissao_produto_venda", "percentual_comissao_produto_venda >= 0 AND percentual_comissao_produto_venda <= 100");

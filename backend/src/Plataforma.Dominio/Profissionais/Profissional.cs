@@ -25,7 +25,20 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
     public CpfProtegido? Cpf { get; private set; }
 
+    /// <summary>URL externa digitada na ficha (o jeito antigo). Vale só quando não há <see cref="FotoArquivo"/>.</summary>
     public string? FotoUrl { get; private set; }
+
+    /// <summary>
+    /// Chave da foto enviada pelo painel no armazenamento de arquivos (reprocessada, WebP). Quando existe, é ela que aparece —
+    /// a <see cref="FotoUrl"/> antiga fica só como alternativa para quem ainda não enviou.
+    /// </summary>
+    public string? FotoArquivo { get; private set; }
+
+    /// <summary>
+    /// Cor da coluna dele na agenda (<c>#rrggbb</c>). Nula = o painel escolhe uma cor automática estável — o backend não
+    /// calcula essa cor.
+    /// </summary>
+    public string? CorAgenda { get; private set; }
 
     public bool Ativo { get; private set; } = true;
 
@@ -96,6 +109,25 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
 
     public void DefinirFoto(string? fotoUrl) => FotoUrl = fotoUrl;
 
+    /// <summary>Troca (ou tira, com nulo) a foto enviada e devolve a chave anterior, para o arquivo antigo ser apagado depois de gravar.</summary>
+    public string? DefinirFotoArquivo(string? chave)
+    {
+        var anterior = FotoArquivo;
+        FotoArquivo = string.IsNullOrWhiteSpace(chave) ? null : chave;
+        return anterior;
+    }
+
+    /// <summary>Fica sem foto nenhuma: tira a enviada e a URL externa. Devolve a chave do arquivo enviado, se havia.</summary>
+    public string? RemoverFotos()
+    {
+        FotoUrl = null;
+        return DefinirFotoArquivo(null);
+    }
+
+    /// <summary>Vazio tira a cor (volta à automática). Lança <see cref="ArgumentException"/> fora do formato <c>#RRGGBB</c>.</summary>
+    public void DefinirCorAgenda(string? cor) =>
+        CorAgenda = CorHexadecimal.Normalizar(cor, "A cor da agenda precisa estar no formato #RRGGBB.", nameof(cor));
+
     public void DefinirAcertoPorQuinzena(bool acertoPorQuinzena) => AcertoPorQuinzena = acertoPorQuinzena;
 
     public void DefinirPercentualComissao(decimal percentual)
@@ -133,5 +165,6 @@ public class Profissional : EntidadeBase, IEntidadeDoNegocio
         Endereco = Endereco.Vazio;
         Cpf = null;
         FotoUrl = null;
+        FotoArquivo = null;
     }
 }

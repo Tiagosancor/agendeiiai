@@ -1,16 +1,20 @@
 using Microsoft.EntityFrameworkCore;
+using Plataforma.Aplicacao.Arquivos;
 using Plataforma.Aplicacao.Publico;
 using Plataforma.Infraestrutura.Persistencia;
+using Plataforma.Infraestrutura.Profissionais;
 
 namespace Plataforma.Infraestrutura.Publico;
 
 public sealed class ConsultaCatalogoPublico : IConsultaCatalogoPublico
 {
     private readonly PlataformaDbContext _dbContext;
+    private readonly IArmazenamentoArquivos _arquivos;
 
-    public ConsultaCatalogoPublico(PlataformaDbContext dbContext)
+    public ConsultaCatalogoPublico(PlataformaDbContext dbContext, IArmazenamentoArquivos arquivos)
     {
         _dbContext = dbContext;
+        _arquivos = arquivos;
     }
 
     public async Task<IReadOnlyList<CategoriaComServicosPublicos>> ListarServicosAsync(CancellationToken cancellationToken = default)
@@ -61,7 +65,7 @@ public sealed class ConsultaCatalogoPublico : IConsultaCatalogoPublico
             {
                 var dele = vinculos.Where(v => v.ProfissionalId == p.Id).ToList();
                 return new ProfissionalPublico(
-                    p.Id, p.Nome, p.FotoUrl, p.Funcao,
+                    p.Id, p.Nome, FotoProfissional.UrlEfetiva(_arquivos, p.FotoArquivo, p.FotoUrl), p.Funcao,
                     dele.Select(v => v.ServicoId).ToList(),
                     dele.Select(v => new ServicoDoProfissionalPublico(v.ServicoId, v.Preco, v.Duracao)).ToList());
             })

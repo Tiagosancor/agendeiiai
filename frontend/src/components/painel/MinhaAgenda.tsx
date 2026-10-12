@@ -7,6 +7,7 @@ import { ModalConcluirAtendimento } from "@/components/painel/ModalConcluirAtend
 import { SemanaAgenda, inicioDaSemana, somarDias } from "@/components/painel/SemanaAgenda";
 import type { AgendaSemana, AgendamentoResumo } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
+import { CampoFotoProfissional } from "@/components/painel/CampoFotoProfissional";
 
 const formatarHora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
@@ -76,6 +77,10 @@ export function MinhaAgenda() {
 
   return (
     <div className="space-y-4">
+      <details className={`${classeCartao} p-4`}>
+        <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-neutral-50">Minha foto na agenda</summary>
+        <div className="mt-3"><CampoFotoProfissional rota="/painel/minha-foto" /></div>
+      </details>
       <div className="flex gap-1 border-b border-gray-200 dark:border-neutral-800" role="tablist" aria-label="Visão da agenda">
         {(
           [

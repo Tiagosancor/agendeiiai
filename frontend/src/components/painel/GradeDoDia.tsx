@@ -3,6 +3,16 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useAutenticacao } from "@/lib/auth-context";
 import type { AgendamentoNaGrade, CelulaGrade, ColunaGrade, GradeAgenda } from "@/lib/tipos";
+import { urlArquivo } from "@/lib/fundo";
+
+const CORES_AUTOMATICAS = ["#2563eb", "#7c3aed", "#0891b2", "#059669", "#d97706", "#db2777", "#4f46e5", "#0d9488"];
+
+function corDoProfissional(profissional: ColunaGrade): string {
+  if (profissional.corAgenda) return profissional.corAgenda;
+  let hash = 0;
+  for (const caractere of profissional.profissionalId) hash = (hash * 31 + caractere.charCodeAt(0)) >>> 0;
+  return CORES_AUTOMATICAS[hash % CORES_AUTOMATICAS.length];
+}
 
 const COR_STATUS: Record<string, string> = {
   Agendado: "bg-blue-100 text-blue-900 dark:bg-blue-950 dark:text-blue-100",
@@ -106,10 +116,14 @@ export function GradeDoDia({
                   <th
                     key={coluna.profissionalId}
                     data-profissional-id={coluna.profissionalId}
-                    className="min-w-32 border-b border-l border-gray-200 px-2 py-2 text-left font-semibold text-gray-900 dark:border-neutral-800 dark:text-neutral-50"
+                    className="min-w-32 border-b border-l-4 px-2 py-2 text-left font-semibold text-gray-900 dark:text-neutral-50"
+                    style={{ borderLeftColor: corDoProfissional(coluna), backgroundColor: `${corDoProfissional(coluna)}18` }}
                   >
-                    {coluna.nome}
-                    {coluna.deFolga && <span className="ml-1 font-normal text-gray-500 dark:text-neutral-400">(folga)</span>}
+                    <span className="flex items-center gap-2">
+                      {coluna.fotoUrl ? <img // eslint-disable-line @next/next/no-img-element
+                        src={urlArquivo(coluna.fotoUrl) ?? undefined} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" /> : <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white" style={{ backgroundColor: corDoProfissional(coluna) }}>{coluna.nome.charAt(0)}</span>}
+                      <span>{coluna.nome}{coluna.deFolga && <span className="ml-1 font-normal text-gray-500 dark:text-neutral-400">(folga)</span>}</span>
+                    </span>
                   </th>
                 ))}
               </tr>
@@ -132,6 +146,7 @@ export function GradeDoDia({
                       linha={linha}
                       aoEscolherLivre={aoEscolherLivre}
                       aoAbrirAgendamento={aoAbrirAgendamento}
+                      corProfissional={corDoProfissional(coluna)}
                     />
                   ))}
                 </tr>
@@ -150,23 +165,26 @@ function Celula({
   linha,
   aoEscolherLivre,
   aoAbrirAgendamento,
+  corProfissional,
 }: {
   coluna: ColunaGrade;
   linha: number;
   aoEscolherLivre: (profissionalId: string, inicio: string) => void;
   aoAbrirAgendamento: (profissionalId: string) => void;
+  corProfissional: string;
 }) {
   const celula = coluna.celulas[linha];
   const anterior: CelulaGrade | undefined = coluna.celulas[linha - 1];
   // O texto vai só na primeira célula de cada trecho (um agendamento, o almoço, um bloqueio).
   const comecaTrecho =
     !anterior || anterior.estado !== celula.estado || anterior.agendamentoId !== celula.agendamentoId || anterior.descricao !== celula.descricao;
-  const base = "h-7 border-l border-gray-200 p-0 align-top dark:border-neutral-800";
+  const base = "h-7 border-l border-gray-100 p-0 align-top dark:border-neutral-800";
+  const estiloColuna = { boxShadow: `inset 2px 0 ${corProfissional}55` };
 
   switch (celula.estado) {
     case "Livre":
       return (
-        <td className={base}>
+        <td className={base} style={estiloColuna}>
           <button
             type="button"
             aria-label={`Livre: ${coluna.nome} às ${celula.hora}`}
@@ -182,7 +200,7 @@ function Celula({
       const cor = COR_STATUS[agendamento?.status ?? ""] ?? "bg-gray-100 dark:bg-neutral-800";
       const forcado = agendamento?.forcado ? "border-l-4 border-l-amber-500" : "";
       return (
-        <td className={`${base} ${cor} ${forcado}`}>
+        <td className={`${base} ${cor} ${forcado}`} style={estiloColuna}>
           <button
             type="button"
             className="h-7 w-full overflow-hidden px-1 text-left"
@@ -203,22 +221,23 @@ function Celula({
       );
     }
     case "Almoco":
-      return <Bloqueada base={base} classe={`bg-gray-100 dark:bg-neutral-800 ${TEXTO_APAGADO}`} texto={comecaTrecho ? "Almoço" : ""} />;
+      return <Bloqueada base={base} classe={`bg-gray-100 dark:bg-neutral-800 ${TEXTO_APAGADO}`} texto={comecaTrecho ? "Almoço" : ""} estilo={estiloColuna} />;
     case "Folga":
-      return <Bloqueada base={base} classe={`bg-gray-50 dark:bg-neutral-900 ${TEXTO_APAGADO}`} texto={linha === 0 ? "Folga" : ""} />;
+      return <Bloqueada base={base} classe={`bg-gray-50 dark:bg-neutral-900 ${TEXTO_APAGADO}`} texto={linha === 0 ? "Folga" : ""} estilo={estiloColuna} />;
     case "Bloqueio":
       return (
         <Bloqueada
           base={base}
           classe="bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
           texto={comecaTrecho ? `Bloqueio${celula.descricao ? `: ${celula.descricao}` : ""}` : ""}
+          estilo={estiloColuna}
         />
       );
     default:
-      return <Bloqueada base={base} classe={`bg-gray-50 dark:bg-neutral-900/60 ${TEXTO_APAGADO}`} texto={comecaTrecho ? "Fora do expediente" : ""} />;
+      return <Bloqueada base={base} classe={`bg-gray-50 dark:bg-neutral-900/60 ${TEXTO_APAGADO}`} texto={comecaTrecho ? "Fora do expediente" : ""} estilo={estiloColuna} />;
   }
 }
 
-function Bloqueada({ base, classe, texto }: { base: string; classe: string; texto: string }) {
-  return <td className={`${base} ${classe} truncate px-1`}>{texto}</td>;
+function Bloqueada({ base, classe, texto, estilo }: { base: string; classe: string; texto: string; estilo?: CSSProperties }) {
+  return <td className={`${base} ${classe} truncate px-1`} style={estilo}>{texto}</td>;
 }

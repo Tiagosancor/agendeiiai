@@ -121,6 +121,7 @@ export interface ProfissionalResumo {
   ativo: boolean;
   fotoUrl: string | null;
   funcao: string | null;
+  corAgenda: string | null;
 }
 
 export interface ProfissionalDetalhe {
@@ -135,6 +136,7 @@ export interface ProfissionalDetalhe {
   endereco: Endereco | null;
   /** Usuário vinculado (quem faz login como este profissional); nulo = só um nome na agenda (seção 7). */
   acesso: AcessoVinculado | null;
+  corAgenda: string | null;
 }
 
 export interface AcessoVinculado {
@@ -160,6 +162,8 @@ export interface GradeAgenda {
 export interface ColunaGrade {
   profissionalId: string;
   nome: string;
+  fotoUrl: string | null;
+  corAgenda: string | null;
   deFolga: boolean;
   celulas: CelulaGrade[];
   agendamentos: AgendamentoNaGrade[];
