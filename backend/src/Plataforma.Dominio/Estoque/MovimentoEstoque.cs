@@ -55,8 +55,10 @@ public class MovimentoEstoque : EntidadeBase, IEntidadeDoNegocio
 
     internal static MovimentoEstoque Criar(
         Guid negocioId, Guid produtoId, TipoMovimentoEstoque tipo, int quantidade, decimal? valorUnitario,
-        int quantidadeAntes, int quantidadeDepois, Guid? usuarioId, DateTimeOffset data, string? observacao, string? fornecedor) => new()
+        int quantidadeAntes, int quantidadeDepois, Guid? usuarioId, DateTimeOffset data, string? observacao, string? fornecedor,
+        Guid? id = null) => new()
     {
+        Id = id ?? Guid.NewGuid(),
         NegocioId = negocioId,
         ProdutoId = produtoId,
         Tipo = tipo,

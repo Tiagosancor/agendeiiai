@@ -88,6 +88,8 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
         var hoje = await HojeAsync(cancellationToken);
         var negocioId = _contextoNegocio.NegocioId!.Value;
 
+        // Id desta requisição, igual em todas as tentativas da estratégia (COMMIT ambíguo, B7); outra requisição gera outro.
+        var consumoId = Guid.NewGuid();
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
@@ -98,9 +100,13 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
             if (produto is null)
                 return (Guid?)null;
 
+            // A tentativa anterior pode ter confirmado o COMMIT sem a resposta chegar: consumo e débito já estão gravados.
+            if (tentativas.Repetida && await _dbContext.LancamentosSaldoDevedor.AsNoTracking().AnyAsync(l => l.Id == consumoId, cancellationToken))
+                return consumoId;
+
             var (consumo, movimento) = LancamentoSaldoDevedor.CriarConsumo(
                 pessoa, produto, dados.Quantidade, dados.ValorUnitario ?? produto.PrecoCusto, hoje, dados.Observacao,
-                _usuarioAtual.UsuarioId, DateTimeOffset.UtcNow);
+                _usuarioAtual.UsuarioId, DateTimeOffset.UtcNow, consumoId);
             _dbContext.MovimentosEstoque.Add(movimento);
             _dbContext.LancamentosSaldoDevedor.Add(consumo);
             _auditoria.Registrar(AcoesAuditoria.LancarConsumoInterno, nameof(LancamentoSaldoDevedor), consumo.Id,

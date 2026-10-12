@@ -13,6 +13,7 @@ using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Cupons;
 using Plataforma.Dominio.Notificacoes;
+using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.Comissoes;
 using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Cupons;
@@ -141,8 +142,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         {
             // Outra requisição cadastrou o mesmo telefone agora há pouco: usa o dela.
             _dbContext.Entry(novo).State = EntityState.Detached;
-            var existente = await _dbContext.Clientes.FirstAsync(c => c.Telefone == telefone, cancellationToken);
-            return (existente.Id, null);
+            return (await CadastroRapidoDeCliente.RecuperarAposConflitoAsync(_dbContext, novo.Id, telefone, excecao, cancellationToken), null);
         }
 
         return (novo.Id, null);
@@ -242,6 +242,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         // EnableRetryOnFailure (seção 8.5.6) exige que transações manuais rodem dentro de
         // uma estratégia de execução — senão o EF Core lança na hora.
+        // Id desta requisição, igual em todas as tentativas da estratégia (COMMIT ambíguo, B7); outra requisição gera outro.
+        var agendamentoId = Guid.NewGuid();
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
 
@@ -250,6 +252,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             // Nova tentativa não pode inserir também o agendamento da anterior (conflito falso, forçado em dobro).
             tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            // A tentativa anterior pode ter confirmado o COMMIT sem a resposta chegar: o agendamento já está gravado, e checar
+            // as regras de novo o veria como conflito (409 falso) ou, no forçado, gravaria um segundo por cima.
+            if (tentativas.Repetida && await _dbContext.Agendamentos.AsNoTracking().AnyAsync(a => a.Id == agendamentoId, cancellationToken))
+                return ResultadoAgendamento.ComSucesso(agendamentoId);
             await TravarAgendaDoProfissionalAsync(dados.ProfissionalId, cancellationToken);
 
             // 1) Expira reservas vencidas deste profissional ANTES de checar disponibilidade
@@ -326,8 +333,9 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 ? Agendamento.CriarConfirmado(
                     negocioId, dados.ProfissionalId,
                     dados.ClienteId ?? throw new InvalidOperationException("Um agendamento confirmado de imediato precisa de um cliente."),
-                    dados.Inicio, itens, dados.Observacoes, opcoes?.Origem ?? OrigemAgendamento.Painel)
-                : Agendamento.CriarReserva(negocioId, dados.ProfissionalId, dados.ClienteId, dados.Inicio, itens, agora, DuracaoDaReserva);
+                    dados.Inicio, itens, dados.Observacoes, opcoes?.Origem ?? OrigemAgendamento.Painel, agendamentoId)
+                : Agendamento.CriarReserva(
+                    negocioId, dados.ProfissionalId, dados.ClienteId, dados.Inicio, itens, agora, DuracaoDaReserva, agendamentoId);
 
             if (opcoes?.IniciarAtendimento == true)
                 agendamento.IniciarAtendimento();

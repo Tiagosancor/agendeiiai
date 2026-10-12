@@ -8,6 +8,7 @@ using Plataforma.Dominio.Comissoes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Estoque;
 using Plataforma.Dominio.Usuarios;
+using Plataforma.Infraestrutura.Clientes;
 using Plataforma.Infraestrutura.Comissoes;
 using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Persistencia;
@@ -117,6 +118,8 @@ public sealed class ServicoVendas : IServicoVendas
         }
 
         var negocioId = _contextoNegocio.NegocioId!.Value;
+        // Id desta requisição, igual em todas as tentativas da estratégia (COMMIT ambíguo, B7); outra requisição gera outro.
+        var vendaId = Guid.NewGuid();
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
         return await estrategia.ExecuteAsync(async () =>
@@ -124,7 +127,14 @@ public sealed class ServicoVendas : IServicoVendas
             tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-            var venda = VendaProduto.Criar(negocioId, DateTimeOffset.UtcNow, clienteId, dados.AgendamentoId, vendedor, _usuarioAtual.UsuarioId);
+            // A tentativa anterior pode ter confirmado o COMMIT sem a resposta chegar: a venda já está gravada, não repete.
+            if (tentativas.Repetida
+                && await _dbContext.VendasProduto.AsNoTracking().Where(v => v.Id == vendaId).Select(v => (decimal?)v.Total)
+                    .FirstOrDefaultAsync(cancellationToken) is { } totalGravado)
+                return new VendaLancada(vendaId, totalGravado);
+
+            var venda = VendaProduto.Criar(
+                negocioId, DateTimeOffset.UtcNow, clienteId, dados.AgendamentoId, vendedor, _usuarioAtual.UsuarioId, vendaId);
 
             // Trava em ordem de ID: duas vendas com os mesmos produtos em ordem diferente não se travam mutuamente.
             foreach (var item in dados.Itens.OrderBy(i => i.ProdutoId))
@@ -217,7 +227,7 @@ public sealed class ServicoVendas : IServicoVendas
         catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
         {
             _dbContext.Entry(novo).State = EntityState.Detached;
-            return (await _dbContext.Clientes.FirstAsync(c => c.Telefone == telefone, cancellationToken)).Id;
+            return await CadastroRapidoDeCliente.RecuperarAposConflitoAsync(_dbContext, novo.Id, telefone, excecao, cancellationToken);
         }
 
         return novo.Id;
