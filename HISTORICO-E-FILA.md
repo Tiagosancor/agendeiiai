@@ -265,6 +265,31 @@ O endpoint de alteração de horários não foi exercitado em produção para ev
 dados. Não houve migration, operação manual no banco, comunicação real, incidente ou
 rollback.
 
+### Frontend do lembrete de retorno — homologado localmente
+
+| Item | Resultado |
+|---|---|
+| Responsável | Codex |
+| Branch | `codex/lembrete-retorno-frontend` |
+| Base do contrato backend | `c230265266d0c72e4d202df7c44b0aebf537b1c5` (`feature/lembrete-retorno`) |
+| Implementação frontend | `b70feae` — `feat: adiciona configuracao de lembrete de retorno` |
+| Situação | Homologada localmente; ainda não integrada nem publicada |
+
+Foi criada a tela protegida `/painel/configuracoes/notificacoes`, visível no menu somente
+para quem possui `GerenciarConfiguracoesDoNegocio`. A interface permite ativar o lembrete,
+configurar dias, horário e mensagem, inserir as quatro variáveis aceitas, conferir uma
+pré-visualização, validar os campos antes do envio e consultar o relatório dos últimos 30
+dias. O acesso à API ficou isolado em `lembrete-retorno-service.ts`.
+
+A listagem de clientes passou a exibir e, quando autorizado, alterar o aceite individual
+do lembrete. A homologação cobriu temas claro/escuro, 375px, 390px, 768px e 1440px,
+ausência de overflow, salvamento e restauração dos dados locais, validação sem request,
+relatório e opt-out. O lint passou com 0 errors e 12 warnings preexistentes de `<img>`, o
+build de produção passou e 9/9 testes Playwright da funcionalidade e regressões afetadas
+foram aprovados. Não houve alteração frontend de regra de negócio nem alteração nesta
+etapa de backend, banco, schema, migration, dependência ou infraestrutura. Nenhum push,
+merge ou deploy foi realizado.
+
 ## Fila atual
 
 ### B2 — concorrências fora do escopo homologado da D7
