@@ -17,7 +17,7 @@ for (const tema of ["light", "dark"]) {
     await page.goto(`${BASE}/painel/negocio`);
     const perfil = await (await carregado).json();
     await expect(page.getByRole("heading", { name: "Meu negócio", exact: true })).toBeVisible();
-    for (const [label, chave] of [["Nome exibido", "nomeExibido"], ["URL do logo", "logoUrl"], ["Bairro", "bairro"], ["Cidade", "cidade"], ["Telefone", "telefone"], ["E-mail de contato (Fale Conosco)", "emailContato"], ["WhatsApp", "whatsApp"]]) {
+    for (const [label, chave] of [["Nome exibido", "nomeExibido"], ["URL direta do logo", "logoUrl"], ["Bairro", "bairro"], ["Cidade", "cidade"], ["Telefone", "telefone"], ["E-mail de contato (Fale Conosco)", "emailContato"], ["WhatsApp", "whatsApp"]]) {
       await expect(page.getByLabel(label, { exact: true })).toHaveValue(perfil[chave] ?? "");
     }
     await expect(page.getByTestId("link-atual")).toBeVisible();

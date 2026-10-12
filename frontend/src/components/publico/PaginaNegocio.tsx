@@ -10,7 +10,7 @@ import { BotaoTema } from "@/components/BotaoTema";
 import { formatarReais } from "@/lib/formatacao";
 import "./experiencia-publica.css";
 import { identidadePublica } from "./identidade-publica";
-import { fundoDoNegocio } from "@/lib/fundo";
+import { fundoDoNegocio, urlArquivo } from "@/lib/fundo";
 
 function iniciaisNome(nome: string): string {
   return nome
@@ -242,7 +242,7 @@ export function PaginaNegocio({ negocio }: { negocio: NegocioPublico }) {
               {profissionais.map((p) => (
                 <div key={p.id} className="flex w-20 shrink-0 flex-col items-center text-center">
                   {p.fotoUrl ? (
-                    <img src={p.fotoUrl} alt="" className="h-16 w-16 rounded-full object-cover" />
+                    <img src={urlArquivo(p.fotoUrl) ?? undefined} alt="" className="h-16 w-16 rounded-full object-cover" />
                   ) : (
                     <div className="flex h-16 w-16 items-center justify-center rounded-full bg-(--cor-primaria) text-sm font-semibold text-white">
                       {iniciaisNome(p.nome)}

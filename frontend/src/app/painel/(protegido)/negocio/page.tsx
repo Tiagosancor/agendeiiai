@@ -26,6 +26,7 @@ export default function PaginaPerfilNegocio() {
   const [erro, setErro] = useState<string | null>(null);
   const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [logoInvalido, setLogoInvalido] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -57,6 +58,10 @@ export default function PaginaPerfilNegocio() {
 
     setErro(null);
     setMensagemSucesso(null);
+    if (perfil.logoUrl && logoInvalido) {
+      setErro("Informe o endereço direto do arquivo de imagem antes de salvar o logo.");
+      return;
+    }
     setSalvando(true);
     try {
       await chamarApi("/painel/negocio", {
@@ -122,9 +127,17 @@ export default function PaginaPerfilNegocio() {
           </label>
         </div>
         <label>
-          <span className={classeLabel}>URL do logo</span>
-          <input className={classeInput} value={perfil.logoUrl ?? ""} onChange={(e) => atualizarCampo("logoUrl", e.target.value)} />
+          <span className={classeLabel}>URL direta do logo</span>
+          <input type="url" className={classeInput} value={perfil.logoUrl ?? ""} onChange={(e) => { atualizarCampo("logoUrl", e.target.value); setLogoInvalido(false); }} placeholder="https://servidor.com/logo.png" />
         </label>
+        {perfil.logoUrl && <div className="flex items-center gap-3 rounded-lg border border-gray-200 p-3 dark:border-neutral-800">
+          {!logoInvalido && <img // eslint-disable-line @next/next/no-img-element
+            src={perfil.logoUrl} alt="Prévia do logo" className="h-14 w-14 rounded-full object-cover" onError={() => setLogoInvalido(true)} />}
+          <div className="text-xs text-gray-500 dark:text-neutral-400">
+            <p>{logoInvalido ? "Este endereço não entrega uma imagem diretamente." : "Prévia do logo."}</p>
+            <p>Use o endereço do arquivo de imagem, normalmente terminado em .png, .jpg ou .webp. Links para páginas do ImgBB não funcionam como imagem.</p>
+          </div>
+        </div>}
         <label>
           <span className={classeLabel}>Título da página inicial</span>
           <input className={classeInput} value={perfil.tituloPagina ?? ""} onChange={(e) => atualizarCampo("tituloPagina", e.target.value)} />
