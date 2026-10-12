@@ -21,7 +21,7 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
     public async Task<IReadOnlyList<ClienteResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
         await _dbContext.Clientes
             .OrderBy(c => c.Nome)
-            .Select(c => new ClienteResumo(c.Id, c.Nome, c.Telefone == null ? null : c.Telefone.Valor, c.Email, c.Observacoes, c.Excluido))
+            .Select(c => new ClienteResumo(c.Id, c.Nome, c.Telefone == null ? null : c.Telefone.Valor, c.Email, c.Observacoes, c.Excluido, c.AceitaLembreteRetorno))
             .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<ClienteResumo>> BuscarAsync(string termo, int limite, CancellationToken cancellationToken = default)
@@ -139,5 +139,5 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
     }
 
     private static ClienteResumo Mapear(Cliente cliente) =>
-        new(cliente.Id, cliente.Nome, cliente.Telefone?.Valor, cliente.Email, cliente.Observacoes, cliente.Excluido);
+        new(cliente.Id, cliente.Nome, cliente.Telefone?.Valor, cliente.Email, cliente.Observacoes, cliente.Excluido, cliente.AceitaLembreteRetorno);
 }

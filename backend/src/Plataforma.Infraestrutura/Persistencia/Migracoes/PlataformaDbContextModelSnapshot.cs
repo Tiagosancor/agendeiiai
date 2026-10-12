@@ -991,6 +991,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("AceitaLembreteRetorno")
+                        .HasColumnType("boolean")
+                        .HasColumnName("aceita_lembrete_retorno");
+
                     b.Property<DateTimeOffset?>("AtualizadoEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("atualizado_em");
@@ -1046,6 +1050,86 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasDatabaseName("ix_clientes_negocio_id_telefone");
 
                     b.ToTable("clientes", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Clientes.LembreteRetornoEnvio", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AgendamentoGeradoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agendamento_gerado_id");
+
+                    b.Property<Guid>("AgendamentoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agendamento_id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<DateOnly>("DiaEnvio")
+                        .HasColumnType("date")
+                        .HasColumnName("dia_envio");
+
+                    b.Property<DateTimeOffset>("EnviadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enviado_em");
+
+                    b.Property<string>("Erro")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("erro");
+
+                    b.Property<string>("IdMensagem")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("id_mensagem");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Tentativas")
+                        .HasColumnType("integer")
+                        .HasColumnName("tentativas");
+
+                    b.Property<uint>("Versao")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_lembretes_retorno_envios");
+
+                    b.HasIndex("AgendamentoId")
+                        .HasDatabaseName("ix_lembretes_retorno_envios_agendamento_id");
+
+                    b.HasIndex("ClienteId", "AgendamentoId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_lembretes_retorno_envios_cliente_id_agendamento_id");
+
+                    b.HasIndex("NegocioId", "EnviadoEm")
+                        .HasDatabaseName("ix_lembretes_retorno_envios_negocio_id_enviado_em");
+
+                    b.ToTable("lembretes_retorno_envios", (string)null);
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Comissoes.FechamentoComissao", b =>
@@ -1929,6 +2013,28 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)")
                         .HasColumnName("imagem_fundo");
+
+                    b.Property<DateTimeOffset?>("LembreteRetornoAtivadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lembrete_retorno_ativado_em");
+
+                    b.Property<bool>("LembreteRetornoAtivo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("lembrete_retorno_ativo");
+
+                    b.Property<int>("LembreteRetornoDias")
+                        .HasColumnType("integer")
+                        .HasColumnName("lembrete_retorno_dias");
+
+                    b.Property<TimeOnly>("LembreteRetornoHorario")
+                        .HasColumnType("time without time zone")
+                        .HasColumnName("lembrete_retorno_horario");
+
+                    b.Property<string>("LembreteRetornoMensagem")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("lembrete_retorno_mensagem");
 
                     b.Property<bool>("LinkAgendamentoCopiado")
                         .HasColumnType("boolean")
@@ -2903,6 +3009,23 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_historico_assinaturas_assinaturas_assinatura_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Clientes.LembreteRetornoEnvio", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Agendamentos.Agendamento", null)
+                        .WithMany()
+                        .HasForeignKey("AgendamentoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_lembretes_retorno_envios_agendamentos_agendamento_id");
+
+                    b.HasOne("Plataforma.Dominio.Clientes.Cliente", null)
+                        .WithMany()
+                        .HasForeignKey("ClienteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_lembretes_retorno_envios_clientes_cliente_id");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Comissoes.FechamentoComissao", b =>

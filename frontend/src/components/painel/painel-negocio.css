@@ -29,6 +29,50 @@
 .painel-negocio-horarios > .flex:last-child { border-bottom: 0; }
 .painel-negocio-horarios input[type="time"] { width: 100%; }
 .painel-negocio-salvar { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.painel-lembrete-retorno { display: grid; gap: 22px; }
+.painel-lembrete-cabecalho { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.painel-lembrete-cabecalho h2 { margin: 0 0 5px; }
+.painel-lembrete-cabecalho p, .painel-lembrete-relatorio p { color: var(--painel-secundario); font-size: 14px; line-height: 1.6; }
+.painel-lembrete-cabecalho .painel-lembrete-trilha { margin-bottom: 5px; color: var(--painel-accent); font-size: 12px; font-weight: 600; }
+.painel-lembrete-estado { display: inline-flex; align-items: center; gap: 7px; flex: none; padding: 6px 11px; border-radius: 999px; background: var(--painel-elevado); color: var(--painel-secundario); font-size: 12px; font-weight: 600; }
+.painel-lembrete-estado > span { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.painel-lembrete-estado-ativo { color: var(--painel-accent); background: color-mix(in srgb, var(--painel-accent) 11%, var(--painel-superficie)); }
+.painel-lembrete-grade { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(260px, .75fr); gap: 24px; }
+.painel-lembrete-formulario { display: grid; gap: 18px; }
+.painel-lembrete-ativacao { display: flex; align-items: flex-start; gap: 12px; min-height: 48px; padding: 14px; border: 1px solid var(--painel-borda); border-radius: 12px; background: var(--painel-elevado); }
+.painel-lembrete-ativacao input { margin-top: 2px; }
+.painel-lembrete-ativacao span { display: grid; gap: 2px; }
+.painel-lembrete-ativacao strong { font-size: 14px; }
+.painel-lembrete-ativacao small, .painel-lembrete-formulario label > small, .painel-lembrete-relatorio > small { color: var(--painel-secundario); font-size: 12px; line-height: 1.5; }
+.painel-lembrete-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.painel-lembrete-formulario label { min-width: 0; }
+.painel-lembrete-formulario textarea { resize: vertical; }
+.painel-lembrete-variaveis { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 7px; color: var(--painel-secundario); font-size: 12px; line-height: 1.6; }
+.painel-lembrete-variaveis button { min-height: 32px; padding: 4px 8px; border: 1px solid var(--painel-borda); border-radius: 7px; background: var(--painel-elevado); color: var(--painel-texto); font-family: ui-monospace, monospace; overflow-wrap: anywhere; }
+.painel-lembrete-variaveis button:hover:not(:disabled) { border-color: color-mix(in srgb, var(--painel-accent) 55%, var(--painel-borda)); color: var(--painel-accent); }
+.painel-lembrete-variaveis button:disabled { cursor: not-allowed; opacity: .55; }
+.painel-lembrete-contagem { display: block; margin-top: 5px; text-align: right; }
+.painel-lembrete-erro { display: block; margin-top: 5px; color: #b91c1c; font-size: 13px; line-height: 1.5; }
+[data-theme="dark"] .painel-lembrete-erro { color: #fda4af; }
+.painel-lembrete-sucesso { color: #166534; font-size: 13px; }
+[data-theme="dark"] .painel-lembrete-sucesso { color: #86efac; }
+.painel-lembrete-aviso { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--painel-accent) 25%, var(--painel-borda)); border-radius: 10px; background: color-mix(in srgb, var(--painel-accent) 6%, var(--painel-superficie)); color: var(--painel-secundario); font-size: 13px; line-height: 1.6; }
+.painel-lembrete-previa { display: grid; gap: 7px; padding: 15px; border: 1px solid var(--painel-borda); border-radius: 12px; background: var(--painel-elevado); }
+.painel-lembrete-previa strong { font-size: 13px; }
+.painel-lembrete-previa p { color: var(--painel-texto); font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.painel-lembrete-formulario > button { justify-self: start; }
+.painel-lembrete-relatorio { display: flex; flex-direction: column; gap: 18px; padding: 20px; border: 1px solid var(--painel-borda); border-radius: 14px; background: var(--painel-elevado); }
+.painel-lembrete-relatorio h3 { margin-bottom: 4px; font-size: 16px; font-weight: 650; }
+.painel-lembrete-periodo { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+.painel-lembrete-indicadores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.painel-lembrete-indicadores > div { padding: 14px; border: 1px solid var(--painel-borda); border-radius: 11px; background: var(--painel-superficie); }
+.painel-lembrete-indicadores dt { color: var(--painel-secundario); font-size: 12px; line-height: 1.4; }
+.painel-lembrete-indicadores dd { margin-top: 6px; color: var(--painel-texto); font-size: 26px; font-weight: 700; line-height: 1; }
+.painel-lembrete-carregando { color: var(--painel-secundario); font-size: 14px; }
+.painel-lembrete-vazio { padding: 22px 12px; border: 1px dashed var(--painel-borda); border-radius: 11px; text-align: center; }
+.painel-lembrete-relatorio-erro { display: grid; gap: 12px; }
+.painel-lembrete-relatorio-erro p { color: #b91c1c; }
+[data-theme="dark"] .painel-lembrete-relatorio-erro p { color: #fda4af; }
 @media (min-width: 1200px) {
   .painel-negocio-formulario { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .painel-negocio-larga { grid-column: 1 / -1; }
@@ -41,4 +85,12 @@
   .painel-negocio-horarios > .flex > span:first-child { grid-column: 1 / 3; width: auto; font-weight: 600; }
   .painel-negocio-horarios > .flex > label { grid-column: 3; }
   .painel-negocio-salvar > button { width: 100%; }
+  .painel-lembrete-cabecalho { align-items: flex-start; }
+  .painel-lembrete-grade { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .painel-lembrete-campos { grid-template-columns: minmax(0, 1fr); }
+  .painel-lembrete-formulario > button { width: 100%; }
+  .painel-lembrete-relatorio { padding: 18px; }
+}
+@media (min-width: 768px) and (max-width: 1023px) {
+  .painel-lembrete-grade { grid-template-columns: minmax(0, 1fr); }
 }

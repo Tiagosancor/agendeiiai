@@ -67,6 +67,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<Cliente> Clientes => Set<Cliente>();
 
+    public DbSet<LembreteRetornoEnvio> LembretesRetornoEnvios => Set<LembreteRetornoEnvio>();
+
     public DbSet<HorarioTrabalho> HorariosTrabalho => Set<HorarioTrabalho>();
 
     public DbSet<BloqueioAgenda> BloqueiosAgenda => Set<BloqueioAgenda>();

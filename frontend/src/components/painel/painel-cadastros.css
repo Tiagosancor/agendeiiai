@@ -57,6 +57,8 @@
 .painel-cadastro-status { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 999px; background: var(--painel-elevado); color: var(--painel-secundario); font-size: 12px; font-weight: 500; white-space: nowrap; }
 .painel-cadastro-status > span { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .painel-cadastro-status-ativo { color: var(--painel-accent); background: color-mix(in srgb, var(--painel-accent) 10%, var(--painel-superficie)); }
+.painel-cliente-lembrete { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; white-space: nowrap; }
+.painel-cliente-lembrete:has(input:disabled) { cursor: wait; opacity: .65; }
 .painel-cadastro-carregando { padding: 16px; border-radius: 12px; background: var(--painel-elevado); color: var(--painel-secundario); font-size: 14px; }
 .painel-cadastro .painel-cadastro-categorias { padding: 20px; border: 1px solid var(--painel-borda); border-radius: 16px; background: var(--painel-superficie); }
 .painel-cadastro-categorias button[title] { min-height: 40px; }

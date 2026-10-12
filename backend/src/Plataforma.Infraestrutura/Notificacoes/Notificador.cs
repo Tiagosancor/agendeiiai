@@ -321,6 +321,9 @@ public sealed class Notificador : INotificador
             ExecutarSemFalharAsync(() => _email.EnviarAsync(email, assunto, corpo, cancellationToken), "E-mail/alerta-estoque")));
     }
 
+    public Task<ResultadoEnvioWhatsApp> EnviarLembreteRetornoAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default) =>
+        EnviarWhatsAppSemFalharAsync(telefone, mensagem, "WhatsApp/lembrete-retorno", cancellationToken);
+
     public async Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default)
     {
         var negocio = await ObterNegocioAsync(cancellationToken);

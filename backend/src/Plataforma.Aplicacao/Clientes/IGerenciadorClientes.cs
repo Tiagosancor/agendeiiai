@@ -24,7 +24,9 @@ public interface IBuscaClientes
     Task<IReadOnlyList<ClienteResumo>> BuscarAsync(string termo, int limite, CancellationToken cancellationToken = default);
 }
 
-public sealed record ClienteResumo(Guid Id, string Nome, string? Telefone, string? Email, string? Observacoes, bool Excluido);
+/// <param name="AceitaLembreteRetorno">Opt-out do lembrete de retorno (muda em <c>PATCH /painel/clientes/{id}/aceita-lembrete-retorno</c>).</param>
+public sealed record ClienteResumo(
+    Guid Id, string Nome, string? Telefone, string? Email, string? Observacoes, bool Excluido, bool AceitaLembreteRetorno = true);
 
 public sealed record CriarCliente(string Nome, string? Telefone, string? Email = null, string? Observacoes = null);
 

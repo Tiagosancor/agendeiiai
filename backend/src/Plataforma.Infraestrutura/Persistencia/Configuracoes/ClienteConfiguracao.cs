@@ -18,6 +18,9 @@ public sealed class ClienteConfiguracao : IEntityTypeConfiguration<Cliente>
         builder.Property(c => c.Observacoes).HasMaxLength(2000);
         builder.Property(c => c.Origem).HasConversion<string>().HasMaxLength(20).IsRequired();
 
+        // DEFAULT TRUE só na coluna (migration), para os clientes que já existiam: no modelo, faria o EF não mandar o false.
+        builder.Property(c => c.AceitaLembreteRetorno).IsRequired();
+
         // Opcional só no cadastro rápido do encaixe (seção 7); o EF não passa nulo pelo conversor.
         builder.Property(c => c.Telefone)
             .HasConversion(telefone => telefone!.Valor, valor => TelefoneE164.Criar(valor))

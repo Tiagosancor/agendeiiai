@@ -77,6 +77,23 @@ public partial class Negocio : EntidadeBase
     /// </summary>
     public bool WhatsAppAvisoProfissional { get; private set; }
 
+    /// <summary>Lembrete de retorno ao cliente por WhatsApp (ver <see cref="LembreteRetorno"/>). Desligado por padrão, inclusive nos negócios que já existiam.</summary>
+    public bool LembreteRetornoAtivo { get; private set; }
+
+    /// <summary>Quantos dias depois do último atendimento concluído o lembrete sai.</summary>
+    public int LembreteRetornoDias { get; private set; } = LembreteRetorno.DiasPadrao;
+
+    /// <summary>Hora do envio, no fuso do negócio.</summary>
+    public TimeOnly LembreteRetornoHorario { get; private set; } = LembreteRetorno.HorarioPadrao;
+
+    public string LembreteRetornoMensagem { get; private set; } = LembreteRetorno.MensagemPadrao;
+
+    /// <summary>
+    /// Última vez que o lembrete foi ligado. Só sai lembrete cujo disparo (dia + horário) é igual ou posterior a isto: ligar
+    /// (ou religar) nunca manda os que "deviam" ter saído antes.
+    /// </summary>
+    public DateTimeOffset? LembreteRetornoAtivadoEm { get; private set; }
+
     public IReadOnlyCollection<HorarioFuncionamentoDia> HorarioFuncionamento => _horarioFuncionamento.AsReadOnly();
 
     /// <summary>Checklist de primeiros passos do painel dispensado pelo usuário (seção 6.5).</summary>
@@ -140,6 +157,24 @@ public partial class Negocio : EntidadeBase
     }
 
     public void DefinirAvisoProfissionalPorWhatsApp(bool ativo) => WhatsAppAvisoProfissional = ativo;
+
+    /// <summary>
+    /// Desligar guarda dias, horário e mensagem (e o histórico de envios fica onde está). Ligar de novo marca
+    /// <see cref="LembreteRetornoAtivadoEm"/>. Lança <see cref="ArgumentException"/> com configuração inválida (ver <see cref="LembreteRetorno.Validar"/>).
+    /// </summary>
+    public void ConfigurarLembreteRetorno(bool ativo, int dias, TimeOnly horario, string mensagem, DateTimeOffset agora)
+    {
+        if (LembreteRetorno.Validar(dias, horario, mensagem) is { Count: > 0 } erros)
+            throw new ArgumentException(erros.Values.First()[0], erros.Keys.First());
+
+        if (ativo && !LembreteRetornoAtivo)
+            LembreteRetornoAtivadoEm = agora;
+
+        LembreteRetornoAtivo = ativo;
+        LembreteRetornoDias = dias;
+        LembreteRetornoHorario = horario;
+        LembreteRetornoMensagem = mensagem.Trim();
+    }
 
     /// <summary>
     /// Troca o link público e devolve o <see cref="SlugAnterior"/> que passa a redirecionar para o novo. Disponibilidade (em uso

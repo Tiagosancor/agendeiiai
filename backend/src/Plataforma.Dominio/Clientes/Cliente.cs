@@ -27,6 +27,11 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
 
     public DateTimeOffset? ExcluidoEm { get; private set; }
 
+    /// <summary>Opt-out do lembrete de retorno ("faz N dias desde o seu último atendimento"). Padrão: aceita.</summary>
+    public bool AceitaLembreteRetorno { get; private set; } = true;
+
+    public void DefinirAceitaLembreteRetorno(bool aceita) => AceitaLembreteRetorno = aceita;
+
     protected Cliente()
     {
     }
@@ -89,6 +94,7 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
         Email = null;
         Observacoes = null;
         Telefone = TelefoneAnonimo(Id);
+        AceitaLembreteRetorno = false;
         Excluido = true;
         ExcluidoEm = agora;
     }

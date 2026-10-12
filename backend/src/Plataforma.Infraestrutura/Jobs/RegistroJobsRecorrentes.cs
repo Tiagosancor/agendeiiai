@@ -44,6 +44,11 @@ public sealed class RegistroJobsRecorrentes(
         // Resumo diário de estoque baixo/esgotado aos Administradores (seção 7): 11:00 UTC = 08:00 em Brasília.
         gerenciador.AddOrUpdate<Estoque.JobAlertaEstoque>(
             "alerta-estoque", job => job.ExecutarAsync(CancellationToken.None), "0 11 * * *");
+
+        // Lembrete de retorno: cada negócio tem o próprio horário e fuso, e o job só envia dentro da janela que começa nele —
+        // por isso roda a cada 15 min, não uma vez por dia. Duas execuções juntas não duplicam: o índice único do envio barra.
+        gerenciador.AddOrUpdate<Clientes.JobLembreteRetorno>(
+            "lembrete-retorno", job => job.ExecutarAsync(CancellationToken.None), "*/15 * * * *");
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancelamento)

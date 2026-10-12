@@ -21,7 +21,7 @@ export class ErroApi extends Error {
 }
 
 interface OpcoesRequisicao {
-  metodo?: "GET" | "POST" | "PUT" | "DELETE";
+  metodo?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   corpo?: unknown;
   tokenAcesso?: string | null;
   cabecalhos?: Record<string, string>;

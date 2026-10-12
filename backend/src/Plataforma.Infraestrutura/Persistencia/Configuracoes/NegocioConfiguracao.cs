@@ -53,6 +53,13 @@ public sealed class NegocioConfiguracao : IEntityTypeConfiguration<Negocio>
         builder.Property(n => n.WhatsAppAtivoParaConfirmacoes).IsRequired().HasDefaultValue(false);
         builder.Property(n => n.WhatsAppAvisoProfissional).IsRequired().HasDefaultValue(false);
 
+        // Lembrete de retorno: os padrões dos negócios que já existiam ficam só na migration (DEFAULT da coluna) —
+        // HasDefaultValue no modelo faria o EF omitir do INSERT um valor igual ao padrão do CLR.
+        builder.Property(n => n.LembreteRetornoAtivo).IsRequired();
+        builder.Property(n => n.LembreteRetornoDias).IsRequired();
+        builder.Property(n => n.LembreteRetornoHorario).IsRequired();
+        builder.Property(n => n.LembreteRetornoMensagem).HasMaxLength(LembreteRetorno.TamanhoMaximoMensagem).IsRequired();
+
         builder.OwnsOne(n => n.Endereco, endereco =>
         {
             endereco.Property(e => e.Bairro).HasColumnName("endereco_bairro").HasMaxLength(120);
