@@ -11,11 +11,12 @@ import { MinhaAgenda } from "@/components/painel/MinhaAgenda";
 import { SemanaAgenda, inicioDaSemana, somarDias } from "@/components/painel/SemanaAgenda";
 import { AvisoForcar } from "@/components/painel/AvisoForcar";
 import { GradeDoDia } from "@/components/painel/GradeDoDia";
+import { SeletorClienteAgenda } from "@/components/painel/SeletorClienteAgenda";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import type {
   AgendaSemana,
   AgendamentoResumo,
-  ClienteResumo,
+  ClienteBusca,
   ConsultaForcar,
   CriarAgendamento,
   FormaPagamento,
@@ -496,9 +497,8 @@ function ModalNovoAgendamento({
   const tentativaForcada = useTentativaIdempotente();
 
   const [servicos, setServicos] = useState<ServicoResumo[]>([]);
-  const [clientes, setClientes] = useState<ClienteResumo[]>([]);
   const [servicoIdsSelecionados, setServicoIdsSelecionados] = useState<string[]>([]);
-  const [clienteId, setClienteId] = useState("");
+  const [cliente, setCliente] = useState<ClienteBusca | null>(null);
   const [horariosLivres, setHorariosLivres] = useState<string[]>([]);
   const [horarioSelecionado, setHorarioSelecionado] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -519,12 +519,8 @@ function ModalNovoAgendamento({
     setOutroHorario("");
     setConsultaForcar(null);
     // Busca disparada pela abertura do modal.
-    Promise.all([
-      chamarApi<ServicoResumo[]>("/painel/agenda/servicos"),
-      chamarApi<ClienteResumo[]>("/painel/clientes"),
-    ]).then(([listaServicos, listaClientes]) => {
+    chamarApi<ServicoResumo[]>("/painel/agenda/servicos").then((listaServicos) => {
       setServicos(listaServicos.filter((s) => s.ativo));
-      setClientes(listaClientes);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aberto, horarioInicial]);
@@ -564,12 +560,12 @@ function ModalNovoAgendamento({
   const inicio = outroHorario ? new Date(`${data}T${outroHorario}`).toISOString() : horarioSelecionado;
 
   function dadosDoAgendamento(): CriarAgendamento {
-    return { profissionalId, clienteId, servicoIds: servicoIdsSelecionados, inicio, observacoes: observacoes || null };
+    return { profissionalId, clienteId: cliente?.id ?? "", servicoIds: servicoIdsSelecionados, inicio, observacoes: observacoes || null };
   }
 
   async function concluirCriacao() {
     setServicoIdsSelecionados([]);
-    setClienteId("");
+    setCliente(null);
     setHorarioSelecionado("");
     setOutroHorario("");
     setObservacoes("");
@@ -582,7 +578,7 @@ function ModalNovoAgendamento({
     setErro(null);
     setConsultaForcar(null);
 
-    if (servicoIdsSelecionados.length === 0 || !clienteId || !inicio) {
+    if (servicoIdsSelecionados.length === 0 || !cliente || !inicio) {
       setErro("Escolha ao menos um serviço, o cliente e o horário.");
       return;
     }
@@ -634,18 +630,7 @@ function ModalNovoAgendamento({
           </div>
         </div>
 
-        <label>
-          <span className={classeLabel}>Cliente</span>
-          <select required className={classeInput} value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-            <option value="">Selecione...</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nome}
-                {c.telefone && ` (${c.telefone})`}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SeletorClienteAgenda cliente={cliente} aoSelecionar={setCliente} />
 
         <label>
           <span className={classeLabel}>Horário ({duracaoTotal} min no total)</span>

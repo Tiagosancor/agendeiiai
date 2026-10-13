@@ -27,6 +27,7 @@ interface OpcoesRequisicao {
   corpo?: unknown;
   tokenAcesso?: string | null;
   cabecalhos?: Record<string, string>;
+  sinal?: AbortSignal;
 }
 
 /**
@@ -46,6 +47,7 @@ export async function requisicaoApi<T>(caminho: string, opcoes: OpcoesRequisicao
       ...opcoes.cabecalhos,
     },
     body: formulario ? (opcoes.corpo as FormData) : opcoes.corpo !== undefined ? JSON.stringify(opcoes.corpo) : undefined,
+    signal: opcoes.sinal,
   });
 
   if (!resposta.ok) {
