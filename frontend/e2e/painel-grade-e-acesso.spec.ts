@@ -27,7 +27,7 @@ test("clicar num horário livre da grade abre a criação com profissional e hor
   );
   const servico = (await (await request.get(`${API}/painel/profissionais/${profissional.id}/servicos`, { headers: auth })).json())[0];
   const nomeCliente = `Grade ${Date.now().toString().slice(-6)}`;
-  const clienteId: string = await (
+  await (
     await request.post(`${API}/painel/clientes`, {
       headers: auth,
       data: { nome: nomeCliente, telefone: `71${Math.floor(900000000 + Math.random() * 99999999)}` },
@@ -64,7 +64,8 @@ test("clicar num horário livre da grade abre a criação com profissional e hor
   await expect(modal.getByText(`Com ${profissional.nome}`)).toBeVisible();
   await expect(modal.getByLabel(/^Horário/)).toHaveValue(horario!);
   await modal.getByLabel(new RegExp(`^${servico.nome}`)).check();
-  await modal.getByLabel("Cliente").selectOption(clienteId);
+  await modal.getByLabel("Buscar cliente por nome ou telefone").fill(nomeCliente);
+  await modal.getByRole("option", { name: new RegExp(nomeCliente) }).click();
   await modal.getByRole("button", { name: "Criar" }).click();
   await expect(modal).toBeHidden();
 

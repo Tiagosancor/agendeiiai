@@ -305,6 +305,14 @@ export interface ClienteResumo {
   aceitaLembreteRetorno: boolean;
 }
 
+/** Resultado enxuto usado pela busca e pelo cadastro rápido dentro da Agenda. */
+export interface ClienteBusca {
+  id: string;
+  nome: string;
+  telefone: string | null;
+  email: string | null;
+}
+
 export interface ConfiguracaoLembreteRetorno {
   ativo: boolean;
   dias: number;

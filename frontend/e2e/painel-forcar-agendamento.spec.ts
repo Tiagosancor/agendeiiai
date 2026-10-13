@@ -25,7 +25,7 @@ test("administrador força um agendamento fora do expediente e a agenda marca co
     data: { nome: nomeCliente, telefone: `71${Math.floor(900000000 + Math.random() * 99999999)}` },
   });
   expect(cliente.status()).toBe(201);
-  const clienteId: string = await cliente.json();
+  await cliente.json();
 
   // Um dia útil bem à frente, às 23:15 — fora de qualquer expediente de exemplo.
   // Um dia útil pode ser folga desse profissional. Confere o expediente real antes
@@ -59,7 +59,8 @@ test("administrador força um agendamento fora do expediente e a agenda marca co
 
   const modal = page.getByRole("dialog");
   await modal.getByLabel(new RegExp(`^${servico.nome}`)).check();
-  await modal.getByLabel("Cliente").selectOption(clienteId);
+  await modal.getByLabel("Buscar cliente por nome ou telefone").fill(nomeCliente);
+  await modal.getByRole("option", { name: new RegExp(nomeCliente) }).click();
   await modal.getByLabel(/Outro horário/).fill("23:15");
   await modal.getByRole("button", { name: "Criar" }).click();
 

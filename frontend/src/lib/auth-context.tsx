@@ -13,6 +13,7 @@ interface OpcoesChamada {
   metodo?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   corpo?: unknown;
   cabecalhos?: Record<string, string>;
+  sinal?: AbortSignal;
 }
 
 interface ContextoAutenticacao {
