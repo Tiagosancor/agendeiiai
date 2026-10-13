@@ -385,6 +385,14 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             // Expirada, cancelada ou já confirmada desde a leitura: decide sobre o estado atual, com a linha travada.
             await TravarLinhaERelerAsync(agendamento, cancellationToken);
 
+            // COMMIT ambíguo (B7.2): só na repetição, "já confirmada" é o que a tentativa anterior desta requisição gravou.
+            // Uma requisição nova contra uma reserva já confirmada continua recusada abaixo.
+            if (tentativas.Repetida && agendamento.Status == StatusAgendamento.Agendado && agendamento.ClienteId is not null)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComSucesso(agendamento.Id);
+            }
+
             if (agendamento.Status != StatusAgendamento.Reservado || agendamento.ReservadoAte < DateTimeOffset.UtcNow)
             {
                 await transacao.RollbackAsync(cancellationToken);
@@ -440,6 +448,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         var repeticaoDoMesmoCliente = false;
         var tentativas = new TentativasDaTransacao(_dbContext);
 
+        // Marca desta requisição, gravada como data do consentimento (precisão do Postgres: microssegundos). Na repetição da
+        // estratégia (COMMIT ambíguo, B7.2) é o que distingue "fui eu que confirmei" de "outra requisição do mesmo telefone
+        // confirmou": só no segundo caso a confirmação e o aviso ao profissional não saem de novo.
+        var momento = NovoMomentoDaRequisicao();
+
         var resultado = await estrategia.ExecuteAsync(async () =>
         {
             repeticaoDoMesmoCliente = false;
@@ -469,7 +482,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 && await _dbContext.Clientes.AnyAsync(c => c.Id == clienteAtual && c.Telefone == telefone, cancellationToken))
             {
                 await transacao.RollbackAsync(cancellationToken);
-                repeticaoDoMesmoCliente = true;
+                repeticaoDoMesmoCliente = agendamento.ConsentimentoData?.UtcTicks != momento.UtcTicks;
                 return ResultadoAgendamento.ComSucesso(agendamento.Id);
             }
 
@@ -509,7 +522,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 }
             }
 
-            agendamento.RegistrarConsentimento(DateTimeOffset.UtcNow, dados.IpCliente, VersaoTermos.Atual);
+            agendamento.RegistrarConsentimento(momento, dados.IpCliente, VersaoTermos.Atual);
             agendamento.ConfirmarReserva();
             return await GravarConfirmacaoAsync(agendamento, transacao, cancellationToken);
         });
@@ -521,6 +534,24 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     }
 
     /// <summary>Busca o cliente por (negócio, telefone) — índice único (seção 8.1.4) — ou cria; nunca sobrescreve dado já existente, só preenche o vazio.</summary>
+    private static long _ultimoMomentoTicks;
+
+    /// <summary>
+    /// Instante em microssegundos (o que o Postgres guarda), estritamente crescente no processo: duas confirmações
+    /// simultâneas nunca recebem o mesmo, senão a que chegou depois se reconheceria na gravação da outra.
+    /// </summary>
+    private static DateTimeOffset NovoMomentoDaRequisicao()
+    {
+        var agora = DateTimeOffset.UtcNow.UtcTicks / 10 * 10;
+        while (true)
+        {
+            var anterior = Volatile.Read(ref _ultimoMomentoTicks);
+            var novo = Math.Max(agora, anterior + 10);
+            if (Interlocked.CompareExchange(ref _ultimoMomentoTicks, novo, anterior) == anterior)
+                return new DateTimeOffset(novo, TimeSpan.Zero);
+        }
+    }
+
     private async Task<(Guid ClienteId, string? NomeInformado)> IdentificarOuCriarClienteAsync(
         Guid negocioId, TelefoneE164 telefone, string nome, string? email, CancellationToken cancellationToken)
     {
@@ -670,13 +701,21 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     {
         var resultado = ResultadoCancelamentoPublico.NaoEncontrado;
 
-        await ExecutarNaTravaDeQuinzenasAsync(async () =>
+        await ExecutarNaTravaDeQuinzenasAsync(async repetida =>
         {
             resultado = ResultadoCancelamentoPublico.NaoEncontrado;
 
             var agendamento = await _dbContext.Agendamentos.FindAsync([agendamentoId], cancellationToken);
             if (agendamento is null)
                 return false;
+
+            // COMMIT ambíguo (B7.2): só na repetição, "já cancelado" é o que a tentativa anterior desta requisição gravou
+            // (inclusive a auditoria). O aviso ao profissional sai depois, uma vez, a partir deste resultado.
+            if (repetida && agendamento.Status == StatusAgendamento.Cancelado)
+            {
+                resultado = ResultadoCancelamentoPublico.Cancelado;
+                return false;
+            }
 
             if (pelaGestaoPublica)
             {
@@ -762,6 +801,14 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             // Cancelado, iniciado, concluído, remarcado ou transferido por outra requisição desde a leitura: trava a linha
             // (depois da trava do destino, a mesma ordem de sempre) e valida tudo daqui para baixo com o estado atual.
             await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+            // COMMIT ambíguo (B7.2): só na repetição, "já está com o destino" é o que a tentativa anterior desta requisição gravou.
+            if (tentativas.Repetida && agendamento.ProfissionalId == novoProfissionalId
+                && agendamento.Status is StatusAgendamento.Agendado or StatusAgendamento.Reservado)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComSucesso(agendamento.Id);
+            }
 
             if (agendamento.ProfissionalId != profissionalOrigemId
                 || agendamento.Status is not (StatusAgendamento.Agendado or StatusAgendamento.Reservado))
@@ -983,9 +1030,9 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         MudarStatusComLinhaTravadaAsync(agendamentoId, a => a.IniciarAtendimento(), cancellationToken);
 
     public Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
-        ExecutarNaTravaDeQuinzenasAsync(() => ConcluirAsync(agendamentoId, cancellationToken), cancellationToken);
+        ExecutarNaTravaDeQuinzenasAsync(repetida => ConcluirAsync(agendamentoId, repetida, cancellationToken), cancellationToken);
 
-    private async Task<bool> ConcluirAsync(Guid agendamentoId, CancellationToken cancellationToken)
+    private async Task<bool> ConcluirAsync(Guid agendamentoId, bool repetida, CancellationToken cancellationToken)
     {
         var agendamento = await _dbContext.Agendamentos
             .Include(a => a.Servicos)
@@ -994,6 +1041,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             return false;
 
         await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+        // COMMIT ambíguo (B7.2): só na repetição, "já concluído" é o que a tentativa anterior desta requisição gravou (comissão
+        // e selo incluídos, na mesma transação). Uma requisição nova contra um atendimento concluído continua recusada.
+        if (repetida && agendamento.Status == StatusAgendamento.Concluido)
+            return true;
+
         await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
 
         // Percentual vigente agora (seção 7): fica gravado em cada linha, e mudar depois não mexe nela.
@@ -1019,7 +1072,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     /// Selo já usado num resgate fica (a recompensa já foi entregue).
     /// </summary>
     public Task<bool> ReabrirAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
-        ExecutarNaTravaDeQuinzenasAsync(() => ReabrirNaTravaAsync(agendamentoId, cancellationToken), cancellationToken);
+        ExecutarNaTravaDeQuinzenasAsync(_ => ReabrirNaTravaAsync(agendamentoId, cancellationToken), cancellationToken);
 
     private async Task<bool> ReabrirNaTravaAsync(Guid agendamentoId, CancellationToken cancellationToken)
     {
@@ -1364,7 +1417,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     /// Concluir, reabrir e cancelar rodam numa transação com a trava de quinzenas do negócio
     /// (seção 7), a mesma que o fechamento toma — ver <see cref="TravaQuinzenas"/>.
     /// </summary>
-    private Task<bool> ExecutarNaTravaDeQuinzenasAsync(Func<Task<bool>> acao, CancellationToken cancellationToken)
+    private Task<bool> ExecutarNaTravaDeQuinzenasAsync(Func<bool, Task<bool>> acao, CancellationToken cancellationToken)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
@@ -1374,7 +1427,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await _travaQuinzenas.TravarNegocioAsync(cancellationToken);
-            var resultado = await acao();
+            var resultado = await acao(tentativas.Repetida);
             await transacao.CommitAsync(cancellationToken);
             return resultado;
         });

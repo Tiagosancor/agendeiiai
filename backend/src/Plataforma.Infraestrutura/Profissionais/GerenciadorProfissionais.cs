@@ -153,7 +153,9 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
             if (usuarioExistente is not null)
                 (await _dbContext.Usuarios.FirstAsync(u => u.Id == usuarioExistente.Id, cancellationToken)).VincularProfissional(profissional.Id);
             await SalvarComVinculoAsync(novoUsuario?.Email, cancellationToken);
-        }, cancellationToken);
+        }, cancellationToken,
+        // COMMIT ambíguo (B7.2): o Id do profissional é desta requisição; se já está gravado, a tentativa anterior concluiu a criação.
+        jaConfirmado: ct => _dbContext.Profissionais.AsNoTracking().AnyAsync(p => p.Id == profissional.Id, ct));
 
         if (novoUsuario is not null && dados.Acesso!.EnviarConvite)
             await _redefinicaoSenha.EnviarConviteAsync(novoUsuario.Id, cancellationToken);
@@ -312,7 +314,8 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     /// (FOR UPDATE) antes de contar: dois cadastros simultâneos no último lugar livre não
     /// passam os dois. Sem assinatura (só em testes antigos), não há limite.
     /// </summary>
-    private async Task DentroDoLimiteDoPlanoAsync(Func<Task> acao, CancellationToken cancellationToken)
+    private async Task DentroDoLimiteDoPlanoAsync(
+        Func<Task> acao, CancellationToken cancellationToken, Func<CancellationToken, Task<bool>>? jaConfirmado = null)
     {
         var negocioId = _contextoNegocio.NegocioId!.Value;
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
@@ -325,6 +328,10 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
 
             await _dbContext.Database.ExecuteSqlInterpolatedAsync(
                 $"SELECT 1 FROM assinaturas WHERE negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+
+            // Antes do limite: a criação já confirmada ocupa o último lugar e seria recusada por ele.
+            if (tentativas.Repetida && jaConfirmado is not null && await jaConfirmado(cancellationToken))
+                return;
 
             var plano = await (
                 from a in _dbContext.Assinaturas

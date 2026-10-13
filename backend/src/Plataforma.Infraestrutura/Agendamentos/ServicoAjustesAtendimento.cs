@@ -37,6 +37,8 @@ public sealed class ServicoAjustesAtendimento : IServicoAjustesAtendimento
             || !Enum.TryParse<ModoAjusteValor>(dados.Modo, ignoreCase: true, out var modo) || !Enum.IsDefined(modo))
             return Task.FromResult(ResultadoAjusteValor.Falha(ErroAjusteValor.DadosInvalidos, "Escolha desconto ou acréscimo, em R$ ou %."));
 
+        // Id desta requisição, igual em todas as tentativas (COMMIT ambíguo, B7.2); um novo ajuste legítimo gera outro.
+        var ajusteId = Guid.NewGuid();
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
         return estrategia.ExecuteAsync(async () =>
@@ -44,6 +46,12 @@ public sealed class ServicoAjustesAtendimento : IServicoAjustesAtendimento
             tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             await _travaQuinzenas.TravarNegocioAsync(cancellationToken);
+
+            // A tentativa anterior pode ter confirmado o COMMIT sem a resposta chegar: histórico, valor e auditoria já estão gravados.
+            if (tentativas.Repetida
+                && await _dbContext.AjustesValorAtendimento.AsNoTracking().Where(a => a.Id == ajusteId).Select(a => (decimal?)a.ValorDepois)
+                    .FirstOrDefaultAsync(cancellationToken) is { } valorGravado)
+                return ResultadoAjusteValor.Ok(valorGravado);
 
             var agendamento = await _dbContext.Agendamentos.Include(a => a.Servicos)
                 .FirstOrDefaultAsync(a => a.Id == agendamentoId, cancellationToken);
@@ -67,7 +75,7 @@ public sealed class ServicoAjustesAtendimento : IServicoAjustesAtendimento
             try
             {
                 ajuste = agendamento.AjustarValor(linhaId, tipo, modo, dados.Valor, dados.Motivo ?? string.Empty,
-                    usuario.Id, DateTimeOffset.UtcNow, correcaoAposConclusao: correcao);
+                    usuario.Id, DateTimeOffset.UtcNow, correcaoAposConclusao: correcao, ajusteId: ajusteId);
             }
             catch (ArgumentException excecao)
             {

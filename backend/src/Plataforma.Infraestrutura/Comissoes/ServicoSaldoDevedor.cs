@@ -77,7 +77,17 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
         _dbContext.LancamentosSaldoDevedor.Add(vale);
         _auditoria.Registrar(AcoesAuditoria.LancarVale, nameof(LancamentoSaldoDevedor), vale.Id,
             $"{nome}: {FormatacaoBrasil.Reais(vale.Valor)} em {vale.Data:dd/MM/yyyy}" + (vale.Descricao is null ? "" : $". Motivo: {vale.Descricao}"));
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            // COMMIT ambíguo: o vale (e a auditoria) já foi gravado pela tentativa anterior desta requisição.
+            if (!await _dbContext.CriacaoJaConfirmadaAsync<LancamentoSaldoDevedor>(excecao, vale.Id, cancellationToken))
+                throw;
+        }
+
         return vale.Id;
     }
 

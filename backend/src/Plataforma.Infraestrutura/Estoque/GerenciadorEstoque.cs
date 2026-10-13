@@ -44,7 +44,17 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
 
         _auditoria.Registrar(AcoesAuditoria.CriarProduto, nameof(Produto), produto.Id,
             $"Nome: {produto.Nome}; estoque inicial: {dados.QuantidadeInicial}");
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            // COMMIT ambíguo: o produto (com estoque inicial e auditoria) já foi gravado pela tentativa anterior desta requisição.
+            if (!await _dbContext.CriacaoJaConfirmadaAsync<Produto>(excecao, produto.Id, cancellationToken))
+                throw;
+        }
+
         return produto.Id;
     }
 
