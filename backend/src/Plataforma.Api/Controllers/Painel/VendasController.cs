@@ -1,3 +1,4 @@
+using Plataforma.Api.Idempotencia;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Clientes;
@@ -47,6 +48,7 @@ public sealed class VendasController : ControllerBase
     }
 
     [HttpPost]
+    [Idempotente("POST painel/vendas", StatusCodes.Status201Created)]
     public async Task<IActionResult> Lancar(LancarVenda dados, CancellationToken cancellationToken)
     {
         try

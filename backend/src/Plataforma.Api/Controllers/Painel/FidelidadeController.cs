@@ -1,3 +1,4 @@
+using Plataforma.Api.Idempotencia;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Fidelidade;
@@ -36,6 +37,7 @@ public sealed class FidelidadeController : ControllerBase
         Ok(await _gerenciador.ObterProgressoAsync(clienteId, cancellationToken));
 
     [HttpPost("clientes/{clienteId:guid}/resgatar")]
+    [Idempotente("POST painel/fidelidade/clientes/{id}/resgatar", StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Resgatar(Guid clienteId, CancellationToken cancellationToken) =>
         await _gerenciador.ResgatarRecompensaAsync(clienteId, cancellationToken)
             ? NoContent()

@@ -1,3 +1,4 @@
+using Plataforma.Aplicacao.Idempotencia;
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Auditoria;
@@ -54,11 +55,13 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
     private readonly IUsuarioAtual _usuarioAtual;
     private readonly IRegistroAuditoria _auditoria;
     private readonly TravaQuinzenas _trava;
+    private readonly IServicoIdempotencia _idempotencia;
 
     public ServicoSaldoDevedor(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria,
-        TravaQuinzenas trava)
+        TravaQuinzenas trava, IServicoIdempotencia idempotencia)
     {
+        _idempotencia = idempotencia;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _usuarioAtual = usuarioAtual;
@@ -72,23 +75,32 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
         var nome = await NomeDaPessoaAtivaAsync(pessoa, cancellationToken);
         var data = dados.Data ?? await HojeAsync(cancellationToken);
 
+        // O Id nasce antes da estratégia (igual em toda tentativa da requisição, B7): COMMIT ambíguo reconhece o vale já gravado.
         var vale = LancamentoSaldoDevedor.CriarVale(
             _contextoNegocio.NegocioId!.Value, pessoa, dados.Valor, data, dados.Motivo, _usuarioAtual.UsuarioId);
-        _dbContext.LancamentosSaldoDevedor.Add(vale);
-        _auditoria.Registrar(AcoesAuditoria.LancarVale, nameof(LancamentoSaldoDevedor), vale.Id,
-            $"{nome}: {FormatacaoBrasil.Reais(vale.Valor)} em {vale.Data:dd/MM/yyyy}" + (vale.Descricao is null ? "" : $". Motivo: {vale.Descricao}"));
-        try
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
+        return await estrategia.ExecuteAsync(async () =>
         {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
-        {
-            // COMMIT ambíguo: o vale (e a auditoria) já foi gravado pela tentativa anterior desta requisição.
-            if (!await _dbContext.CriacaoJaConfirmadaAsync<LancamentoSaldoDevedor>(excecao, vale.Id, cancellationToken))
-                throw;
-        }
+            tentativas.Iniciar();
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        return vale.Id;
+            // Idempotency-Key (se houver): primeira instrução mutável da transação.
+            if (await _idempotencia.ReivindicarAsync<ResultadoId>(cancellationToken) is { } anterior)
+                return anterior.Id;
+
+            if (tentativas.Repetida
+                && await _dbContext.LancamentosSaldoDevedor.AsNoTracking().AnyAsync(l => l.Id == vale.Id, cancellationToken))
+                return vale.Id;
+
+            _dbContext.LancamentosSaldoDevedor.Add(vale);
+            _auditoria.Registrar(AcoesAuditoria.LancarVale, nameof(LancamentoSaldoDevedor), vale.Id,
+                $"{nome}: {FormatacaoBrasil.Reais(vale.Valor)} em {vale.Data:dd/MM/yyyy}" + (vale.Descricao is null ? "" : $". Motivo: {vale.Descricao}"));
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _idempotencia.ConcluirAsync(new ResultadoId(vale.Id), cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return vale.Id;
+        });
     }
 
     public async Task<Guid?> LancarConsumoAsync(Guid produtoId, LancarConsumo dados, CancellationToken cancellationToken = default)
@@ -106,6 +118,11 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
         {
             tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            // Idempotency-Key (se houver): primeira instrução mutável, antes da trava do produto.
+            if (await _idempotencia.ReivindicarAsync<ResultadoId>(cancellationToken) is { } anterior)
+                return anterior.Id;
+
             var produto = await TravaProduto.TravarAsync(_dbContext, negocioId, produtoId, cancellationToken);
             if (produto is null)
                 return (Guid?)null;
@@ -124,6 +141,7 @@ public sealed class ServicoSaldoDevedor : IServicoSaldoDevedor
                 + FormatacaoBrasil.Reais(consumo.Valor));
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+            await _idempotencia.ConcluirAsync(new ResultadoId(consumo.Id), cancellationToken);
             await transacao.CommitAsync(cancellationToken);
             return consumo.Id;
         });

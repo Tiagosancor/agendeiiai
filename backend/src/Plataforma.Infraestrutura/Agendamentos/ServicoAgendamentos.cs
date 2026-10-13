@@ -1,3 +1,4 @@
+using Plataforma.Aplicacao.Idempotencia;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -48,13 +49,15 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly TravaQuinzenas _travaQuinzenas;
     private readonly IUsuarioAtual _usuarioAtual;
     private readonly ILogger<ServicoAgendamentos> _logger;
+    private readonly IServicoIdempotencia _idempotencia;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
         IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, TravaQuinzenas travaQuinzenas,
-        IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger)
+        IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger, IServicoIdempotencia idempotencia)
     {
+        _idempotencia = idempotencia;
         _usuarioAtual = usuarioAtual;
         _auditoria = auditoria;
         _travaQuinzenas = travaQuinzenas;
@@ -88,7 +91,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             confirmarDeImediato: true, cancellationToken,
             new OpcoesCriacao(OrigemAgendamento.Encaixe, dados.IniciarAtendimento, dados.ClienteAutorizouMensagens, dados.MotivoForcar));
 
-        if (resultado.Sucesso)
+        if (resultado.Sucesso && !_idempotencia.Repeticao)
         {
             // Sem aceite do cliente, só o profissional é avisado (seção 7). Com aceite, a confirmação só
             // faz sentido para quem vai voltar mais tarde, não para quem já está sendo atendido.
@@ -132,7 +135,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 return (existente.Id, null);
         }
 
-        var novo = Cliente.Criar(_contextoNegocio.NegocioId!.Value, dados.NovoCliente.Nome, telefone, OrigemCliente.Encaixe);
+        // Com Idempotency-Key o cliente rápido tem Id derivado da chave: repetição ou duplicado simultâneo bate na chave primária
+        // e reaproveita o mesmo cliente, em vez de criar outro sem telefone.
+        var novo = Cliente.Criar(
+            _contextoNegocio.NegocioId!.Value, dados.NovoCliente.Nome, telefone, OrigemCliente.Encaixe, id: _idempotencia.IdDerivado("cliente"));
         _dbContext.Clientes.Add(novo);
         try
         {
@@ -170,7 +176,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         var resultado = await CriarInternoAsync(dados, confirmarDeImediato: true, cancellationToken,
             new OpcoesCriacao(OrigemAgendamento.Painel, IniciarAtendimento: false, ClienteAutorizouMensagens: false, motivo ?? string.Empty));
 
-        if (resultado.Sucesso)
+        if (resultado.Sucesso && !_idempotencia.Repeticao)
             await NotificarProfissionalAsync(resultado.AgendamentoId!.Value, EventoAgendamentoProfissional.Novo, cancellationToken);
 
         return resultado;
@@ -255,6 +261,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             // A tentativa anterior pode ter confirmado o COMMIT sem a resposta chegar: o agendamento já está gravado, e checar
             // as regras de novo o veria como conflito (409 falso) ou, no forçado, gravaria um segundo por cima.
+            // Idempotency-Key (se houver, só forçado e encaixe): primeira instrução mutável, antes da trava do profissional.
+            if (await _idempotencia.ReivindicarAsync<ResultadoId>(cancellationToken) is { } anterior)
+                return ResultadoAgendamento.ComSucesso(anterior.Id);
+
             if (tentativas.Repetida && await _dbContext.Agendamentos.AsNoTracking().AnyAsync(a => a.Id == agendamentoId, cancellationToken))
                 return ResultadoAgendamento.ComSucesso(agendamentoId);
             await TravarAgendaDoProfissionalAsync(dados.ProfissionalId, cancellationToken);
@@ -351,6 +361,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             try
             {
                 await _dbContext.SaveChangesAsync(cancellationToken);
+                await _idempotencia.ConcluirAsync(new ResultadoId(agendamento.Id), cancellationToken);
                 await transacao.CommitAsync(cancellationToken);
                 return ResultadoAgendamento.ComSucesso(agendamento.Id);
             }

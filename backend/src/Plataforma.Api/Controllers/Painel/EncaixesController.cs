@@ -1,3 +1,4 @@
+using Plataforma.Api.Idempotencia;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Abstracoes;
@@ -49,6 +50,7 @@ public sealed class EncaixesController : ControllerBase
         Ok(await _clientes.BuscarAsync(busca ?? string.Empty, LimiteBusca, cancellationToken));
 
     [HttpPost]
+    [Idempotente("POST painel/encaixes", StatusCodes.Status201Created)]
     public async Task<IActionResult> Lancar(LancarEncaixe dados, CancellationToken cancellationToken)
     {
         // Passar por cima das regras de horário é da permissão de forçar (seção 7), não da de encaixe.

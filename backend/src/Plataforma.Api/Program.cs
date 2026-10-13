@@ -188,6 +188,8 @@ builder.Services.AddCors(opcoes => opcoes.AddPolicy("PadraoPlataforma", politica
         })
         .AllowAnyHeader()
         .AllowAnyMethod()
+        // O painel chama a API direto (outro host): sem expor, o JS não lê a marca de repetição nem o Retry-After.
+        .WithExposedHeaders("Idempotent-Replayed", "Retry-After")
         .AllowCredentials();
 }));
 

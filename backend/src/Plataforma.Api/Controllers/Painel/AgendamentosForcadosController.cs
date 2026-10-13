@@ -1,3 +1,4 @@
+using Plataforma.Api.Idempotencia;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Agendamentos;
@@ -25,6 +26,7 @@ public sealed class AgendamentosForcadosController : ControllerBase
         Ok(await _servicoAgendamentos.PreverForcarAsync(dados, cancellationToken));
 
     [HttpPost]
+    [Idempotente("POST painel/agendamentos/forcados", StatusCodes.Status201Created)]
     public async Task<IActionResult> Criar(CriarAgendamentoForcado dados, CancellationToken cancellationToken)
     {
         var resultado = await _servicoAgendamentos.CriarForcadoAsync(

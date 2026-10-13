@@ -1,3 +1,4 @@
+using Plataforma.Aplicacao.Idempotencia;
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Auditoria;
@@ -15,9 +16,13 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
     private readonly IUsuarioAtual _usuarioAtual;
     private readonly IRegistroAuditoria _auditoria;
 
+    private readonly IServicoIdempotencia _idempotencia;
+
     public GerenciadorEstoque(
-        PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria)
+        PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria,
+        IServicoIdempotencia idempotencia)
     {
+        _idempotencia = idempotencia;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _usuarioAtual = usuarioAtual;
@@ -154,6 +159,11 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
         {
             tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+            // Idempotency-Key (se houver): primeira instrução mutável, antes da trava do produto.
+            if (await _idempotencia.ReivindicarAsync<ProdutoResumo>(cancellationToken) is { } anterior)
+                return anterior;
+
             var produto = await TravarProdutoAsync(produtoId, cancellationToken);
             if (produto is null)
             {
@@ -166,8 +176,10 @@ public sealed class GerenciadorEstoque : IGerenciadorEstoque
 
             _dbContext.MovimentosEstoque.Add(movimentar(produto, DateTimeOffset.UtcNow, movimentoId));
             await _dbContext.SaveChangesAsync(cancellationToken);
+            var resumo = Mapear(produto);
+            await _idempotencia.ConcluirAsync(resumo, cancellationToken);
             await transacao.CommitAsync(cancellationToken);
-            return Mapear(produto);
+            return resumo;
         });
     }
 
