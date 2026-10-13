@@ -91,4 +91,21 @@ public class IdentificadorEstavelTestes
         reserva.Id.Should().Be(id);
         Agendamento.CriarConfirmado(Negocio, Guid.NewGuid(), Guid.NewGuid(), Agora.AddDays(1), servicos).Id.Should().NotBe(id);
     }
+
+    [Fact]
+    public void Ajuste_de_valor_usa_o_id_informado_e_sem_id_gera_um_novo()
+    {
+        var agendamento = Agendamento.CriarConfirmado(
+            Negocio, Guid.NewGuid(), Guid.NewGuid(), Agora.AddDays(1), [new ItemServicoAgendamento(Guid.NewGuid(), "Corte", 50m, 30)]);
+        agendamento.IniciarAtendimento();
+        var linha = agendamento.Servicos.Single().Id;
+        var id = Guid.NewGuid();
+
+        var comId = agendamento.AjustarValor(linha, TipoAjusteValor.Desconto, ModoAjusteValor.Reais, 10m, "Cortesia", null, Agora, ajusteId: id);
+        var semId = agendamento.AjustarValor(linha, TipoAjusteValor.Desconto, ModoAjusteValor.Reais, 10m, "Cortesia", null, Agora);
+
+        comId.Id.Should().Be(id);
+        semId.Id.Should().NotBe(id);
+        semId.ValorDepois.Should().Be(comId.ValorDepois, "o valor é sempre sobre o preço original: repetir não acumula");
+    }
 }

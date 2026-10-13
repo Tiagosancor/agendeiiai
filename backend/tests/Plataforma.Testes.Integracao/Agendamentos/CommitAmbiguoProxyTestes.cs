@@ -3,9 +3,14 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Microsoft.Extensions.DependencyInjection;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Comissoes;
 using Plataforma.Aplicacao.Estoque;
+using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Clientes;
+using Plataforma.Dominio.Comissoes;
+using Plataforma.Dominio.Estoque;
 using Plataforma.Dominio.Usuarios;
 using Plataforma.Testes.Integracao.Infraestrutura;
 using Xunit;
@@ -140,9 +145,69 @@ public sealed class CommitAmbiguoProxyTestes : IAsyncLifetime
             .Should().Be("Cliente Novo Da Venda");
     }
 
+    // ------------------------------------------------------------------ B7.2
+
+    [Fact]
+    public async Task Cancelar_com_conexao_derrubada_no_commit_responde_204_e_avisa_o_profissional_uma_vez()
+    {
+        var (admin, negocioId, agenda) = await ArranjarAsync();
+        const string emailProf = "prof.proxy.b72@teste.com";
+        await _fabrica.NoBancoAsync(db => db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE profissionais SET email = {emailProf} WHERE id = {agenda.ProfissionalId}"));
+        var segunda = SemeadorDeComissoes.Dia(3);
+        while (segunda.DayOfWeek != DayOfWeek.Monday)
+            segunda = segunda.AddDays(1);
+        var id = await _fabrica.SemearAgendamentoAsync(negocioId, agenda.ProfissionalId, SemeadorDeComissoes.Local(segunda, 10, 0),
+            precos: [50m], servicoId: agenda.ServicoId);
+        var espia = _fabrica.Services.GetRequiredService<EspiaEmail>();
+        espia.Enviados.Clear();
+
+        _proxy.Armar("UPDATE agendamentos", "COMMIT");
+        var resposta = await admin.PostAsync($"/painel/agendamentos/{id}/cancelar", null);
+
+        _proxy.Derrubadas.Should().Be(1, "a conexão do cancelamento precisa ter sido derrubada no COMMIT");
+        resposta.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _fabrica.NoBancoAsync(db => db.Agendamentos.IgnoreQueryFilters().Where(a => a.Id == id).Select(a => a.Status).SingleAsync()))
+            .Should().Be(StatusAgendamento.Cancelado);
+        espia.Enviados.Count(e => e.Destinatario == emailProf).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Vale_com_conexao_derrubada_no_commit_responde_sucesso_e_grava_um_so()
+    {
+        var (admin, negocioId, agenda) = await ArranjarAsync();
+
+        _proxy.Armar("INSERT INTO lancamentos_saldo_devedor", "COMMIT");
+        var resposta = await admin.PostAsJsonAsync("/painel/saldos/vales", new LancarVale(agenda.ProfissionalId, 30m));
+
+        _proxy.Derrubadas.Should().Be(1);
+        resposta.IsSuccessStatusCode.Should().BeTrue(await resposta.Content.ReadAsStringAsync());
+        var vales = await _fabrica.NoBancoAsync(db => db.LancamentosSaldoDevedor.IgnoreQueryFilters()
+            .Where(l => l.NegocioId == negocioId).Select(l => new { l.Id, l.Valor }).ToListAsync());
+        vales.Should().ContainSingle().Which.Valor.Should().Be(30m);
+        (await _fabrica.NoBancoAsync(db => db.LogsAuditoriaNegocio.IgnoreQueryFilters()
+            .CountAsync(l => l.NegocioId == negocioId && l.EntidadeId == vales[0].Id))).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Produto_com_conexao_derrubada_no_commit_responde_sucesso_com_estoque_inicial_uma_vez()
+    {
+        var (admin, negocioId, _) = await ArranjarAsync();
+
+        _proxy.Armar("INSERT INTO produtos", "COMMIT");
+        var resposta = await admin.PostAsJsonAsync("/painel/estoque/produtos", new CriarProduto("Pomada Proxy B72", null, 5m, 20m, 10));
+
+        _proxy.Derrubadas.Should().Be(1);
+        resposta.IsSuccessStatusCode.Should().BeTrue(await resposta.Content.ReadAsStringAsync());
+        var id = await resposta.Content.ReadFromJsonAsync<Guid>();
+        var produtos = await _fabrica.NoBancoAsync(db => db.Produtos.IgnoreQueryFilters().Where(p => p.NegocioId == negocioId).Select(p => new { p.Id, p.QuantidadeEstoque }).ToListAsync());
+        produtos.Should().ContainSingle().Which.Should().BeEquivalentTo(new { Id = id, QuantidadeEstoque = 10 });
+        (await _fabrica.NoBancoAsync(db => db.MovimentosEstoque.IgnoreQueryFilters().CountAsync(m => m.ProdutoId == id))).Should().Be(1);
+    }
+
     private async Task<(HttpClient Admin, Guid NegocioId, SemeadorDeAgenda.CenarioDeAgenda Agenda)> ArranjarAsync()
     {
-        var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador, Permissao.GerenciarEstoque, Permissao.VenderProdutos);
+        var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador, Permissao.GerenciarEstoque, Permissao.VenderProdutos, Permissao.LancarVales);
         var agenda = await _fabrica.CriarCenarioPadraoAsync(negocioId);
         return (admin, negocioId, agenda);
     }
