@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { capturarIdempotencia } from "./apoio/idempotencia";
 
 /**
  * Atendimento sem agendamento (seção 7, item 9): no balcão, cadastro rápido do cliente sem telefone
@@ -10,6 +11,7 @@ const PAINEL_BASE = "http://app.agendeiiai.localhost:3000";
 const API = "http://localhost:5080";
 
 test("recepção encaixa um cliente sem telefone num horário livre", async ({ page, request }) => {
+  const idempotencia = capturarIdempotencia(page);
   test.setTimeout(90_000);
   const login = await request.post(`${API}/painel/auth/login`, { data: { email: "admin@acme.dev", senha: "Admin!123" } });
   const auth = { Authorization: `Bearer ${(await login.json()).accessToken}` };
@@ -54,6 +56,7 @@ test("recepção encaixa um cliente sem telefone num horário livre", async ({ p
   await modal.getByLabel(/Horário/).fill(valorHorario);
   await modal.getByRole("button", { name: "Apenas encaixar" }).click();
   await expect(modal).toBeHidden();
+  idempotencia.conferir(/\/painel\/encaixes$/);
 
   await page.getByLabel("Profissional").selectOption(profissional.id);
   await page.getByLabel("Data").fill(data);

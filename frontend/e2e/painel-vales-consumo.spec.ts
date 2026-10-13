@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { capturarIdempotencia } from "./apoio/idempotencia";
 
 /**
  * Vale e consumo interno (seção 7, item 12 d/e): o consumo lançado no Estoque (pelo custo, editável) e o vale lançado em
@@ -11,6 +12,7 @@ const PAINEL_BASE = "http://app.agendeiiai.localhost:3000";
 const API = "http://localhost:5080";
 
 test("consumo no estoque e vale viram saldo devedor do profissional", async ({ page, request }) => {
+  const idempotencia = capturarIdempotencia(page);
   test.setTimeout(90_000);
   const login = await request.post(`${API}/painel/auth/login`, { data: { email: "admin@acme.dev", senha: "Admin!123" } });
   const auth = { Authorization: `Bearer ${(await login.json()).accessToken}` };
@@ -42,6 +44,7 @@ test("consumo no estoque e vale viram saldo devedor do profissional", async ({ p
   await expect(modal.getByText("Saldo devedor: R$ 16,00")).toBeVisible();
   await modal.getByRole("button", { name: "Lançar consumo" }).click();
   await expect(modal).toBeHidden();
+  idempotencia.conferir(/\/consumos$/);
   await expect(page.getByRole("row", { name: new RegExp(nomeProduto) }).getByRole("cell", { name: /^3/ })).toBeVisible();
 
   // Vale em Comissões → "Vales e consumo".
@@ -54,6 +57,7 @@ test("consumo no estoque e vale viram saldo devedor do profissional", async ({ p
   await modal.getByLabel("Motivo (opcional)").fill("Adiantamento");
   await modal.getByRole("button", { name: "Lançar vale" }).click();
   await expect(modal).toBeHidden();
+  idempotencia.conferir(/\/painel\/saldos\/vales$/);
 
   const linha = page.getByRole("button", { name: new RegExp(nomeProfissional) });
   await expect(linha).toContainText("Vales R$ 50,00 · consumo R$ 16,00");

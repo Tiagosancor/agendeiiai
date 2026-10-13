@@ -7,6 +7,7 @@ import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import type { ClienteResumo, ExportacaoCliente, ProgressoFidelidade } from "@/lib/tipos";
 import { criarLembreteRetornoService } from "@/services/lembrete-retorno-service";
+import { cabecalhoIdempotencia, mensagemErroIdempotencia, useTentativaIdempotente } from "@/lib/idempotencia";
 
 function baixarJson(nomeArquivo: string, dados: unknown) {
   const blob = new Blob([JSON.stringify(dados, null, 2)], { type: "application/json" });
@@ -181,6 +182,7 @@ export default function PaginaClientes() {
 
 function ModalFidelidade({ cliente, aoFechar }: { cliente: ClienteResumo; aoFechar: () => void }) {
   const { chamarApi } = useAutenticacao();
+  const tentativa = useTentativaIdempotente();
   const [progresso, setProgresso] = useState<ProgressoFidelidade | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [resgatando, setResgatando] = useState(false);
@@ -202,10 +204,16 @@ function ModalFidelidade({ cliente, aoFechar }: { cliente: ClienteResumo; aoFech
   async function resgatar() {
     setResgatando(true);
     try {
-      await chamarApi(`/painel/fidelidade/clientes/${cliente.id}/resgatar`, { metodo: "POST" });
+      const corpo = { clienteId: cliente.id };
+      await tentativa.executar(corpo, (chave) =>
+        chamarApi(`/painel/fidelidade/clientes/${cliente.id}/resgatar`, {
+          metodo: "POST",
+          cabecalhos: cabecalhoIdempotencia(chave),
+        }),
+      );
       await carregarProgresso();
-    } catch {
-      setErro("Não foi possível resgatar.");
+    } catch (excecao) {
+      setErro(mensagemErroIdempotencia(excecao, "Não foi possível resgatar."));
     } finally {
       setResgatando(false);
     }

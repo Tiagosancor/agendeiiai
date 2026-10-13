@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { capturarIdempotencia } from "./apoio/idempotencia";
 
 /**
  * Estoque (seção 7, item 12 a/b): produto novo com estoque inicial, ajuste que o leva para "Estoque baixo"
@@ -8,6 +9,7 @@ import { test, expect } from "@playwright/test";
 const PAINEL_BASE = "http://app.agendeiiai.localhost:3000";
 
 test("administrador cadastra produto, ajusta para o mínimo, vê o alerta e repõe", async ({ page }) => {
+  const idempotencia = capturarIdempotencia(page);
   test.setTimeout(90_000);
   const nome = `Pomada ${Date.now().toString().slice(-6)}`;
 
@@ -50,6 +52,7 @@ test("administrador cadastra produto, ajusta para o mínimo, vê o alerta e rep�
   await modal.getByLabel("Quantidade").fill("10");
   await modal.getByRole("button", { name: "Lançar entrada" }).click();
   await expect(modal).toBeHidden();
+  idempotencia.conferir(/\/entradas$/);
   await expect(page.getByRole("row", { name: new RegExp(nome) }).getByRole("cell", { name: "13 mínimo 3" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Estoque baixo" }).getByText(nome)).toHaveCount(0);
 

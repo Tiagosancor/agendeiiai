@@ -8,6 +8,7 @@ import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, 
 import { CamposVenda, chaveVendedor, corpoVendedor, itensDaVenda, type LinhaVenda } from "@/components/painel/CamposVenda";
 import type { ClienteResumo, OpcoesVenda, VendaResumo } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
+import { cabecalhoIdempotencia, mensagemErroIdempotencia, useTentativaIdempotente } from "@/lib/idempotencia";
 
 const formatarHora = (iso: string) => new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
@@ -173,6 +174,7 @@ function ModalEstorno({ venda, aoFechar }: { venda: VendaResumo; aoFechar: (esto
 
 function ModalNovaVenda({ aberta, aoFechar }: { aberta: boolean; aoFechar: (lancou: boolean) => void }) {
   const { chamarApi } = useAutenticacao();
+  const tentativa = useTentativaIdempotente();
   const [opcoes, setOpcoes] = useState<OpcoesVenda | null>(null);
   const [linhas, setLinhas] = useState<LinhaVenda[]>([]);
   const [vendedor, setVendedor] = useState("");
@@ -186,7 +188,10 @@ function ModalNovaVenda({ aberta, aoFechar }: { aberta: boolean; aoFechar: (lanc
   const [enviando, setEnviando] = useState(false);
 
   useEffect(() => {
-    if (!aberta) return;
+    if (!aberta) {
+      tentativa.descartar();
+      return;
+    }
     // Recomeça limpo a cada abertura, com uma linha de produto já aberta.
     /* eslint-disable react-hooks/set-state-in-effect */
     setOpcoes(null);
@@ -206,7 +211,7 @@ function ModalNovaVenda({ aberta, aoFechar }: { aberta: boolean; aoFechar: (lanc
         setVendedor(chaveVendedor(dados.vendedorSugerido));
       })
       .catch(() => setErro("Não foi possível carregar os produtos."));
-  }, [aberta, chamarApi]);
+  }, [aberta, chamarApi, tentativa]);
 
   useEffect(() => {
     if (novoCliente || cliente || busca.trim().length < 2) return;
@@ -225,18 +230,18 @@ function ModalNovaVenda({ aberta, aoFechar }: { aberta: boolean; aoFechar: (lanc
     setErro(null);
     setEnviando(true);
     try {
-      await chamarApi("/painel/vendas", {
-        metodo: "POST",
-        corpo: {
-          itens,
-          ...corpoVendedor(vendedor),
-          clienteId: cliente?.id ?? null,
-          novoCliente: !cliente && novoCliente && nomeNovo.trim() ? { nome: nomeNovo.trim(), telefone: telefoneNovo.trim() || null } : null,
-        },
-      });
+      const corpo = {
+        itens,
+        ...corpoVendedor(vendedor),
+        clienteId: cliente?.id ?? null,
+        novoCliente: !cliente && novoCliente && nomeNovo.trim() ? { nome: nomeNovo.trim(), telefone: telefoneNovo.trim() || null } : null,
+      };
+      await tentativa.executar(corpo, (chave) =>
+        chamarApi("/painel/vendas", { metodo: "POST", corpo, cabecalhos: cabecalhoIdempotencia(chave) }),
+      );
       aoFechar(true);
     } catch (excecao) {
-      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível lançar a venda.");
+      setErro(mensagemErroIdempotencia(excecao, "Não foi possível lançar a venda."));
     } finally {
       setEnviando(false);
     }

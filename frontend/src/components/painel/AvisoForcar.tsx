@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAutenticacao, ErroApi } from "@/lib/auth-context";
+import { useAutenticacao } from "@/lib/auth-context";
 import { classeBotaoPrimario, classeBotaoSecundario, classeInput, classeLabel } from "@/components/estilos";
 import type { ConsultaForcar, PreviaForcar } from "@/lib/tipos";
+import { mensagemErroIdempotencia } from "@/lib/idempotencia";
 
 /**
  * Forçar agendamento (seção 7): depois que o sistema recusou o horário, quem tem a permissão vê exatamente
@@ -42,7 +43,7 @@ export function AvisoForcar({
     try {
       await aoForcar(motivo.trim());
     } catch (excecao) {
-      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível forçar o agendamento.");
+      setErro(mensagemErroIdempotencia(excecao, "Não foi possível forçar o agendamento."));
     } finally {
       setEnviando(false);
     }
