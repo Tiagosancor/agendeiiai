@@ -1961,6 +1961,77 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.ToTable("pagamentos", (string)null);
                 });
 
+            modelBuilder.Entity("Plataforma.Dominio.Idempotencia.RequisicaoIdempotente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("Chave")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("chave");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Escopo")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("escopo");
+
+                    b.Property<DateTimeOffset>("ExpiraEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_em");
+
+                    b.Property<string>("HashRequisicao")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("hash_requisicao");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Principal")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("principal");
+
+                    b.Property<string>("Resultado")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("resultado");
+
+                    b.Property<int>("StatusHttp")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_http");
+
+                    b.HasKey("Id")
+                        .HasName("pk_requisicoes_idempotentes");
+
+                    b.HasIndex("ExpiraEm")
+                        .HasDatabaseName("ix_requisicoes_idempotentes_expira_em");
+
+                    b.HasIndex("NegocioId", "Principal", "Escopo", "Chave")
+                        .IsUnique()
+                        .HasDatabaseName("ix_requisicoes_idempotentes_negocio_id_principal_escopo_chave");
+
+                    b.ToTable("requisicoes_idempotentes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_requisicoes_idempotentes_resultado_tamanho", "octet_length(resultado::text) <= 8192");
+                        });
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.Negocios.Negocio", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3087,6 +3158,16 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_movimentos_estoque_produtos_produto_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Idempotencia.RequisicaoIdempotente", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Negocios.Negocio", null)
+                        .WithMany()
+                        .HasForeignKey("NegocioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_requisicoes_idempotentes_negocios_negocio_id");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Negocios.Negocio", b =>

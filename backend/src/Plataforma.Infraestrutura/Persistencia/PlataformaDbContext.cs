@@ -123,6 +123,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<ChaveIdempotencia> ChavesIdempotencia => Set<ChaveIdempotencia>();
 
+    public DbSet<Plataforma.Dominio.Idempotencia.RequisicaoIdempotente> RequisicoesIdempotentes => Set<Plataforma.Dominio.Idempotencia.RequisicaoIdempotente>();
+
     public DbSet<AdministradorPlataforma> AdministradoresPlataforma => Set<AdministradorPlataforma>();
 
     public DbSet<ArquivoBanco> Arquivos => Set<ArquivoBanco>();

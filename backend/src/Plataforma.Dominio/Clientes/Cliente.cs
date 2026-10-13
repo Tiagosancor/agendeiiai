@@ -46,13 +46,14 @@ public class Cliente : EntidadeBase, IEntidadeDoNegocio
 
     public static Cliente Criar(
         Guid negocioId, string nome, TelefoneE164? telefone, OrigemCliente origem = OrigemCliente.Painel,
-        string? email = null, string? observacoes = null)
+        string? email = null, string? observacoes = null, Guid? id = null)
     {
         if (string.IsNullOrWhiteSpace(nome))
             throw new ArgumentException("O nome é obrigatório.", nameof(nome));
 
         return new Cliente(negocioId, nome.Trim(), telefone, origem)
         {
+            Id = id ?? Guid.NewGuid(),
             Email = email,
             Observacoes = observacoes,
         };
