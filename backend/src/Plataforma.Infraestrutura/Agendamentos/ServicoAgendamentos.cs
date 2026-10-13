@@ -1027,7 +1027,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     }
 
     public Task<bool> IniciarAtendimentoAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
-        MudarStatusComLinhaTravadaAsync(agendamentoId, a => a.IniciarAtendimento(), cancellationToken);
+        MudarStatusComLinhaTravadaAsync(
+            agendamentoId, a => a.IniciarAtendimento(), a => a.Status == StatusAgendamento.EmAtendimento, cancellationToken);
 
     public Task<bool> MarcarConcluidoAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
         ExecutarNaTravaDeQuinzenasAsync(repetida => ConcluirAsync(agendamentoId, repetida, cancellationToken), cancellationToken);
@@ -1072,9 +1073,9 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     /// Selo já usado num resgate fica (a recompensa já foi entregue).
     /// </summary>
     public Task<bool> ReabrirAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
-        ExecutarNaTravaDeQuinzenasAsync(_ => ReabrirNaTravaAsync(agendamentoId, cancellationToken), cancellationToken);
+        ExecutarNaTravaDeQuinzenasAsync(repetida => ReabrirNaTravaAsync(agendamentoId, repetida, cancellationToken), cancellationToken);
 
-    private async Task<bool> ReabrirNaTravaAsync(Guid agendamentoId, CancellationToken cancellationToken)
+    private async Task<bool> ReabrirNaTravaAsync(Guid agendamentoId, bool repetida, CancellationToken cancellationToken)
     {
         var agendamento = await _dbContext.Agendamentos
             .Include(a => a.Servicos)
@@ -1083,6 +1084,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             return false;
 
         await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+        // COMMIT ambíguo (B7.3): só na repetição, "já reaberto" (Agendado) é o que a tentativa anterior desta requisição gravou
+        // (comissão estornada, pagamento e selo removidos, auditoria). Requisição nova contra um atendimento não concluído segue recusada.
+        if (repetida && agendamento.Status == StatusAgendamento.Agendado)
+            return true;
+
         await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
 
         var comissaoAnterior = agendamento.Servicos.Sum(s => s.ComissaoValor ?? 0m);
@@ -1106,14 +1113,16 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     }
 
     public Task<bool> MarcarFaltouAsync(Guid agendamentoId, CancellationToken cancellationToken = default) =>
-        MudarStatusComLinhaTravadaAsync(agendamentoId, a => a.MarcarFaltou(), cancellationToken);
+        MudarStatusComLinhaTravadaAsync(
+            agendamentoId, a => a.MarcarFaltou(), a => a.Status == StatusAgendamento.Faltou, cancellationToken);
 
     /// <summary>
     /// Todo escritor de status do agendamento serializa na linha: trava (<c>FOR UPDATE</c>), relê do banco e só então aplica a
     /// transição do domínio. Quem chega depois enxerga o que o outro confirmou (ex.: o cancelamento do link) e é recusado
     /// em vez de gravar por cima do estado antigo que tinha lido.
     /// </summary>
-    private Task<bool> MudarStatusComLinhaTravadaAsync(Guid agendamentoId, Action<Agendamento> transicao, CancellationToken cancellationToken)
+    private Task<bool> MudarStatusComLinhaTravadaAsync(
+        Guid agendamentoId, Action<Agendamento> transicao, Func<Agendamento, bool> estadoJaAplicado, CancellationToken cancellationToken)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
@@ -1127,6 +1136,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 return false;
 
             await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+            // COMMIT ambíguo (B7.3): só na repetição, o estado de destino já gravado é o que a tentativa anterior desta requisição
+            // aplicou. Requisição nova contra estado incompatível segue recusada pela transição do domínio.
+            if (tentativas.Repetida && estadoJaAplicado(agendamento))
+                return true;
+
             transicao(agendamento);
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);
