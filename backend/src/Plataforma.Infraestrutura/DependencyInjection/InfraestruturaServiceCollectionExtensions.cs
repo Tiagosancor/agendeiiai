@@ -211,6 +211,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<Plataforma.Infraestrutura.Comissoes.TravaQuinzenas>();
         servicos.AddScoped<IServicoAjustesAtendimento, ServicoAjustesAtendimento>();
         servicos.AddScoped<IBuscaClientes, GerenciadorClientes>();
+        servicos.AddScoped<IClientesDaAgenda, ClientesDaAgenda>();
         servicos.AddScoped<Plataforma.Aplicacao.Comissoes.IServicoQuinzenas, Plataforma.Infraestrutura.Comissoes.ServicoQuinzenas>();
         servicos.AddScoped<Plataforma.Aplicacao.Comissoes.IServicoSaldoDevedor, Plataforma.Infraestrutura.Comissoes.ServicoSaldoDevedor>();
         servicos.AddScoped<IServicoFinanceiro, ServicoFinanceiro>();
