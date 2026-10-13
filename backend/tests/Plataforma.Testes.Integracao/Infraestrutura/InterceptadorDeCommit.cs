@@ -55,7 +55,7 @@ public sealed class InterceptadorDeCommit : DbTransactionInterceptor
                 Falhas++;
                 throw _transitorio
                     ? new NpgsqlException("Simulado: conexão perdida antes do COMMIT.", new IOException("Conexão encerrada."))
-                    : new InvalidOperationException("Simulado: falha definitiva antes do COMMIT.");
+                    : new ApplicationException("Simulado: falha definitiva antes do COMMIT.");
             }
         }
 

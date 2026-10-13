@@ -276,7 +276,7 @@ public sealed class CommitAmbiguoRespostasTestes : IAsyncLifetime
         _commit.ArmarFalhaAntesDoCommit(transitoria: false);
         var acao = () => ConfirmarPublicoAsync(c, id);
 
-        await acao.Should().ThrowAsync<InvalidOperationException>();
+        await acao.Should().ThrowAsync<ApplicationException>();
         (await EstadoAsync(id)).Status.Should().Be(StatusAgendamento.Reservado);
         Avisos(EmailPublico).Should().Be(0);
         Avisos(EmailProf).Should().Be(0);

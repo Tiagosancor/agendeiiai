@@ -205,6 +205,27 @@ public sealed class CommitAmbiguoProxyTestes : IAsyncLifetime
         (await _fabrica.NoBancoAsync(db => db.MovimentosEstoque.IgnoreQueryFilters().CountAsync(m => m.ProdutoId == id))).Should().Be(1);
     }
 
+    // ------------------------------------------------------------------ B7.3
+
+    [Fact]
+    public async Task Iniciar_com_conexao_derrubada_no_commit_responde_204_e_deixa_em_atendimento()
+    {
+        var (admin, negocioId, agenda) = await ArranjarAsync();
+        var segunda = SemeadorDeComissoes.Dia(3);
+        while (segunda.DayOfWeek != DayOfWeek.Monday)
+            segunda = segunda.AddDays(1);
+        var id = await _fabrica.SemearAgendamentoAsync(negocioId, agenda.ProfissionalId, SemeadorDeComissoes.Local(segunda, 10, 0),
+            precos: [50m], servicoId: agenda.ServicoId);
+
+        _proxy.Armar("UPDATE agendamentos", "COMMIT");
+        var resposta = await admin.PostAsync($"/painel/agendamentos/{id}/iniciar", null);
+
+        _proxy.Derrubadas.Should().Be(1, "a conexão precisa ter sido derrubada no COMMIT");
+        resposta.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _fabrica.NoBancoAsync(db => db.Agendamentos.IgnoreQueryFilters().Where(a => a.Id == id).Select(a => a.Status).SingleAsync()))
+            .Should().Be(StatusAgendamento.EmAtendimento);
+    }
+
     private async Task<(HttpClient Admin, Guid NegocioId, SemeadorDeAgenda.CenarioDeAgenda Agenda)> ArranjarAsync()
     {
         var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador, Permissao.GerenciarEstoque, Permissao.VenderProdutos, Permissao.LancarVales);
