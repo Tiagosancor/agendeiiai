@@ -7,6 +7,7 @@ import { ErroApi } from "@/lib/api";
 import { Modal } from "@/components/Modal";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { formatarReais } from "@/lib/formatacao";
+import { cabecalhoIdempotencia, mensagemErroIdempotencia, useTentativaIdempotente } from "@/lib/idempotencia";
 import type { MovimentoEstoqueResumo, ProdutoResumo, SaldoDoProfissional } from "@/lib/tipos";
 import { corpoPessoa, SeletorPessoaSaldo } from "@/components/painel/SaldosDevedores";
 
@@ -193,16 +194,19 @@ function BotaoLink({ children, onClick, cinza, vermelho }: { children: React.Rea
 function useEnvio(aoFechar: (mudou: boolean) => void) {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const tentativa = useTentativaIdempotente();
 
-  async function enviar(evento: FormEvent, acao: () => Promise<unknown>) {
+  async function enviar(evento: FormEvent, acao: (chave?: string) => Promise<unknown>, payloadIdempotente?: unknown) {
     evento.preventDefault();
     setErro(null);
     setEnviando(true);
     try {
-      await acao();
+      await (payloadIdempotente === undefined
+        ? acao()
+        : tentativa.executar(payloadIdempotente, (chave) => acao(chave)));
       aoFechar(true);
     } catch (excecao) {
-      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível salvar.");
+      setErro(mensagemErroIdempotencia(excecao, "Não foi possível salvar."));
     } finally {
       setEnviando(false);
     }
@@ -312,17 +316,20 @@ function ModalEntrada({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar:
   const [custo, setCusto] = useState(String(produto.precoCusto));
   const [fornecedor, setFornecedor] = useState("");
   const [observacao, setObservacao] = useState("");
+  const corpo = { quantidade: Number(quantidade), custoUnitario: Number(custo), fornecedor: fornecedor || null, observacao: observacao || null };
 
   return (
     <Modal titulo={`Entrada — ${produto.nome}`} aberto aoFechar={() => aoFechar(false)}>
       <form
         className="space-y-3"
         onSubmit={(e) =>
-          enviar(e, () =>
+          enviar(e, (chave) =>
             chamarApi(`/painel/estoque/produtos/${produto.id}/entradas`, {
               metodo: "POST",
-              corpo: { quantidade: Number(quantidade), custoUnitario: Number(custo), fornecedor: fornecedor || null, observacao: observacao || null },
+              corpo,
+              cabecalhos: cabecalhoIdempotencia(chave!),
             }),
+            corpo,
           )
         }
       >
@@ -373,17 +380,20 @@ function ModalConsumo({ produto, aoFechar }: { produto: ProdutoResumo; aoFechar:
   }, [chamarApi]);
 
   const total = (Number(quantidade) || 0) * (Number(valorUnitario) || 0);
+  const corpo = { ...corpoPessoa(pessoa), quantidade: Number(quantidade), valorUnitario: Number(valorUnitario), observacao: observacao || null };
 
   return (
     <Modal titulo={`Consumo interno — ${produto.nome}`} aberto aoFechar={() => aoFechar(false)}>
       <form
         className="space-y-3"
         onSubmit={(e) =>
-          enviar(e, () =>
+          enviar(e, (chave) =>
             chamarApi(`/painel/estoque/produtos/${produto.id}/consumos`, {
               metodo: "POST",
-              corpo: { ...corpoPessoa(pessoa), quantidade: Number(quantidade), valorUnitario: Number(valorUnitario), observacao: observacao || null },
+              corpo,
+              cabecalhos: cabecalhoIdempotencia(chave!),
             }),
+            corpo,
           )
         }
       >

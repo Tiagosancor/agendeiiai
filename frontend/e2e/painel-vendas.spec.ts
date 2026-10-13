@@ -1,4 +1,5 @@
 import { test, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { capturarIdempotencia } from "./apoio/idempotencia";
 
 /**
  * Venda de produto (seção 7, item 12 c): venda avulsa no balcão com vendedor escolhido e desconto pontual, e a seção
@@ -32,6 +33,7 @@ async function criarProduto(request: APIRequestContext, auth: Record<string, str
 }
 
 test("venda avulsa no balcão com vendedor escolhido e desconto pontual", async ({ page, request }) => {
+  const idempotencia = capturarIdempotencia(page);
   test.setTimeout(90_000);
   const auth = await autenticar(request);
   const sufixo = Date.now().toString().slice(-6);
@@ -56,6 +58,7 @@ test("venda avulsa no balcão com vendedor escolhido e desconto pontual", async 
   await expect(modal.getByText("Total dos produtos: R$ 55,00")).toBeVisible();
   await modal.getByRole("button", { name: "Lançar venda" }).click();
   await expect(modal).toBeHidden();
+  idempotencia.conferir(/\/painel\/vendas$/);
 
   const venda = page.getByRole("article").filter({ hasText: produto });
   await expect(venda).toContainText(`${produto} × 2`);
@@ -82,6 +85,7 @@ test("venda avulsa no balcão com vendedor escolhido e desconto pontual", async 
 });
 
 test("concluir atendimento lança os produtos vendidos, com o profissional sugerido como vendedor", async ({ page, request }) => {
+  const idempotencia = capturarIdempotencia(page);
   test.setTimeout(120_000);
   const auth = await autenticar(request);
   const sufixo = Date.now().toString().slice(-6);
@@ -137,6 +141,7 @@ test("concluir atendimento lança os produtos vendidos, com o profissional suger
   await expect(secao.getByLabel("Vendido por")).toHaveValue(`p:${profissional.id}`);
   await modal.getByRole("button", { name: "Concluir atendimento" }).click();
   await expect(modal).toBeHidden();
+  idempotencia.conferir(/\/painel\/vendas$/);
   await expect(linha).toContainText("Concluído");
 
   await page.goto(`${PAINEL_BASE}/painel/vendas`);

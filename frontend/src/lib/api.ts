@@ -15,6 +15,8 @@ export class ErroApi extends Error {
     public codigo?: string,
     /** Corpo do ProblemDetails, para erros que trazem dados (ex.: `pendentes` ao fechar uma quinzena). */
     public corpo?: Record<string, unknown>,
+    /** Espera sugerida pela API para operações ainda em processamento. */
+    public retryAfterSegundos?: number,
   ) {
     super(message);
   }
@@ -57,7 +59,8 @@ export async function requisicaoApi<T>(caminho: string, opcoes: OpcoesRequisicao
     } catch {
       // corpo não é JSON (ex.: 401 sem corpo) — mantém a mensagem genérica.
     }
-    throw new ErroApi(resposta.status, mensagem, codigo, corpoErro);
+    const retryAfter = Number(resposta.headers.get("Retry-After"));
+    throw new ErroApi(resposta.status, mensagem, codigo, corpoErro, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
   }
 
   return lerCorpoJson<T>(resposta);

@@ -7,6 +7,7 @@ import { classeBotaoPrimario, classeBotaoSecundario } from "@/components/estilos
 import { CamposVenda, chaveVendedor, corpoVendedor, itensDaVenda, type LinhaVenda } from "@/components/painel/CamposVenda";
 import type { AgendamentoResumo, OpcoesVenda } from "@/lib/tipos";
 import { formatarReais } from "@/lib/formatacao";
+import { cabecalhoIdempotencia, mensagemErroIdempotencia, useTentativaIdempotente } from "@/lib/idempotencia";
 
 /**
  * "Concluir atendimento" (seção 7). Quem vende produtos ganha a seção "Produtos vendidos", com o profissional do
@@ -25,6 +26,7 @@ export function ModalConcluirAtendimento({
   caminhoBase?: string;
 }) {
   const { chamarApi, temPermissao } = useAutenticacao();
+  const tentativaVenda = useTentativaIdempotente();
   const podeVender = temPermissao("VenderProdutos");
   const [opcoes, setOpcoes] = useState<OpcoesVenda | null>(null);
   const [linhas, setLinhas] = useState<LinhaVenda[]>([]);
@@ -41,6 +43,7 @@ export function ModalConcluirAtendimento({
     setVendedor("");
     setConcluido(false);
     setErro(null);
+    tentativaVenda.descartar();
     /* eslint-enable react-hooks/set-state-in-effect */
     if (!podeVender) return;
     chamarApi<OpcoesVenda>(`/painel/vendas/opcoes?agendamentoId=${agendamento.id}`)
@@ -49,7 +52,7 @@ export function ModalConcluirAtendimento({
         setVendedor(chaveVendedor(dados.vendedorSugerido));
       })
       .catch(() => setErro("Não foi possível carregar os produtos."));
-  }, [agendamento, podeVender, chamarApi]);
+  }, [agendamento, podeVender, chamarApi, tentativaVenda]);
 
   const itens = itensDaVenda(linhas);
 
@@ -75,13 +78,13 @@ export function ModalConcluirAtendimento({
     }
 
     try {
-      await chamarApi("/painel/vendas", {
-        metodo: "POST",
-        corpo: { itens, ...corpoVendedor(vendedor), agendamentoId: agendamento.id },
-      });
+      const corpo = { itens, ...corpoVendedor(vendedor), agendamentoId: agendamento.id };
+      await tentativaVenda.executar(corpo, (chave) =>
+        chamarApi("/painel/vendas", { metodo: "POST", corpo, cabecalhos: cabecalhoIdempotencia(chave) }),
+      );
       aoFechar(true);
     } catch (excecao) {
-      const motivo = excecao instanceof ErroApi ? excecao.message : "Não foi possível lançar a venda.";
+      const motivo = mensagemErroIdempotencia(excecao, "Não foi possível lançar a venda.");
       setErro(`O atendimento foi concluído, mas os produtos não foram lançados: ${motivo} Corrija e tente de novo.`);
     } finally {
       setEnviando(false);

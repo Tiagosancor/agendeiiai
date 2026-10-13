@@ -7,6 +7,7 @@ import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, 
 import { formatarDia } from "@/components/painel/Quinzenas";
 import type { LancamentoSaldoResumo, SaldoDevedor, SaldoDoProfissional } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
+import { cabecalhoIdempotencia, mensagemErroIdempotencia, useTentativaIdempotente } from "@/lib/idempotencia";
 
 const ROTULO_TIPO = { Vale: "Vale", ConsumoInterno: "Consumo interno" } as const;
 
@@ -174,6 +175,7 @@ export function VisaoSaldosDevedores() {
 
 function ModalVale({ profissionais, aoFechar }: { profissionais: SaldoDoProfissional[]; aoFechar: (lancou: boolean) => void }) {
   const { chamarApi } = useAutenticacao();
+  const tentativa = useTentativaIdempotente();
   const [pessoa, setPessoa] = useState("");
   const [valor, setValor] = useState("");
   const [data, setData] = useState(dataLocalIso());
@@ -186,10 +188,13 @@ function ModalVale({ profissionais, aoFechar }: { profissionais: SaldoDoProfissi
     setErro(null);
     setEnviando(true);
     try {
-      await chamarApi("/painel/saldos/vales", { metodo: "POST", corpo: { ...corpoPessoa(pessoa), valor: Number(valor), data, motivo: motivo || null } });
+      const corpo = { ...corpoPessoa(pessoa), valor: Number(valor), data, motivo: motivo || null };
+      await tentativa.executar(corpo, (chave) =>
+        chamarApi("/painel/saldos/vales", { metodo: "POST", corpo, cabecalhos: cabecalhoIdempotencia(chave) }),
+      );
       aoFechar(true);
     } catch (excecao) {
-      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível lançar o vale.");
+      setErro(mensagemErroIdempotencia(excecao, "Não foi possível lançar o vale."));
     } finally {
       setEnviando(false);
     }

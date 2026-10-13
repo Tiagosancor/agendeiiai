@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { capturarIdempotencia } from "./apoio/idempotencia";
 
 /**
  * Forçar agendamento (seção 7, item 10): o Administrador digita um horário fora do expediente, o sistema
@@ -9,6 +10,7 @@ const PAINEL_BASE = "http://app.agendeiiai.localhost:3000";
 const API = "http://localhost:5080";
 
 test("administrador força um agendamento fora do expediente e a agenda marca como forçado", async ({ page, request }) => {
+  const idempotencia = capturarIdempotencia(page);
   test.setTimeout(90_000);
   const login = await request.post(`${API}/painel/auth/login`, { data: { email: "admin@acme.dev", senha: "Admin!123" } });
   const auth = { Authorization: `Bearer ${(await login.json()).accessToken}` };
@@ -68,6 +70,7 @@ test("administrador força um agendamento fora do expediente e a agenda marca co
   await aviso.getByLabel("Motivo (obrigatório)").fill("Cliente só pode depois do trabalho");
   await botao.click();
   await expect(modal).toBeHidden();
+  idempotencia.conferir(/\/painel\/agendamentos\/forcados$/);
 
   const linha = page.locator("div").filter({ hasText: nomeCliente }).filter({ hasText: "Forçado" }).last();
   await expect(linha.getByText("Forçado", { exact: true })).toBeVisible();

@@ -25,6 +25,7 @@ import type {
 } from "@/lib/tipos";
 import { FORMAS_PAGAMENTO } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
+import { cabecalhoIdempotencia, useTentativaIdempotente } from "@/lib/idempotencia";
 
 function hojeISO(): string {
   return dataLocalIso();
@@ -492,6 +493,7 @@ function ModalNovoAgendamento({
 }) {
   const { chamarApi, temPermissao } = useAutenticacao();
   const podeForcar = temPermissao("ForcarAgendamento");
+  const tentativaForcada = useTentativaIdempotente();
 
   const [servicos, setServicos] = useState<ServicoResumo[]>([]);
   const [clientes, setClientes] = useState<ClienteResumo[]>([]);
@@ -507,7 +509,10 @@ function ModalNovoAgendamento({
   const [consultaForcar, setConsultaForcar] = useState<ConsultaForcar | null>(null);
 
   useEffect(() => {
-    if (!aberto) return;
+    if (!aberto) {
+      tentativaForcada.descartar();
+      return;
+    }
     // Horário clicado na grade: já vem escolhido (a lista de livres depende dos serviços, que ainda não foram marcados).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setHorarioSelecionado(horarioInicial ?? "");
@@ -601,7 +606,10 @@ function ModalNovoAgendamento({
   }
 
   async function forcar(motivo: string) {
-    await chamarApi("/painel/agendamentos/forcados", { metodo: "POST", corpo: { ...dadosDoAgendamento(), motivo } });
+    const corpo = { ...dadosDoAgendamento(), motivo };
+    await tentativaForcada.executar(corpo, (chave) =>
+      chamarApi("/painel/agendamentos/forcados", { metodo: "POST", corpo, cabecalhos: cabecalhoIdempotencia(chave) }),
+    );
     await concluirCriacao();
   }
 

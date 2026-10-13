@@ -12,6 +12,7 @@ interface RespostaLogin {
 interface OpcoesChamada {
   metodo?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   corpo?: unknown;
+  cabecalhos?: Record<string, string>;
 }
 
 interface ContextoAutenticacao {

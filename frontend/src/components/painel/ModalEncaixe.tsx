@@ -7,6 +7,7 @@ import { classeBotaoPrimario, classeBotaoSecundario, classeInput, classeLabel } 
 import type { ClienteResumo, ConsultaForcar, ProfissionalResumo, ServicoResumo } from "@/lib/tipos";
 import { formatarReais } from "@/lib/formatacao";
 import { AvisoForcar } from "@/components/painel/AvisoForcar";
+import { cabecalhoIdempotencia, mensagemErroIdempotencia, useTentativaIdempotente } from "@/lib/idempotencia";
 
 interface OpcoesEncaixe {
   profissionais: ProfissionalResumo[];
@@ -39,6 +40,7 @@ export function ModalEncaixe({
   aoLancar: () => void;
 }) {
   const { chamarApi, temPermissao } = useAutenticacao();
+  const tentativa = useTentativaIdempotente();
   const podeForcar = temPermissao("ForcarAgendamento");
   const [opcoes, setOpcoes] = useState<OpcoesEncaixe | null>(null);
   const [busca, setBusca] = useState("");
@@ -58,7 +60,10 @@ export function ModalEncaixe({
   const [forcar, setForcar] = useState<{ consulta: ConsultaForcar; iniciarAtendimento: boolean } | null>(null);
 
   useEffect(() => {
-    if (!aberto) return;
+    if (!aberto) {
+      tentativa.descartar();
+      return;
+    }
     // Recomeça limpo a cada abertura.
     /* eslint-disable react-hooks/set-state-in-effect */
     setBusca("");
@@ -80,7 +85,7 @@ export function ModalEncaixe({
         setProfissionalId(dados.profissionais.some((p) => p.id === profissionalSugerido) ? profissionalSugerido : (dados.profissionais[0]?.id ?? ""));
       })
       .catch(() => setErro("Não foi possível carregar profissionais e serviços."));
-  }, [aberto, chamarApi, profissionalSugerido]);
+  }, [aberto, chamarApi, profissionalSugerido, tentativa]);
 
   useEffect(() => {
     if (novoCliente || cliente || busca.trim().length < 2) return;
@@ -118,11 +123,14 @@ export function ModalEncaixe({
     setForcar(null);
     setEnviando(true);
     try {
-      await chamarApi("/painel/encaixes", { metodo: "POST", corpo: corpoDoEncaixe(iniciarAtendimento, cliente?.id ?? null, null) });
+      const corpo = corpoDoEncaixe(iniciarAtendimento, cliente?.id ?? null, null);
+      await tentativa.executar(corpo, (chave) =>
+        chamarApi("/painel/encaixes", { metodo: "POST", corpo, cabecalhos: cabecalhoIdempotencia(chave) }),
+      );
       aoLancar();
     } catch (excecao) {
       if (excecao instanceof ErroApi) {
-        setErro(excecao.message);
+        setErro(mensagemErroIdempotencia(excecao, "Não foi possível lançar o atendimento."));
         // O cadastro rápido pode já ter sido feito: a próxima tentativa usa esse cliente, sem duplicar.
         const clienteId = excecao.corpo?.clienteId as string | undefined;
         if (clienteId && !cliente) setCliente({ id: clienteId, nome: nomeNovo.trim() });
@@ -142,10 +150,10 @@ export function ModalEncaixe({
 
   async function lancarForcado(motivo: string) {
     if (!forcar) return;
-    await chamarApi("/painel/encaixes", {
-      metodo: "POST",
-      corpo: corpoDoEncaixe(forcar.iniciarAtendimento, cliente?.id ?? null, motivo),
-    });
+    const corpo = corpoDoEncaixe(forcar.iniciarAtendimento, cliente?.id ?? null, motivo);
+    await tentativa.executar(corpo, (chave) =>
+      chamarApi("/painel/encaixes", { metodo: "POST", corpo, cabecalhos: cabecalhoIdempotencia(chave) }),
+    );
     aoLancar();
   }
 
