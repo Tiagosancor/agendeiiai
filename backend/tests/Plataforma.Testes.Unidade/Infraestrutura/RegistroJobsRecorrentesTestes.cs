@@ -44,7 +44,7 @@ public class RegistroJobsRecorrentesTestes
         await servico.StartAsync(CancellationToken.None);
         await servico.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
 
-        gerenciador.Registrados.Should().BeEquivalentTo("expirar-reservas", "enviar-lembretes", "atualizar-assinaturas", "alerta-estoque", "lembrete-retorno");
+        gerenciador.Registrados.Should().BeEquivalentTo("expirar-reservas", "enviar-lembretes", "atualizar-assinaturas", "alerta-estoque", "lembrete-retorno", "limpar-idempotencia");
     }
 
     [Fact]
