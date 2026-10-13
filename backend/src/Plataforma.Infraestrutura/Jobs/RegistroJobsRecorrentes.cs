@@ -49,6 +49,10 @@ public sealed class RegistroJobsRecorrentes(
         // por isso roda a cada 15 min, não uma vez por dia. Duas execuções juntas não duplicam: o índice único do envio barra.
         gerenciador.AddOrUpdate<Clientes.JobLembreteRetorno>(
             "lembrete-retorno", job => job.ExecutarAsync(CancellationToken.None), "*/15 * * * *");
+
+        // Apaga as chaves de idempotência expiradas (retenção padrão 24 h), em lotes. 03:30 UTC = 00:30 em Brasília.
+        gerenciador.AddOrUpdate<Idempotencia.JobLimparIdempotencia>(
+            "limpar-idempotencia", job => job.ExecutarAsync(CancellationToken.None), "30 3 * * *");
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancelamento)

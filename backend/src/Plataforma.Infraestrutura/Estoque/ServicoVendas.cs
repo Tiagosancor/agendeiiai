@@ -1,3 +1,4 @@
+using Plataforma.Aplicacao.Idempotencia;
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Auditoria;
@@ -24,11 +25,13 @@ public sealed class ServicoVendas : IServicoVendas
     private readonly IUsuarioAtual _usuarioAtual;
     private readonly IRegistroAuditoria _auditoria;
     private readonly TravaQuinzenas _travaQuinzenas;
+    private readonly IServicoIdempotencia _idempotencia;
 
     public ServicoVendas(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria,
-        TravaQuinzenas travaQuinzenas)
+        TravaQuinzenas travaQuinzenas, IServicoIdempotencia idempotencia)
     {
+        _idempotencia = idempotencia;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _usuarioAtual = usuarioAtual;
@@ -127,6 +130,11 @@ public sealed class ServicoVendas : IServicoVendas
             tentativas.Iniciar();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
+            // Idempotency-Key (se houver): primeira instrução mutável, antes das travas dos produtos. Repetição devolve o resultado
+            // confirmado da primeira vez, sem reaplicar nada.
+            if (await _idempotencia.ReivindicarAsync<VendaLancada>(cancellationToken) is { } anterior)
+                return anterior;
+
             // A tentativa anterior pode ter confirmado o COMMIT sem a resposta chegar: a venda já está gravada, não repete.
             if (tentativas.Repetida
                 && await _dbContext.VendasProduto.AsNoTracking().Where(v => v.Id == vendaId).Select(v => (decimal?)v.Total)
@@ -150,8 +158,10 @@ public sealed class ServicoVendas : IServicoVendas
                 + $"vendido por {venda.VendedorNome}" + (venda.AgendamentoId is null ? "" : "; no atendimento"));
 
             await _dbContext.SaveChangesAsync(cancellationToken);
+            var lancada = new VendaLancada(venda.Id, venda.Total);
+            await _idempotencia.ConcluirAsync(lancada, cancellationToken);
             await transacao.CommitAsync(cancellationToken);
-            return new VendaLancada(venda.Id, venda.Total);
+            return lancada;
         });
     }
 
@@ -218,7 +228,10 @@ public sealed class ServicoVendas : IServicoVendas
                 return existente.Id;
         }
 
-        var novo = Cliente.Criar(_contextoNegocio.NegocioId!.Value, dados.NovoCliente.Nome, telefone, OrigemCliente.Encaixe);
+        // Com Idempotency-Key o cliente rápido tem Id derivado da chave: repetição ou duplicado simultâneo bate na chave primária
+        // e reaproveita o mesmo cliente, em vez de criar outro sem telefone.
+        var novo = Cliente.Criar(
+            _contextoNegocio.NegocioId!.Value, dados.NovoCliente.Nome, telefone, OrigemCliente.Encaixe, id: _idempotencia.IdDerivado("cliente"));
         _dbContext.Clientes.Add(novo);
         try
         {

@@ -122,6 +122,12 @@ public static class InfraestruturaServiceCollectionExtensions
             .ValidateOnStart();
 
         servicos
+            .AddOptions<OpcoesIdempotencia>()
+            .Bind(configuracao.GetSection(OpcoesIdempotencia.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicos
             .AddOptions<OpcoesLembreteRetorno>()
             .Bind(configuracao.GetSection(OpcoesLembreteRetorno.Secao))
             .ValidateDataAnnotations()
@@ -232,6 +238,9 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IProcessadorWebhookPagamento, ProcessadorWebhookPagamento>();
         servicos.AddScoped<JobAtualizarAssinaturas>();
         servicos.AddScoped<Estoque.JobAlertaEstoque>();
+        servicos.AddScoped<Idempotencia.JobLimparIdempotencia>();
+        servicos.AddScoped<Idempotencia.ContextoIdempotencia>();
+        servicos.AddScoped<Aplicacao.Idempotencia.IServicoIdempotencia, Idempotencia.ServicoIdempotencia>();
         servicos.AddScoped<IConsultaSituacaoAssinatura, ConsultaSituacaoAssinatura>();
 
         // Cadastro de negócio novo e checklist do primeiro acesso (seção 6.5).

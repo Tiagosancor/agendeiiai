@@ -1,3 +1,4 @@
+using Plataforma.Api.Idempotencia;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Abstracoes;
@@ -53,6 +54,7 @@ public sealed class EstoqueController : ControllerBase
         TraduzirAsync(async () => await _estoque.ExcluirAsync(id, cancellationToken) ? NoContent() : NotFound());
 
     [HttpPost("produtos/{id:guid}/entradas")]
+    [Idempotente("POST painel/estoque/produtos/{id}/entradas", StatusCodes.Status200OK)]
     public Task<IActionResult> Entrada(Guid id, RegistrarEntrada dados, CancellationToken cancellationToken) =>
         TraduzirAsync(async () => await _estoque.RegistrarEntradaAsync(id, dados, cancellationToken) is { } produto ? Ok(produto) : NotFound());
 
@@ -62,6 +64,7 @@ public sealed class EstoqueController : ControllerBase
 
     /// <summary>Consumo interno (seção 7): baixa o estoque e vira saldo devedor do profissional, pelo custo (editável).</summary>
     [HttpPost("produtos/{id:guid}/consumos")]
+    [Idempotente("POST painel/estoque/produtos/{id}/consumos", StatusCodes.Status201Created)]
     public Task<IActionResult> Consumo(Guid id, LancarConsumo dados, CancellationToken cancellationToken) =>
         TraduzirAsync(async () => await _saldos.LancarConsumoAsync(id, dados, cancellationToken) is { } lancamentoId
             ? StatusCode(StatusCodes.Status201Created, lancamentoId)

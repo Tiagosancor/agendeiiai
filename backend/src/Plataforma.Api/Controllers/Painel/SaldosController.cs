@@ -1,3 +1,4 @@
+using Plataforma.Api.Idempotencia;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Plataforma.Aplicacao.Abstracoes;
@@ -42,6 +43,7 @@ public sealed class SaldosController : ControllerBase
     }
 
     [HttpPost("vales")]
+    [Idempotente("POST painel/saldos/vales", StatusCodes.Status201Created)]
     [Authorize(Policy = nameof(Permissao.LancarVales))]
     public async Task<IActionResult> LancarVale(LancarVale dados, CancellationToken cancellationToken)
     {
