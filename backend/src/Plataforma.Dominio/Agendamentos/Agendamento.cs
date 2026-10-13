@@ -342,7 +342,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     /// </summary>
     public AjusteValorAtendimento AjustarValor(
         Guid linhaId, TipoAjusteValor tipo, ModoAjusteValor modo, decimal valorInformado, string motivo,
-        Guid? usuarioId, DateTimeOffset agora, bool correcaoAposConclusao = false)
+        Guid? usuarioId, DateTimeOffset agora, bool correcaoAposConclusao = false, Guid? ajusteId = null)
     {
         var permitido = correcaoAposConclusao ? Status == StatusAgendamento.Concluido : Status == StatusAgendamento.EmAtendimento;
         if (!permitido)
@@ -354,7 +354,7 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
             ?? throw new KeyNotFoundException("Serviço não encontrado neste atendimento.");
 
         var ajuste = AjusteValorAtendimento.Calcular(
-            NegocioId, Id, linha, tipo, modo, valorInformado, motivo, usuarioId, agora);
+            NegocioId, Id, linha, tipo, modo, valorInformado, motivo, usuarioId, agora, ajusteId);
         if (correcaoAposConclusao)
             ajuste.MarcarAposConclusao();
         linha.DefinirPrecoAjustado(ajuste.ValorDepois);

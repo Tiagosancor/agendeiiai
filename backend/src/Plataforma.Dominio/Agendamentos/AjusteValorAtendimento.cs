@@ -55,7 +55,7 @@ public class AjusteValorAtendimento : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Calcula o valor final sobre o preço original da linha. Motivo obrigatório; resultado nunca negativo.</summary>
     internal static AjusteValorAtendimento Calcular(
         Guid negocioId, Guid agendamentoId, AgendamentoServico linha, TipoAjusteValor tipo, ModoAjusteValor modo,
-        decimal valorInformado, string motivo, Guid? usuarioId, DateTimeOffset agora)
+        decimal valorInformado, string motivo, Guid? usuarioId, DateTimeOffset agora, Guid? id = null)
     {
         var motivoLimpo = motivo?.Trim() ?? string.Empty;
         if (motivoLimpo.Length == 0)
@@ -79,6 +79,7 @@ public class AjusteValorAtendimento : EntidadeBase, IEntidadeDoNegocio
 
         return new AjusteValorAtendimento
         {
+            Id = id ?? Guid.NewGuid(),
             NegocioId = negocioId,
             AgendamentoId = agendamentoId,
             AgendamentoServicoId = linha.Id,
