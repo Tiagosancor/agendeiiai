@@ -204,6 +204,7 @@ public static class InfraestruturaServiceCollectionExtensions
 
         // Notificações ao profissional, lembretes e financeiro (Sprint 4 — seção 9/7).
         servicos.AddScoped<JobEnviarLembretes>();
+        servicos.AddScoped<ProcessadorLembretesDoNegocio>();
         servicos.AddScoped<Clientes.JobLembreteRetorno>();
         servicos.AddScoped<Aplicacao.Clientes.IServicoLembreteRetorno, Clientes.ServicoLembreteRetorno>();
         servicos.AddScoped<IGerenciadorPagamentos, GerenciadorPagamentos>();

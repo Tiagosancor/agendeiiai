@@ -1,3 +1,5 @@
+using Hangfire;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -37,11 +39,12 @@ public sealed class JobLembreteRetorno
     private readonly OpcoesMarca _opcoesMarca;
     private readonly OpcoesLembreteRetorno _opcoes;
     private readonly ILogger<JobLembreteRetorno> _logger;
+    private readonly IServiceScopeFactory _escopos;
 
     public JobLembreteRetorno(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, INotificador notificador,
         IConsultaSituacaoAssinatura assinaturas, IOptions<OpcoesMarca> opcoesMarca, IOptions<OpcoesLembreteRetorno> opcoes,
-        ILogger<JobLembreteRetorno> logger)
+        ILogger<JobLembreteRetorno> logger, IServiceScopeFactory escopos)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
@@ -50,31 +53,47 @@ public sealed class JobLembreteRetorno
         _opcoesMarca = opcoesMarca.Value;
         _opcoes = opcoes.Value;
         _logger = logger;
+        _escopos = escopos;
     }
 
+    /// <summary>
+    /// Entrada do Hangfire. <c>DisableConcurrentExecution</c> (espera de 10 s; uma trava órfã de processo que caiu é liberada em ~10 min,
+    /// dentro da janela de envio de 3 h): duas execuções juntas passariam pelo mesmo atendimento (o índice único
+    /// do envio barra a segunda, mas só depois de uma consulta e uma tentativa de gravar). Sem retry automático: o job é recorrente
+    /// (15 min) e o próximo ciclo já é a nova tentativa; o próprio envio tem a regra de "uma nova tentativa, no mesmo dia".
+    /// </summary>
+    [DisableConcurrentExecution(timeoutInSeconds: 10)]
+    [AutomaticRetry(Attempts = 0)]
     public Task ExecutarAsync(CancellationToken cancellationToken = default) => ExecutarAsync(DateTimeOffset.UtcNow, cancellationToken);
 
+    /// <summary>
+    /// Cada negócio é processado num escopo de DI NOVO: o <see cref="IContextoNegocio"/> é scoped e só aceita um tenant por escopo
+    /// (o mesmo vale para o <c>DbContext</c> e suas entidades rastreadas). Este escopo, o do job, nunca define negócio.
+    /// </summary>
     public async Task ExecutarAsync(DateTimeOffset agora, CancellationToken cancellationToken = default)
     {
         await MarcarAgendamentosGeradosAsync(agora, cancellationToken);
 
-        // Desligado: o negócio nem entra na varredura.
+        // Desligado: o negócio nem entra na varredura. Ordem fixa: o resultado não pode depender da ordem do banco.
         var negocios = await _dbContext.Negocios.AsNoTracking()
             .Where(n => n.Ativo && n.LembreteRetornoAtivo)
             .Select(n => n.Id)
+            .OrderBy(id => id)
             .ToListAsync(cancellationToken);
 
         foreach (var negocioId in negocios)
         {
             try
             {
-                await ProcessarNegocioAsync(negocioId, agora, cancellationToken);
+                using var escopo = _escopos.CreateScope();
+                await escopo.ServiceProvider.GetRequiredService<JobLembreteRetorno>()
+                    .ProcessarNegocioAsync(negocioId, agora, cancellationToken);
             }
             catch (Exception excecao) when (excecao is not OperationCanceledException)
             {
-                // Um negócio com problema não impede os outros.
-                _logger.LogError(excecao, "Falha no lembrete de retorno do negócio {NegocioId}.", negocioId);
-                _dbContext.ChangeTracker.Clear();
+                // Um negócio com problema não impede os outros. Só o id técnico e o tipo do erro: a mensagem de uma exceção do
+                // banco pode carregar valores de colunas (telefone, e-mail).
+                _logger.LogError("Falha no lembrete de retorno do negócio {NegocioId} ({TipoErro}).", negocioId, excecao.GetType().Name);
             }
         }
     }
@@ -96,7 +115,7 @@ public sealed class JobLembreteRetorno
                 catch (Exception excecao) when (excecao is not OperationCanceledException)
                 {
                     // Uma falha num cliente não interrompe os demais.
-                    _logger.LogError(excecao, "Falha no lembrete de retorno do atendimento {AgendamentoId}.", agendamentoId);
+                    _logger.LogError("Falha no lembrete de retorno do atendimento {AgendamentoId} ({TipoErro}).", agendamentoId, excecao.GetType().Name);
                     _dbContext.ChangeTracker.Clear();
                 }
             }
@@ -204,7 +223,7 @@ public sealed class JobLembreteRetorno
         }
         catch (Exception excecao) when (excecao is not OperationCanceledException)
         {
-            _logger.LogError(excecao, "Falha ao enviar o lembrete de retorno do atendimento {AgendamentoId}.", referencia.Id);
+            _logger.LogError("Falha ao enviar o lembrete de retorno do atendimento {AgendamentoId} ({TipoErro}).", referencia.Id, excecao.GetType().Name);
             resultado = ResultadoEnvioWhatsApp.Indisponivel();
         }
 
