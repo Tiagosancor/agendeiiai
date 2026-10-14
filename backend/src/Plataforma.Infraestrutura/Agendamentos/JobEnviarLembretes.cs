@@ -1,46 +1,54 @@
+using Hangfire;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Plataforma.Aplicacao.Abstracoes;
-using Plataforma.Aplicacao.Notificacoes;
 using Plataforma.Dominio.Agendamentos;
-using Plataforma.Infraestrutura.Negocios;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 
 namespace Plataforma.Infraestrutura.Agendamentos;
 
 /// <summary>
-/// Lembretes 24h/2h antes do agendamento (seção 9), rodando a cada poucos minutos em vez
+/// Lembrete de 60 minutos antes do agendamento (seção 9), rodando a cada poucos minutos em vez
 /// de um job agendado por agendamento — sobrevive à hibernação da API dos planos gratuitos
 /// (seção 8.5.6: ao voltar, envia os pendentes ainda válidos e descarta os vencidos) sem
 /// depender do agendador de delay do Hangfire ter disparado no momento exato.
+/// <para>
+/// Este job só orquestra: descobre quais negócios têm lembrete a enviar e entrega cada um a um
+/// <see cref="ProcessadorLembretesDoNegocio"/> num escopo de DI NOVO (o contexto de negócio é scoped e não troca de tenant). Falha
+/// em um negócio não interrompe os outros.
+/// </para>
+/// <para>
+/// Política do Hangfire: <c>DisableConcurrentExecution</c> (duas execuções juntas enviariam o mesmo lembrete duas vezes; a espera é
+/// de 10 s e a segunda desiste — medido: uma trava órfã de um processo que caiu só é liberada pelo Hangfire.PostgreSql depois de ~10 min,
+/// ou seja, no máximo dois ciclos sem lembrete, sempre dentro da janela de 60 min) e nenhum
+/// retry automático — o job é recorrente, o próximo ciclo (5 min) já é a nova tentativa, e um retry imediato reenviaria o que o
+/// negócio anterior já mandou.
+/// </para>
 /// </summary>
 public sealed class JobEnviarLembretes
 {
     private readonly PlataformaDbContext _dbContext;
-    private readonly IContextoNegocio _contextoNegocio;
-    private readonly INotificador _notificador;
-    private readonly IServicoTokenPublico _servicoToken;
-    private readonly OpcoesMarca _opcoesMarca;
+    private readonly IServiceScopeFactory _escopos;
     private readonly OpcoesLembretes _opcoesLembretes;
+    private readonly ILogger<JobEnviarLembretes> _logger;
 
     public JobEnviarLembretes(
-        PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, INotificador notificador,
-        IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca, IOptions<OpcoesLembretes> opcoesLembretes)
+        PlataformaDbContext dbContext, IServiceScopeFactory escopos, IOptions<OpcoesLembretes> opcoesLembretes, ILogger<JobEnviarLembretes> logger)
     {
         _dbContext = dbContext;
-        _contextoNegocio = contextoNegocio;
-        _notificador = notificador;
-        _servicoToken = servicoToken;
-        _opcoesMarca = opcoesMarca.Value;
+        _escopos = escopos;
         _opcoesLembretes = opcoesLembretes.Value;
+        _logger = logger;
     }
 
+    [DisableConcurrentExecution(timeoutInSeconds: 10)]
+    [AutomaticRetry(Attempts = 0)]
     public async Task ExecutarAsync(CancellationToken cancellationToken = default)
     {
         var agora = DateTimeOffset.UtcNow;
         var antecedencia = TimeSpan.FromMinutes(_opcoesLembretes.AntecedenciaMinutos);
-        var intervaloMinimo = TimeSpan.FromMinutes(_opcoesLembretes.IntervaloMinimoAposMarcarMinutos);
         var limite = agora + antecedencia;
 
         // Descarta os vencidos (seção 8.5.6): agendamento cujo horário já passou nunca mais
@@ -49,53 +57,27 @@ public sealed class JobEnviarLembretes
             .Where(a => a.Status == StatusAgendamento.Agendado && a.Inicio <= agora && !a.LembreteEnviado)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.LembreteEnviado, true), cancellationToken);
 
-        var candidatos = await _dbContext.Agendamentos.IgnoreQueryFilters()
-            .Include(a => a.Servicos)
+        // O job varre todos os negócios (varredura administrativa, só ids): sem negócio resolvido, o filtro global não se aplica.
+        var negocios = await _dbContext.Agendamentos.IgnoreQueryFilters().AsNoTracking()
             .Where(a => a.Status == StatusAgendamento.Agendado && !a.LembreteEnviado && a.Inicio > agora && a.Inicio <= limite)
+            .Select(a => a.NegocioId)
+            .Distinct()
+            .OrderBy(id => id)
             .ToListAsync(cancellationToken);
 
-        foreach (var grupo in candidatos.GroupBy(a => a.NegocioId))
+        foreach (var negocioId in negocios)
         {
-            // Infraestrutura de resolução de tenant (seção 8.3.2) — o job varre todos os
-            // negócios, então precisa definir o tenant atual explicitamente a cada grupo
-            // para o Notificador montar a marca/link certos.
-            _contextoNegocio.Definir(grupo.Key);
-
-            var negocio = await _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == grupo.Key, cancellationToken);
-
-            foreach (var agendamento in grupo)
+            try
             {
-                if (!agendamento.NaJanelaDoLembrete(agora, antecedencia))
-                    continue;
-
-                // Marcado em cima da hora (a confirmação acabou de sair) ou encaixe sem autorização do
-                // cliente para receber mensagens (seção 7) — dispensa (e não volta a olhar).
-                if (!agendamento.LembreteFazSentido(antecedencia, intervaloMinimo) || !agendamento.PodeReceberMensagens)
-                {
-                    agendamento.MarcarLembreteEnviado();
-                    continue;
-                }
-
-                if (agendamento.ClienteId is null)
-                    continue;
-
-                var cliente = await _dbContext.Clientes.IgnoreQueryFilters().AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.Id == agendamento.ClienteId, cancellationToken);
-
-                if (cliente is null)
-                    continue;
-
-                var tokenAgendamento = _servicoToken.GerarTokenAgendamento(negocio.Id, agendamento.Id);
-                var link = ConstrutorUrlPublica.Construir(_opcoesMarca, negocio.Slug.Valor, $"/agendamentos/{tokenAgendamento}");
-
-                await _notificador.EnviarLembreteAsync(new DadosNotificacaoAgendamento(
-                    cliente.Nome, cliente.Email, cliente.Telefone, agendamento.Inicio, agendamento.Fim,
-                    agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, link, link), cancellationToken);
-
-                agendamento.MarcarLembreteEnviado();
+                using var escopo = _escopos.CreateScope();
+                await escopo.ServiceProvider.GetRequiredService<ProcessadorLembretesDoNegocio>()
+                    .ProcessarAsync(negocioId, agora, cancellationToken);
+            }
+            catch (Exception excecao) when (excecao is not OperationCanceledException)
+            {
+                // Só o id técnico e o tipo do erro: a mensagem de uma exceção do banco pode carregar valores de colunas.
+                _logger.LogError("Falha ao processar os lembretes do negócio {NegocioId} ({TipoErro}).", negocioId, excecao.GetType().Name);
             }
         }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 }
