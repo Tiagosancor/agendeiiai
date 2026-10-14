@@ -21,25 +21,30 @@ using Xunit;
 namespace Plataforma.Testes.Integracao.Idempotencia;
 
 /// <summary>
-/// Idempotência Fase 1: <c>Idempotency-Key</c> opcional nos 7 endpoints do painel (venda, entrada, consumo, vale, agendamento
-/// forçado, encaixe e resgate de fidelidade). A chave, o efeito e o resultado confirmam na mesma transação; sem chave nada muda.
+/// Idempotência (Fases 1 e 3A): <c>Idempotency-Key</c> nos 7 endpoints do painel (venda, entrada, consumo, vale, agendamento
+/// forçado, encaixe e resgate de fidelidade). A chave, o efeito e o resultado confirmam na mesma transação; o mesmo contrato vale com a chave opcional e com a chave obrigatória (classes derivadas).
 /// Parametrizado por endpoint. Concorrência coordenada por trava externa e <c>pg_locks</c> — sem <c>Task.Delay</c>.
 /// </summary>
-[Collection(ColecaoComPostgres.NomeColecao)]
-public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
+
+public abstract class IdempotenciaOperacoesBase : IAsyncLifetime
 {
     private const string EmailProf = "prof.idem@teste.com";
     private static readonly JsonSerializerOptions Web = new(JsonSerializerDefaults.Web);
 
-    private readonly PostgresContainerFixture _postgres;
+    protected readonly PostgresContainerFixture _postgres;
+    private readonly bool _obrigatoria;
     private readonly InterceptadorDeCommit _commit = new();
-    private PlataformaWebApplicationFactory _fabrica = null!;
+    protected PlataformaWebApplicationFactory _fabrica = null!;
 
-    public IdempotenciaOperacoesTestes(PostgresContainerFixture postgres) => _postgres = postgres;
+    protected IdempotenciaOperacoesBase(PostgresContainerFixture postgres, bool obrigatoria)
+    {
+        _postgres = postgres;
+        _obrigatoria = obrigatoria;
+    }
 
     public async Task InitializeAsync()
     {
-        _fabrica = new PlataformaWebApplicationFactory(_postgres.ConnectionString, null, servicos =>
+        _fabrica = new PlataformaWebApplicationFactory(_postgres.ConnectionString, new Dictionary<string, string?> { ["Idempotencia:Obrigatoria"] = _obrigatoria ? "true" : "false" }, servicos =>
             servicos.ConfigureDbContext<PlataformaDbContext>(o => o.AddInterceptors(_commit)));
         using var aquecimento = _fabrica.CreateClient();
         await _fabrica.ResetarBancoAsync();
@@ -55,22 +60,6 @@ public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
         new[] { "venda", "entrada", "consumo", "vale", "forcado", "encaixe", "resgate" }.Select(n => new object[] { n });
 
     // ------------------------------------------------------------------ contrato HTTP
-
-    [Theory, MemberData(nameof(Operacoes))]
-    public async Task Sem_chave_preserva_o_comportamento_atual(string nome)
-    {
-        var c = await ArranjarAsync();
-        var op = Op(nome);
-
-        var primeira = await Enviar(c, op, chave: null);
-        var segunda = await Enviar(c, op, chave: null);
-
-        primeira.StatusCode.Should().Be(op.Status);
-        segunda.StatusCode.Should().Be(op.Status, "sem chave duas requisições são duas operações (como sempre foi)");
-        (await op.Efeitos(this, c)).Should().Be(2);
-        segunda.Headers.Contains("Idempotent-Replayed").Should().BeFalse();
-        (await RegistrosAsync(c)).Should().Be(0, "sem chave a tabela não é tocada");
-    }
 
     [Theory, MemberData(nameof(Operacoes))]
     public async Task Primeira_requisicao_executa_uma_vez_e_replay_devolve_mesmo_status_e_corpo_com_a_marca(string nome)
@@ -450,13 +439,13 @@ public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
 
     // ------------------------------------------------------------------ definição dos endpoints
 
-    private sealed record Endpoint(
+    protected sealed record Endpoint(
         string Nome, HttpStatusCode Status, bool SemCorpo,
         Func<Cenario, int, string> Url, Func<Cenario, int, object?> Corpo, Func<Cenario, object?> Falha,
-        Func<IdempotenciaOperacoesTestes, Cenario, Task<int>> Efeitos,
-        Func<IdempotenciaOperacoesTestes, Cenario, Task<TravaExterna?>> Segurar);
+        Func<IdempotenciaOperacoesBase, Cenario, Task<int>> Efeitos,
+        Func<IdempotenciaOperacoesBase, Cenario, Task<TravaExterna?>> Segurar);
 
-    private static Endpoint Op(string nome) => nome switch
+    protected static Endpoint Op(string nome) => nome switch
     {
         "venda" => new(nome, HttpStatusCode.Created, false,
             (c, _) => "/painel/vendas",
@@ -517,14 +506,14 @@ public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
 
     // ------------------------------------------------------------------ envio
 
-    private async Task<HttpResponseMessage> Enviar(
+    protected async Task<HttpResponseMessage> Enviar(
         Cenario c, Endpoint op, string? chave, int variante = 0, bool formatoAlternativo = false, bool falhar = false, HttpClient? cliente = null)
     {
         using var requisicao = Requisicao(c, op, chave, variante, formatoAlternativo, falhar);
         return await (cliente ?? c.Admin).SendAsync(requisicao);
     }
 
-    private static HttpRequestMessage Requisicao(Cenario c, Endpoint op, string? chave, int variante, bool formatoAlternativo, bool falhar = false)
+    protected static HttpRequestMessage Requisicao(Cenario c, Endpoint op, string? chave, int variante, bool formatoAlternativo, bool falhar = false)
     {
         var requisicao = new HttpRequestMessage(HttpMethod.Post, falhar && op.Nome == "resgate" ? op.Url(c, 1) : op.Url(c, variante));
         var corpo = falhar ? op.Falha(c) : op.Corpo(c, variante);
@@ -558,9 +547,9 @@ public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
 
     // ------------------------------------------------------------------ apoio
 
-    private sealed record Cenario(Guid NegocioId, HttpClient Admin, SemeadorDeAgenda.CenarioDeAgenda Agenda, DateOnly Segunda, Guid Produto);
+    protected sealed record Cenario(Guid NegocioId, HttpClient Admin, SemeadorDeAgenda.CenarioDeAgenda Agenda, DateOnly Segunda, Guid Produto);
 
-    private async Task<Cenario> ArranjarAsync()
+    protected async Task<Cenario> ArranjarAsync()
     {
         var (admin, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
         var agenda = await _fabrica.CriarCenarioPadraoAsync(negocioId);
@@ -594,9 +583,9 @@ public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
         return new Cenario(negocioId, admin, agenda, segunda, produto);
     }
 
-    private static DateTimeOffset Local(Cenario c, int hora) => SemeadorDeComissoes.Local(c.Segunda, hora, 0);
+    protected static DateTimeOffset Local(Cenario c, int hora) => SemeadorDeComissoes.Local(c.Segunda, hora, 0);
 
-    private static string NovaChave() => Guid.NewGuid().ToString();
+    protected static string NovaChave() => Guid.NewGuid().ToString();
 
     /// <summary>Agendamentos criados pelos endpoints de agenda (19h/20h da segunda) — os 4 semeados para os selos ficam de fora.</summary>
     private Task<int> AgendamentosDoTesteAsync(Cenario c)
@@ -606,13 +595,13 @@ public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
             .CountAsync(a => a.NegocioId == c.NegocioId && a.Inicio >= inicio && a.Inicio <= fim));
     }
 
-    private Task<int> RegistrosAsync(Cenario c) =>
+    protected Task<int> RegistrosAsync(Cenario c) =>
         _fabrica.NoBancoAsync(db => db.RequisicoesIdempotentes.IgnoreQueryFilters().CountAsync(r => r.NegocioId == c.NegocioId));
 
     private Task<int> AuditoriaAsync(Cenario c, string acao) =>
         _fabrica.NoBancoAsync(db => db.LogsAuditoriaNegocio.IgnoreQueryFilters().CountAsync(l => l.NegocioId == c.NegocioId && l.Acao == acao));
 
-    private Task<(int, int, int)> EstoqueAsync(Cenario c) =>
+    protected Task<(int, int, int)> EstoqueAsync(Cenario c) =>
         _fabrica.NoBancoAsync(async db => (
             await db.Produtos.IgnoreQueryFilters().Where(p => p.Id == c.Produto).Select(p => p.QuantidadeEstoque).SingleAsync(),
             await db.MovimentosEstoque.IgnoreQueryFilters().Where(m => m.ProdutoId == c.Produto).SumAsync(m => m.Quantidade),
@@ -640,7 +629,7 @@ public sealed class IdempotenciaOperacoesTestes : IAsyncLifetime
     }
 
     /// <summary>Transação externa que segura um recurso que a operação precisa depois de reivindicar a chave.</summary>
-    private sealed class TravaExterna : IAsyncDisposable
+    protected sealed class TravaExterna : IAsyncDisposable
     {
         private readonly NpgsqlConnection _conexao;
         private readonly NpgsqlTransaction _transacao;
