@@ -112,7 +112,7 @@ test("concluir atendimento lança os produtos vendidos, com o profissional suger
   expect(horario).toBeTruthy();
   const cliente = `Cliente balm ${sufixo}`;
   const encaixe = await request.post(`${API}/painel/encaixes`, {
-    headers: auth,
+    headers: { ...auth, "Idempotency-Key": crypto.randomUUID() },
     data: {
       profissionalId: profissional.id,
       clienteId: null,

@@ -37,7 +37,7 @@ test("semana do profissional e remarcar um atendimento para outro horário livre
   expect(livres.length).toBeGreaterThanOrEqual(2);
   const cliente = `Cliente semana ${sufixo}`;
   const encaixe = await request.post(`${API}/painel/encaixes`, {
-    headers: auth,
+    headers: { ...auth, "Idempotency-Key": crypto.randomUUID() },
     data: {
       profissionalId: profissional.id,
       clienteId: null,
