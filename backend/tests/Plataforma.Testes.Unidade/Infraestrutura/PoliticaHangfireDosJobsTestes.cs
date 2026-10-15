@@ -3,6 +3,7 @@ using FluentAssertions;
 using Hangfire;
 using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Clientes;
+using Plataforma.Infraestrutura.Notificacoes.Outbox;
 
 namespace Plataforma.Testes.Unidade.Infraestrutura;
 
@@ -13,7 +14,7 @@ namespace Plataforma.Testes.Unidade.Infraestrutura;
 /// </summary>
 public class PoliticaHangfireDosJobsTestes
 {
-    public static IEnumerable<object[]> Jobs() => [[typeof(JobEnviarLembretes)], [typeof(JobLembreteRetorno)]];
+    public static IEnumerable<object[]> Jobs() => [[typeof(JobEnviarLembretes)], [typeof(JobLembreteRetorno)], [typeof(JobDespacharNotificacoes)]];
 
     private static MethodInfo MetodoDoHangfire(Type job) =>
         job.GetMethod("ExecutarAsync", [typeof(CancellationToken)]) ?? throw new InvalidOperationException("ExecutarAsync(CancellationToken) não encontrado.");

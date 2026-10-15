@@ -287,7 +287,7 @@ public sealed class IdempotenciaComportamentoTestes
             (await Consultar<string>(cs, "SELECT confdeltype::text FROM pg_constraint WHERE conname = 'fk_requisicoes_idempotentes_negocios_negocio_id'"))
                 .Should().ContainSingle().Which.Should().Be("c", "cascade ao apagar o negócio");
 
-            var tabelasAntes = await Consultar<string>(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> 'requisicoes_idempotentes' ORDER BY table_name");
+            var tabelasAntes = await Consultar<string>(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name NOT IN ('requisicoes_idempotentes', 'notificacoes_pendentes') ORDER BY table_name");
 
             // Down: volta para a migration anterior (LembreteRetorno).
             using (var escopo = fabrica.Services.CreateScope())
@@ -298,7 +298,8 @@ public sealed class IdempotenciaComportamentoTestes
 
             (await Consultar<string>(cs, "SELECT table_name FROM information_schema.tables WHERE table_name = 'requisicoes_idempotentes'")).Should().BeEmpty();
             (await Consultar<string>(cs, "SELECT migration_id FROM \"__EFMigrationsHistory\" WHERE migration_id LIKE '%RequisicoesIdempotentes'")).Should().BeEmpty();
-            (await Consultar<string>(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"))
+            // notificacoes_pendentes é de uma migration POSTERIOR (outbox, B7.4-B): descer até LembreteRetorno também a remove.
+            (await Consultar<string>(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> 'notificacoes_pendentes' ORDER BY table_name"))
                 .Should().BeEquivalentTo(tabelasAntes, "o Down só remove a tabela desta fase");
 
             // Up de novo: idempotente em banco que já passou por ele.

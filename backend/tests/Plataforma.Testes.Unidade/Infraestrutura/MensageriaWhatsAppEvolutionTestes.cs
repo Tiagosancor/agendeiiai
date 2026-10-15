@@ -99,6 +99,66 @@ public sealed class MensageriaWhatsAppEvolutionTestes
         instancia.Recebidas.Should().ContainSingle();
     }
 
+    // ---------------------------------------------------------------- classificação da falha (outbox, B7.4-B)
+
+    [Fact]
+    public async Task Timeout_e_ambiguo_porque_a_mensagem_pode_ter_sido_aceita()
+    {
+        var instancia = new InstanciaFalsa(async token =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10), token);
+            return Json(HttpStatusCode.OK, "{}");
+        });
+
+        var resultado = await Provedor(instancia, timeoutSegundos: 1).EnviarAsync(Telefone, "oi");
+
+        resultado.Status.Should().Be(StatusCanal.Falhou);
+        resultado.Falha.Should().Be(ClasseFalhaWhatsApp.Ambigua);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.BadRequest, ClasseFalhaWhatsApp.Recusada)]
+    [InlineData(HttpStatusCode.NotFound, ClasseFalhaWhatsApp.Recusada)]
+    [InlineData(HttpStatusCode.TooManyRequests, ClasseFalhaWhatsApp.NaoAceita)]
+    [InlineData(HttpStatusCode.RequestTimeout, ClasseFalhaWhatsApp.NaoAceita)]
+    public async Task Resposta_4xx_e_recusa_definitiva_exceto_pedido_para_tentar_mais_tarde(HttpStatusCode status, ClasseFalhaWhatsApp esperada)
+    {
+        var instancia = InstanciaFalsa.Sincrona(() => Json(status, "{}"));
+
+        var resultado = await Provedor(instancia).EnviarAsync(Telefone, "oi");
+
+        resultado.Falha.Should().Be(esperada);
+    }
+
+    [Fact]
+    public async Task Erro_5xx_nas_duas_tentativas_e_falha_confirmada_sem_aceite()
+    {
+        var instancia = InstanciaFalsa.Sincrona(() => Json(HttpStatusCode.ServiceUnavailable, "{}"));
+
+        var resultado = await Provedor(instancia).EnviarAsync(Telefone, "oi");
+
+        resultado.Falha.Should().Be(ClasseFalhaWhatsApp.NaoAceita);
+        instancia.Recebidas.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task Conexao_que_nem_abriu_e_falha_confirmada_e_queda_depois_do_envio_e_ambigua()
+    {
+        var recusada = InstanciaFalsa.Sincrona(() => throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused"));
+        var caiuNoMeio = InstanciaFalsa.Sincrona(() => throw new HttpRequestException(HttpRequestError.ResponseEnded, "response ended"));
+
+        (await Provedor(recusada).EnviarAsync(Telefone, "oi")).Falha.Should().Be(ClasseFalhaWhatsApp.NaoAceita);
+        (await Provedor(caiuNoMeio).EnviarAsync(Telefone, "oi")).Falha.Should().Be(ClasseFalhaWhatsApp.Ambigua);
+    }
+
+    [Fact]
+    public async Task Resultado_de_sucesso_nao_carrega_classe_de_falha()
+    {
+        var instancia = InstanciaFalsa.Sincrona(() => Json(HttpStatusCode.Created, """{ "key": { "id": "OK1" } }"""));
+
+        (await Provedor(instancia).EnviarAsync(Telefone, "oi")).Falha.Should().Be(ClasseFalhaWhatsApp.Nenhuma);
+    }
+
     [Theory]
     [InlineData("open", EstadoConexaoWhatsApp.Conectada)]
     [InlineData("connecting", EstadoConexaoWhatsApp.AguardandoQrCode)]
