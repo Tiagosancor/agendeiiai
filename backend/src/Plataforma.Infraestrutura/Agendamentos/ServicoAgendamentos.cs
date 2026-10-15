@@ -20,6 +20,7 @@ using Plataforma.Infraestrutura.Comum;
 using Plataforma.Infraestrutura.Cupons;
 using Plataforma.Infraestrutura.Negocios;
 using Plataforma.Infraestrutura.Notificacoes;
+using Plataforma.Infraestrutura.Notificacoes.Outbox;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 
@@ -50,13 +51,15 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly IUsuarioAtual _usuarioAtual;
     private readonly ILogger<ServicoAgendamentos> _logger;
     private readonly IServicoIdempotencia _idempotencia;
+    private readonly OutboxNotificacoes _outbox;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
         IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, TravaQuinzenas travaQuinzenas,
-        IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger, IServicoIdempotencia idempotencia)
+        IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger, IServicoIdempotencia idempotencia, OutboxNotificacoes outbox)
     {
+        _outbox = outbox;
         _idempotencia = idempotencia;
         _usuarioAtual = usuarioAtual;
         _auditoria = auditoria;
@@ -86,16 +89,20 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             ? new DateTimeOffset(agora.Year, agora.Month, agora.Day, agora.Hour, agora.Minute, 0, TimeSpan.Zero)
             : dados.Inicio!.Value;
 
+        // Sem aceite do cliente, só o profissional é avisado (seção 7). Com aceite, a confirmação só
+        // faz sentido para quem vai voltar mais tarde, não para quem já está sendo atendido.
+        var confirmarAoCliente = dados.ClienteAutorizouMensagens && !dados.IniciarAtendimento;
+
         var resultado = await CriarInternoAsync(
             new CriarAgendamento(dados.ProfissionalId, cliente.Id, dados.ServicoIds, inicio, dados.Observacoes),
             confirmarDeImediato: true, cancellationToken,
-            new OpcoesCriacao(OrigemAgendamento.Encaixe, dados.IniciarAtendimento, dados.ClienteAutorizouMensagens, dados.MotivoForcar));
+            new OpcoesCriacao(OrigemAgendamento.Encaixe, dados.IniciarAtendimento, dados.ClienteAutorizouMensagens, dados.MotivoForcar),
+            confirmarAoCliente ? NotificacaoNaCriacao.ClienteEProfissional : NotificacaoNaCriacao.Profissional);
 
-        if (resultado.Sucesso && !_idempotencia.Repeticao)
+        // Com a outbox, as mensagens já foram gravadas na transação do agendamento; o envio direto é só o caminho sem ela.
+        if (resultado.Sucesso && !_idempotencia.Repeticao && !_outbox.Usa(FamiliaNotificacao.Operacional))
         {
-            // Sem aceite do cliente, só o profissional é avisado (seção 7). Com aceite, a confirmação só
-            // faz sentido para quem vai voltar mais tarde, não para quem já está sendo atendido.
-            if (dados.ClienteAutorizouMensagens && !dados.IniciarAtendimento)
+            if (confirmarAoCliente)
                 await NotificarConfirmacaoAsync(resultado.AgendamentoId!.Value, cancellationToken);
             else
                 await NotificarProfissionalAsync(resultado.AgendamentoId!.Value, EventoAgendamentoProfissional.Novo, cancellationToken);
@@ -156,9 +163,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
     public async Task<ResultadoAgendamento> CriarAsync(CriarAgendamento dados, CancellationToken cancellationToken = default)
     {
-        var resultado = await CriarInternoAsync(dados, confirmarDeImediato: true, cancellationToken);
+        var resultado = await CriarInternoAsync(
+            dados, confirmarDeImediato: true, cancellationToken, notificacao: NotificacaoNaCriacao.Profissional);
 
-        if (resultado.Sucesso)
+        if (resultado.Sucesso && !_outbox.Usa(FamiliaNotificacao.Operacional))
             await NotificarProfissionalAsync(resultado.AgendamentoId!.Value, EventoAgendamentoProfissional.Novo, cancellationToken);
 
         return resultado;
@@ -174,9 +182,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     public async Task<ResultadoAgendamento> CriarForcadoAsync(CriarAgendamento dados, string motivo, CancellationToken cancellationToken = default)
     {
         var resultado = await CriarInternoAsync(dados, confirmarDeImediato: true, cancellationToken,
-            new OpcoesCriacao(OrigemAgendamento.Painel, IniciarAtendimento: false, ClienteAutorizouMensagens: false, motivo ?? string.Empty));
+            new OpcoesCriacao(OrigemAgendamento.Painel, IniciarAtendimento: false, ClienteAutorizouMensagens: false, motivo ?? string.Empty),
+            NotificacaoNaCriacao.Profissional);
 
-        if (resultado.Sucesso && !_idempotencia.Repeticao)
+        if (resultado.Sucesso && !_idempotencia.Repeticao && !_outbox.Usa(FamiliaNotificacao.Operacional))
             await NotificarProfissionalAsync(resultado.AgendamentoId!.Value, EventoAgendamentoProfissional.Novo, cancellationToken);
 
         return resultado;
@@ -186,6 +195,14 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     /// O que muda na criação do encaixe e do agendamento forçado (seção 7) em relação ao agendamento comum
     /// do painel. <c>MotivoForcar</c> não nulo = passar por cima das regras de horário.
     /// </summary>
+    /// <summary>Mensagens que a criação grava na outbox, na mesma transação do agendamento (só com a outbox ligada).</summary>
+    private enum NotificacaoNaCriacao
+    {
+        Nenhuma,
+        Profissional,
+        ClienteEProfissional,
+    }
+
     private sealed record OpcoesCriacao(
         OrigemAgendamento Origem, bool IniciarAtendimento, bool ClienteAutorizouMensagens, string? MotivoForcar = null);
 
@@ -220,7 +237,8 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     }
 
     private async Task<ResultadoAgendamento> CriarInternoAsync(
-        CriarAgendamento dados, bool confirmarDeImediato, CancellationToken cancellationToken, OpcoesCriacao? opcoes = null)
+        CriarAgendamento dados, bool confirmarDeImediato, CancellationToken cancellationToken, OpcoesCriacao? opcoes = null,
+        NotificacaoNaCriacao notificacao = NotificacaoNaCriacao.Nenhuma)
     {
         var negocioId = _contextoNegocio.NegocioId!.Value;
 
@@ -358,6 +376,14 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             _dbContext.Agendamentos.Add(agendamento);
 
+            // Outbox: as mensagens confirmam ou desfazem junto com o agendamento (a rede só é chamada depois, pelo despachante).
+            if (notificacao != NotificacaoNaCriacao.Nenhuma && _outbox.Usa(FamiliaNotificacao.Operacional))
+            {
+                if (notificacao == NotificacaoNaCriacao.ClienteEProfissional)
+                    await _outbox.EnfileirarConfirmacaoAsync(agendamento, cancellationToken);
+                await _outbox.EnfileirarAvisoAoProfissionalAsync(agendamento, EventoAgendamentoProfissional.Novo, cancellationToken);
+            }
+
             try
             {
                 await _dbContext.SaveChangesAsync(cancellationToken);
@@ -457,6 +483,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var repeticaoDoMesmoCliente = false;
+        var usaOutbox = _outbox.Usa(FamiliaNotificacao.Operacional);
         var tentativas = new TentativasDaTransacao(_dbContext);
 
         // Marca desta requisição, gravada como data do consentimento (precisão do Postgres: microssegundos). Na repetição da
@@ -535,10 +562,18 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             agendamento.RegistrarConsentimento(momento, dados.IpCliente, VersaoTermos.Atual);
             agendamento.ConfirmarReserva();
+
+            // Outbox: confirmação ao cliente e aviso ao profissional na mesma transação da confirmação.
+            if (usaOutbox)
+            {
+                await _outbox.EnfileirarConfirmacaoAsync(agendamento, cancellationToken);
+                await _outbox.EnfileirarAvisoAoProfissionalAsync(agendamento, EventoAgendamentoProfissional.Novo, cancellationToken);
+            }
+
             return await GravarConfirmacaoAsync(agendamento, transacao, cancellationToken);
         });
 
-        if (resultado.Sucesso && !repeticaoDoMesmoCliente)
+        if (resultado.Sucesso && !repeticaoDoMesmoCliente && !usaOutbox)
             await NotificarConfirmacaoAsync(resultado.AgendamentoId!.Value, cancellationToken);
 
         return resultado;
@@ -711,6 +746,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         Guid agendamentoId, bool pelaGestaoPublica, CancellationToken cancellationToken, bool avisandoCliente = false)
     {
         var resultado = ResultadoCancelamentoPublico.NaoEncontrado;
+        var usaOutbox = _outbox.Usa(FamiliaNotificacao.Operacional);
 
         await ExecutarNaTravaDeQuinzenasAsync(async repetida =>
         {
@@ -749,12 +785,22 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             if (avisandoCliente)
                 _auditoria.Registrar(AcoesAuditoria.CancelarAgendamento, "Agendamento", agendamentoId, "Cancelado avisando o cliente");
 
+            // Confirmação, lembrete e avisos de "novo"/"remarcado" que ainda esperam na outbox ficam obsoletos — sempre invalidados
+            // (inclusive com a flag desligada: uma mensagem gravada antes do rollback não pode sair depois do cancelamento).
+            await _outbox.CancelarPendentesObsoletosDoCancelamentoAsync(agendamentoId, cancellationToken);
+            if (usaOutbox)
+            {
+                await _outbox.EnfileirarAvisoAoProfissionalAsync(agendamento, EventoAgendamentoProfissional.Cancelado, cancellationToken);
+                if (avisandoCliente)
+                    await _outbox.EnfileirarCancelamentoDoClienteAsync(agendamento, cancellationToken);
+            }
+
             await _dbContext.SaveChangesAsync(cancellationToken);
             resultado = ResultadoCancelamentoPublico.Cancelado;
             return true;
         }, cancellationToken);
 
-        if (resultado == ResultadoCancelamentoPublico.Cancelado)
+        if (resultado == ResultadoCancelamentoPublico.Cancelado && !usaOutbox)
             await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Cancelado, cancellationToken);
 
         return resultado;
@@ -765,6 +811,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         if (await CancelarNaTravaAsync(agendamentoId, pelaGestaoPublica: false, cancellationToken, avisandoCliente: true)
             != ResultadoCancelamentoPublico.Cancelado)
             return false;
+
+        // Com a outbox, o aviso ao cliente já foi gravado junto com o cancelamento.
+        if (_outbox.Usa(FamiliaNotificacao.Operacional))
+            return true;
 
         var agendamento = await _dbContext.Agendamentos.AsNoTracking()
             .Include(a => a.Servicos)
@@ -792,6 +842,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         Guid agendamentoId, Guid profissionalOrigemId, Guid novoProfissionalId, CancellationToken cancellationToken = default)
     {
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var usaOutbox = _outbox.Usa(FamiliaNotificacao.Operacional);
         var tentativas = new TentativasDaTransacao(_dbContext);
 
         var resultado = await estrategia.ExecuteAsync(async () =>
@@ -888,6 +939,10 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             _auditoria.Registrar(AcoesAuditoria.TransferirAgendamento, "Agendamento", agendamento.Id,
                 $"De {profissionalAnterior} para {novoProfissionalId}");
 
+            // O novo profissional fica sabendo do atendimento que ganhou — gravado junto com a transferência.
+            if (usaOutbox)
+                await _outbox.EnfileirarAvisoAoProfissionalAsync(agendamento, EventoAgendamentoProfissional.Novo, cancellationToken);
+
             try
             {
                 await _dbContext.SaveChangesAsync(cancellationToken);
@@ -902,7 +957,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         });
 
         // O novo profissional fica sabendo do atendimento que ganhou.
-        if (resultado.Sucesso)
+        if (resultado.Sucesso && !usaOutbox)
             await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Novo, cancellationToken);
 
         return resultado;
@@ -927,6 +982,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             return ResultadoAgendamento.ComErro(erroMotivo);
 
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var usaOutbox = _outbox.Usa(FamiliaNotificacao.Operacional);
         var tentativas = new TentativasDaTransacao(_dbContext);
 
         var resultado = await estrategia.ExecuteAsync(async () =>
@@ -1016,6 +1072,12 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 RegistrarForcado(agendamento, motivoForcar!, regrasQuebradas, agora,
                     detalheAntes: $"Movido de {FormatacaoBrasil.DataHora(inicioAnterior, negocio.Fuso)} para {FormatacaoBrasil.DataHora(novoInicio, negocio.Fuso)}. ");
 
+            // O lembrete que ainda espera com o horário antigo deixa de valer (sempre, mesmo com a flag desligada); o do horário novo
+            // nasce da varredura, que já vê o lembrete "não enviado" depois do Mover. O aviso de remarcação ao profissional entra junto.
+            await _outbox.CancelarLembretesDeOutroHorarioAsync(agendamento.Id, TiposDeNotificacao.VersaoDoHorario(novoInicio), cancellationToken);
+            if (usaOutbox)
+                await _outbox.EnfileirarAvisoAoProfissionalAsync(agendamento, EventoAgendamentoProfissional.Remarcado, cancellationToken);
+
             try
             {
                 await _dbContext.SaveChangesAsync(cancellationToken);
@@ -1031,7 +1093,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             }
         });
 
-        if (resultado.Sucesso)
+        if (resultado.Sucesso && !usaOutbox)
             await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Remarcado, cancellationToken);
 
         return resultado;
