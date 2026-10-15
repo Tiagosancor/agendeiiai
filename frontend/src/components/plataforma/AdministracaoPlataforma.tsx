@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ErroApi, requisicaoApi } from "@/lib/api";
 import type { EstadoAssinatura, EstadoConexaoWhatsApp, Periodicidade, PlanoPublico, SaudeWhatsApp } from "@/lib/tipos";
 import { ROTULOS_ESTADO_ASSINATURA } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import { classeBotaoPerigo, classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
-import { CampoSenha } from "@/components/CampoSenha";
+import { usePlataforma } from "@/components/plataforma/ContextoPlataforma";
+import { CartaoResumoOutbox } from "@/components/plataforma/MonitoramentoOutbox";
 
 interface NegocioNaPlataforma {
   id: string;
@@ -55,46 +56,8 @@ function somarMeses(diaIso: string, meses: number): string {
  * assinatura, nunca dados de clientes dos negócios.
  */
 export function AdministracaoPlataforma() {
-  const [token, setToken] = useState<string | null>(null);
-
-  if (!token) return <LoginPlataforma aoEntrar={setToken} />;
-  return <ListaNegocios token={token} aoSair={() => setToken(null)} />;
-}
-
-function LoginPlataforma({ aoEntrar }: { aoEntrar: (token: string) => void }) {
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function enviar(evento: FormEvent) {
-    evento.preventDefault();
-    setErro(null);
-    try {
-      const sessao = await requisicaoApi<{ accessToken: string }>("/plataforma/auth/login", { metodo: "POST", corpo: { email, senha } });
-      aoEntrar(sessao.accessToken);
-    } catch (excecao) {
-      setErro(excecao instanceof ErroApi && excecao.status === 429 ? "Muitas tentativas. Aguarde um minuto." : "E-mail ou senha incorretos.");
-    }
-  }
-
-  return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <form onSubmit={enviar} className="w-full max-w-sm space-y-3 rounded-xl border border-gray-200 p-6 dark:border-neutral-800">
-        <h1 className="font-display text-xl font-bold">Administração da plataforma</h1>
-        <label className="block">
-          <span className={classeLabel}>E-mail</span>
-          <input type="email" required className={classeInput} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
-        </label>
-        <div>
-          <CampoSenha rotulo="Senha" required className={classeInput} value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete="current-password" />
-        </div>
-        {erro && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{erro}</p>}
-        <button type="submit" className={`${classeBotaoPrimario} w-full`}>
-          Entrar
-        </button>
-      </form>
-    </main>
-  );
+  const { token, sair } = usePlataforma();
+  return <ListaNegocios token={token} aoSair={sair} />;
 }
 
 function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void }) {
@@ -144,6 +107,7 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
       </div>
 
       <CartaoSaudeWhatsApp chamar={chamar} />
+      <CartaoResumoOutbox />
 
       <div className={classeCartao}>
         <div className="overflow-x-auto">
