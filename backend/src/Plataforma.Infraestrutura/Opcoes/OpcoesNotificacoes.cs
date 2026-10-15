@@ -65,6 +65,13 @@ public sealed class OpcoesNotificacoes : IValidatableObject
     [Range(15, 1440)]
     public int RetornoValidadeMinutos { get; set; } = 180;
 
+    /// <summary>
+    /// Registro de lembrete de retorno que ficou <c>Enviando</c> (caminho direto antigo, ou queda no meio do envio) há mais que isto, sem
+    /// mensagem viva na outbox: não dá para saber se saiu, então vira <c>Desconhecido</c> e nunca é reenviado.
+    /// </summary>
+    [Range(15, 10080)]
+    public int RetornoEnviandoPresoMinutos { get; set; } = 60;
+
     /// <summary>Itens enviados, cancelados, desconhecidos e falhos são apagados depois deste prazo (nunca os pendentes ou em envio).</summary>
     [Range(1, 3650)]
     public int RetencaoDias { get; set; } = 30;

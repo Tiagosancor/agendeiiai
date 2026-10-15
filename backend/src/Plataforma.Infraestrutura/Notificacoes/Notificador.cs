@@ -81,26 +81,19 @@ public sealed class Notificador : INotificador
     {
         var negocio = await ObterNegocioAsync(cancellationToken);
 
-        var corpo = Envelope(negocio.NomeExibido, $"""
-            <p>Olá, {dados.NomeCliente}! Seu agendamento em <strong>{negocio.NomeExibido}</strong> está confirmado.</p>
-            <p><strong>Quando:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
-            <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
-            <p><strong>Total:</strong> {FormatacaoBrasil.Reais(dados.Total)}</p>
-            <p><a href="{dados.LinkRemarcar}">Remarcar</a> · <a href="{dados.LinkCancelar}">Cancelar</a></p>
-            """);
-
         var tarefas = new List<Task>();
 
         if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
         {
+            var email = MensagensDeAgendamento.EmailConfirmacao(_opcoesMarca.NomeProduto, negocio, dados);
             tarefas.Add(ExecutarSemFalharAsync(() =>
-                _email.EnviarAsync(dados.EmailCliente, $"Agendamento confirmado — {negocio.NomeExibido}", corpo, cancellationToken),
+                _email.EnviarAsync(dados.EmailCliente, email.Assunto, email.CorpoHtml, cancellationToken),
                 "E-mail/confirmação"));
         }
 
         if (negocio.WhatsAppAtivoParaConfirmacoes && dados.TelefoneCliente is not null)
         {
-            var mensagem = $"Agendamento confirmado em {negocio.NomeExibido} para {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Total {FormatacaoBrasil.Reais(dados.Total)}.";
+            var mensagem = MensagensDeAgendamento.WhatsAppConfirmacao(negocio, dados);
             tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/confirmação", cancellationToken));
         }
 
@@ -134,35 +127,21 @@ public sealed class Notificador : INotificador
     {
         var negocio = await ObterNegocioAsync(cancellationToken);
 
-        var (assunto, titulo) = dados.Evento switch
-        {
-            EventoAgendamentoProfissional.Novo => ("Novo agendamento", "Novo agendamento"),
-            EventoAgendamentoProfissional.Remarcado => ("Agendamento remarcado", "Agendamento remarcado"),
-            EventoAgendamentoProfissional.Cancelado => ("Agendamento cancelado", "Agendamento cancelado"),
-            _ => ("Agendamento", "Agendamento"),
-        };
-
-        var corpo = Envelope(negocio.NomeExibido, $"""
-            <p><strong>{titulo}</strong> em {negocio.NomeExibido}.</p>
-            <p><strong>Cliente:</strong> {dados.NomeCliente}</p>
-            <p><strong>Quando:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
-            <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
-            {(string.IsNullOrWhiteSpace(dados.Observacoes) ? "" : $"<p><strong>Observações:</strong> {dados.Observacoes}</p>")}
-            {(dados.Forcado ? "<p><em>Agendamento forçado pelo negócio, fora das regras de horário.</em></p>" : "")}
-            """);
-
         // E-mail sempre (é a rede de segurança se a instância de WhatsApp cair); WhatsApp só com
         // o aviso ligado no negócio e telefone válido no cadastro do profissional (seção 9).
-        Task<bool>? envioEmail = string.IsNullOrWhiteSpace(dados.EmailProfissional)
-            ? null
-            : ExecutarSemFalharAsync(() =>
-                _email.EnviarAsync(dados.EmailProfissional!, $"{assunto} — {negocio.NomeExibido}", corpo, cancellationToken),
+        Task<bool>? envioEmail = null;
+        if (!string.IsNullOrWhiteSpace(dados.EmailProfissional))
+        {
+            var email = MensagensDeAgendamento.EmailAvisoProfissional(_opcoesMarca.NomeProduto, negocio, dados);
+            envioEmail = ExecutarSemFalharAsync(() =>
+                _email.EnviarAsync(dados.EmailProfissional!, email.Assunto, email.CorpoHtml, cancellationToken),
                 "E-mail/profissional");
+        }
 
         Task<ResultadoEnvioWhatsApp>? envioWhatsApp = null;
         if (negocio.WhatsAppAvisoProfissional && TelefoneE164.TentarCriar(dados.TelefoneProfissional ?? "", out var telefone))
         {
-            var mensagem = $"{titulo} em {negocio.NomeExibido}: {dados.NomeCliente}, {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)} — {string.Join(", ", dados.Servicos)}{(dados.Forcado ? " (agendamento forçado, fora das regras de horário)" : "")}.";
+            var mensagem = MensagensDeAgendamento.WhatsAppAvisoProfissional(negocio, dados);
             envioWhatsApp = EnviarWhatsAppSemFalharAsync(telefone!, mensagem, "WhatsApp/profissional", cancellationToken);
         }
 
@@ -176,25 +155,19 @@ public sealed class Notificador : INotificador
     {
         var negocio = await ObterNegocioAsync(cancellationToken);
 
-        var corpo = Envelope(negocio.NomeExibido, $"""
-            <p>Olá, {dados.NomeCliente}! Lembrete do seu agendamento em <strong>{negocio.NomeExibido}</strong>.</p>
-            <p><strong>Quando:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
-            <p><strong>Serviços:</strong> {string.Join(", ", dados.Servicos)}</p>
-            <p><a href="{dados.LinkRemarcar}">Remarcar</a> · <a href="{dados.LinkCancelar}">Cancelar</a></p>
-            """);
-
         var tarefas = new List<Task>();
 
         if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
         {
+            var email = MensagensDeAgendamento.EmailLembrete(_opcoesMarca.NomeProduto, negocio, dados);
             tarefas.Add(ExecutarSemFalharAsync(() =>
-                _email.EnviarAsync(dados.EmailCliente, $"Lembrete do seu agendamento — {negocio.NomeExibido}", corpo, cancellationToken),
+                _email.EnviarAsync(dados.EmailCliente, email.Assunto, email.CorpoHtml, cancellationToken),
                 "E-mail/lembrete"));
         }
 
         if (negocio.WhatsAppAtivoParaConfirmacoes && dados.TelefoneCliente is not null)
         {
-            var mensagem = $"Lembrete: você tem um agendamento em {negocio.NomeExibido} em {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}.";
+            var mensagem = MensagensDeAgendamento.WhatsAppLembrete(negocio, dados);
             tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/lembrete", cancellationToken));
         }
 
@@ -204,28 +177,20 @@ public sealed class Notificador : INotificador
     public async Task EnviarCancelamentoClienteAsync(DadosNotificacaoAgendamento dados, CancellationToken cancellationToken = default)
     {
         var negocio = await ObterNegocioAsync(cancellationToken);
-        var nomeCliente = System.Net.WebUtility.HtmlEncode(dados.NomeCliente);
-        var servicos = System.Net.WebUtility.HtmlEncode(string.Join(", ", dados.Servicos));
-
-        var corpo = Envelope(negocio.NomeExibido, $"""
-            <p>Olá, {nomeCliente}. Infelizmente, <strong>{negocio.NomeExibido}</strong> precisou cancelar o seu agendamento.</p>
-            <p><strong>Quando seria:</strong> {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}</p>
-            <p><strong>Serviços:</strong> {servicos}</p>
-            <p>Se quiser, é só agendar um novo horário pela página do negócio.</p>
-            """);
 
         var tarefas = new List<Task>();
 
         if (!string.IsNullOrWhiteSpace(dados.EmailCliente))
         {
+            var email = MensagensDeAgendamento.EmailCancelamento(_opcoesMarca.NomeProduto, negocio, dados);
             tarefas.Add(ExecutarSemFalharAsync(() =>
-                _email.EnviarAsync(dados.EmailCliente, $"Agendamento cancelado — {negocio.NomeExibido}", corpo, cancellationToken),
+                _email.EnviarAsync(dados.EmailCliente, email.Assunto, email.CorpoHtml, cancellationToken),
                 "E-mail/cancelamento"));
         }
 
         if (negocio.WhatsAppAtivoParaConfirmacoes && dados.TelefoneCliente is not null)
         {
-            var mensagem = $"{negocio.NomeExibido} precisou cancelar o seu agendamento de {FormatacaoBrasil.DataHora(dados.Inicio, negocio.Fuso)}. Se quiser, agende um novo horário pela página do negócio.";
+            var mensagem = MensagensDeAgendamento.WhatsAppCancelamento(negocio, dados);
             tarefas.Add(EnviarWhatsAppSemFalharAsync(dados.TelefoneCliente, mensagem, "WhatsApp/cancelamento", cancellationToken));
         }
 
@@ -337,28 +302,8 @@ public sealed class Notificador : INotificador
             _email.EnviarAsync(email, $"Seu acesso — {negocio.NomeExibido}", corpo, cancellationToken), "E-mail/convite");
     }
 
-    /// <summary>
-    /// Envolve o conteúdo (que fala sempre do NEGÓCIO — seção 5) com o cabeçalho e o rodapé
-    /// da marca do PRODUTO (seção 5.1) — o único lugar em que o nome do produto aparece
-    /// nesses e-mails. Estilo inline (obrigatório em e-mail: a maioria dos clientes ignora
-    /// `<style>`) e sem web font nem imagem externa — clientes de e-mail bloqueiam imagem
-    /// por padrão e não têm suporte confiável a SVG (Outlook não suporta de jeito nenhum),
-    /// então o "carimbado" da marca vem só da pilha de fontes serifadas do sistema.
-    /// Sem <paramref name="nomeNegocio"/>, é um e-mail do próprio produto para o negócio.
-    /// </summary>
-    private string Envelope(string? nomeNegocio, string conteudoHtml) => $"""
-        <div style="font-family: Arial, Helvetica, sans-serif; max-width: 480px; margin: 0 auto; color: #1c1c1a;">
-          <div style="background-color: #1e2a38; padding: 18px 24px; border-radius: 8px 8px 0 0;">
-            <span style="font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 20px; color: #faf9f6;">agendeiiai</span>
-          </div>
-          <div style="background-color: #ffffff; padding: 24px; border: 1px solid #e5e5e5; border-top: none; border-radius: 0 0 8px 8px;">
-            {conteudoHtml}
-          </div>
-          <p style="font-size: 11px; color: #9a9a9a; text-align: center; margin-top: 16px;">
-            {(nomeNegocio is null ? $"Enviado por {_opcoesMarca.NomeProduto}." : $"Enviado por {_opcoesMarca.NomeProduto} em nome de {nomeNegocio}.")}
-          </p>
-        </div>
-        """;
+    private string Envelope(string? nomeNegocio, string conteudoHtml) =>
+        MensagensDeAgendamento.Envelope(_opcoesMarca.NomeProduto, nomeNegocio, conteudoHtml);
 
     private Task<Negocio> ObterNegocioAsync(CancellationToken cancellationToken) =>
         _dbContext.Negocios.AsNoTracking().FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);

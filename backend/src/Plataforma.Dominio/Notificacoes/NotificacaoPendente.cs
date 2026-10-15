@@ -100,7 +100,7 @@ public class NotificacaoPendente : EntidadeBase, IEntidadeDoNegocio
 
     public StatusNotificacao Status { get; private set; }
 
-    /// <summary>Quantas vezes foi reivindicada com a chamada ao provedor realmente tentada (ou potencialmente tentada).</summary>
+    /// <summary>Chamadas ao provedor iniciadas (contada no "ponto sem retorno", não ao reivindicar: uma queda antes da chamada não gasta tentativa).</summary>
     public int Tentativas { get; private set; }
 
     public DateTimeOffset ProximaTentativaEm { get; private set; }
@@ -142,6 +142,18 @@ public class NotificacaoPendente : EntidadeBase, IEntidadeDoNegocio
 
     protected NotificacaoPendente()
     {
+    }
+
+    /// <summary>Reivindicação pelo despachante: <c>Enviando</c> com lease e token novos, ainda sem o ponto sem retorno.</summary>
+    public void Reivindicar(DateTimeOffset leaseAte, Guid reivindicacaoId)
+    {
+        if (Status != StatusNotificacao.Pendente)
+            throw new InvalidOperationException("Só uma notificação pendente pode ser reivindicada.");
+
+        Status = StatusNotificacao.Enviando;
+        LeaseAte = leaseAte;
+        ReivindicacaoId = reivindicacaoId;
+        EnvioIniciadoEm = null;
     }
 }
 

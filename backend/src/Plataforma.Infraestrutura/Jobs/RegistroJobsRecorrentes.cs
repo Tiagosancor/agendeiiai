@@ -50,6 +50,10 @@ public sealed class RegistroJobsRecorrentes(
         gerenciador.AddOrUpdate<Clientes.JobLembreteRetorno>(
             "lembrete-retorno", job => job.ExecutarAsync(CancellationToken.None), "*/15 * * * *");
 
+        // Despachante da outbox de notificações (B7.4-B): a cada minuto; sem efeito enquanto Notificacoes__OutboxHabilitada estiver desligada.
+        gerenciador.AddOrUpdate<Notificacoes.Outbox.JobDespacharNotificacoes>(
+            "despachar-notificacoes", job => job.ExecutarAsync(CancellationToken.None), "*/1 * * * *");
+
         // Apaga as chaves de idempotência expiradas (retenção padrão 24 h), em lotes. 03:30 UTC = 00:30 em Brasília.
         gerenciador.AddOrUpdate<Idempotencia.JobLimparIdempotencia>(
             "limpar-idempotencia", job => job.ExecutarAsync(CancellationToken.None), "30 3 * * *");
