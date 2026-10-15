@@ -2275,6 +2275,139 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.ToTable("eventos_webhook_whatsapp", (string)null);
                 });
 
+            modelBuilder.Entity("Plataforma.Dominio.Notificacoes.NotificacaoPendente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("AgendamentoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agendamento_id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("Canal")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("canal");
+
+                    b.Property<DateTimeOffset?>("CanceladaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelada_em");
+
+                    b.Property<string>("ChaveDeduplicacao")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("chave_deduplicacao");
+
+                    b.Property<Guid?>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<DateTimeOffset?>("EnviadaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enviada_em");
+
+                    b.Property<DateTimeOffset?>("EnvioIniciadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("envio_iniciado_em");
+
+                    b.Property<DateTimeOffset>("ExpiraEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_em");
+
+                    b.Property<string>("IdMensagemProvedor")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("id_mensagem_provedor");
+
+                    b.Property<DateTimeOffset?>("LeaseAte")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_ate");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<Guid?>("ProfissionalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("profissional_id");
+
+                    b.Property<DateTimeOffset>("ProximaTentativaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("proxima_tentativa_em");
+
+                    b.Property<Guid?>("ReivindicacaoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reivindicacao_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Tentativas")
+                        .HasColumnType("integer")
+                        .HasColumnName("tentativas");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("tipo");
+
+                    b.Property<string>("UltimoErroCodigo")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("ultimo_erro_codigo");
+
+                    b.Property<long?>("VersaoHorario")
+                        .HasColumnType("bigint")
+                        .HasColumnName("versao_horario");
+
+                    b.HasKey("Id")
+                        .HasName("pk_notificacoes_pendentes");
+
+                    b.HasIndex("AgendamentoId")
+                        .HasDatabaseName("ix_notificacoes_pendentes_agendamento");
+
+                    b.HasIndex("IdMensagemProvedor")
+                        .HasDatabaseName("ix_notificacoes_pendentes_id_mensagem")
+                        .HasFilter("id_mensagem_provedor IS NOT NULL");
+
+                    b.HasIndex("LeaseAte")
+                        .HasDatabaseName("ix_notificacoes_pendentes_lease")
+                        .HasFilter("status = 'Enviando'");
+
+                    b.HasIndex("ProximaTentativaEm", "Id")
+                        .HasDatabaseName("ix_notificacoes_pendentes_prontas")
+                        .HasFilter("status = 'Pendente'");
+
+                    b.HasIndex("Status", "AtualizadoEm")
+                        .HasDatabaseName("ix_notificacoes_pendentes_status_atualizada");
+
+                    b.HasIndex("NegocioId", "ChaveDeduplicacao", "Canal")
+                        .IsUnique()
+                        .HasDatabaseName("ux_notificacoes_pendentes_dedup");
+
+                    b.ToTable("notificacoes_pendentes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notificacoes_pendentes_lease", "(status = 'Enviando' AND lease_ate IS NOT NULL AND reivindicacao_id IS NOT NULL) OR (status <> 'Enviando' AND reivindicacao_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_notificacoes_pendentes_tentativas", "tentativas >= 0");
+                        });
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.Notificacoes.NotificacaoProfissional", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3292,6 +3425,16 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_slugs_anteriores_negocios_negocio_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Notificacoes.NotificacaoPendente", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Negocios.Negocio", null)
+                        .WithMany()
+                        .HasForeignKey("NegocioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_notificacoes_pendentes_negocios_negocio_id");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Profissionais.Profissional", b =>

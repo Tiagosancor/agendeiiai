@@ -12,6 +12,7 @@ using Plataforma.Dominio.Negocios;
 using Plataforma.Dominio.Notificacoes;
 using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Negocios;
+using Plataforma.Infraestrutura.Notificacoes.Outbox;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 
@@ -40,12 +41,14 @@ public sealed class JobLembreteRetorno
     private readonly OpcoesLembreteRetorno _opcoes;
     private readonly ILogger<JobLembreteRetorno> _logger;
     private readonly IServiceScopeFactory _escopos;
+    private readonly OutboxNotificacoes _outbox;
 
     public JobLembreteRetorno(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, INotificador notificador,
         IConsultaSituacaoAssinatura assinaturas, IOptions<OpcoesMarca> opcoesMarca, IOptions<OpcoesLembreteRetorno> opcoes,
-        ILogger<JobLembreteRetorno> logger, IServiceScopeFactory escopos)
+        ILogger<JobLembreteRetorno> logger, IServiceScopeFactory escopos, OutboxNotificacoes outbox)
     {
+        _outbox = outbox;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _notificador = notificador;
@@ -181,6 +184,10 @@ public sealed class JobLembreteRetorno
         var envio = await _dbContext.LembretesRetornoEnvios
             .FirstOrDefaultAsync(e => e.ClienteId == referencia.ClienteId && e.AgendamentoId == referencia.Id, cancellationToken);
 
+        // Outbox: o job só decide e grava (registro de relatório + mensagem na mesma transação); o despachante envia, repete e conclui.
+        if (_outbox.Usa(FamiliaNotificacao.Retorno))
+            return envio is null && await EnfileirarAsync(negocioId, referencia.ClienteId, referencia.Id, hoje, agora, cancellationToken);
+
         if (envio is null)
         {
             envio = LembreteRetornoEnvio.Iniciar(negocioId, referencia.ClienteId, referencia.Id, hoje, agora);
@@ -239,12 +246,43 @@ public sealed class JobLembreteRetorno
     }
 
     /// <summary>
+    /// Registro do lembrete (a idempotência e a base do relatório; <c>Enviando</c> = enfileirado) e a mensagem da outbox, atomicamente.
+    /// Falso se outra execução já reservou o mesmo atendimento.
+    /// </summary>
+    private async Task<bool> EnfileirarAsync(
+        Guid negocioId, Guid clienteId, Guid agendamentoId, DateOnly hoje, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                _dbContext.ChangeTracker.Clear();
+                await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+                _dbContext.LembretesRetornoEnvios.Add(LembreteRetornoEnvio.Iniciar(negocioId, clienteId, agendamentoId, hoje, agora));
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await _outbox.EnfileirarRetornoAsync(negocioId, clienteId, agendamentoId, cancellationToken);
+
+                await transacao.CommitAsync(cancellationToken);
+            });
+            return true;
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            // Outra execução reservou o mesmo atendimento.
+            _dbContext.ChangeTracker.Clear();
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Atendimentos concluídos que hoje dariam lembrete (qualquer dia): é o último concluído do cliente, que aceita lembrete, tem
     /// telefone, não foi anonimizado, não tem agendamento futuro e ainda não recebeu (ou pode tentar de novo hoje).
     /// </summary>
     private IQueryable<Agendamento> Elegiveis(Guid negocioId, DateTimeOffset agora, DateOnly hoje)
     {
         var agendamentos = _dbContext.Agendamentos.Where(a => a.NegocioId == negocioId);
+        var usaOutbox = _outbox.Usa(FamiliaNotificacao.Retorno);
 
         return agendamentos
             .Where(a => a.Status == StatusAgendamento.Concluido && a.ClienteId != null)
@@ -260,7 +298,8 @@ public sealed class JobLembreteRetorno
                     || (f.Status == StatusAgendamento.Reservado && f.ReservadoAte > agora))))
             .Where(a => !_dbContext.LembretesRetornoEnvios.Any(e =>
                 e.ClienteId == a.ClienteId && e.AgendamentoId == a.Id
-                && !(e.Status == StatusLembreteRetorno.Falhou && e.Tentativas < LembreteRetornoEnvio.MaximoTentativas && e.DiaEnvio == hoje)));
+                // Com a outbox, quem tenta de novo é ela (política própria): qualquer registro existente encerra a elegibilidade.
+                && (usaOutbox || !(e.Status == StatusLembreteRetorno.Falhou && e.Tentativas < LembreteRetornoEnvio.MaximoTentativas && e.DiaEnvio == hoje))));
     }
 
     /// <summary>Nulo quando o negócio não envia agora: desligado, fora da janela do dia, ligado depois do disparo ou suspenso.</summary>

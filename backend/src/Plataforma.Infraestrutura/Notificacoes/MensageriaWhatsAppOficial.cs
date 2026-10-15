@@ -62,7 +62,9 @@ public sealed class MensageriaWhatsAppOficial : IMensageriaWhatsApp
             if (!resposta.IsSuccessStatusCode)
             {
                 _logger.LogWarning("API Cloud da Meta recusou a mensagem para {Telefone}: HTTP {Status}.", telefone.Mascarado(), (int)resposta.StatusCode);
-                return ResultadoEnvioWhatsApp.Indisponivel();
+                return (int)resposta.StatusCode < 500 && resposta.StatusCode is not (System.Net.HttpStatusCode.RequestTimeout or System.Net.HttpStatusCode.TooManyRequests)
+                    ? ResultadoEnvioWhatsApp.Recusada()
+                    : ResultadoEnvioWhatsApp.Indisponivel();
             }
 
             // { "messages": [ { "id": "wamid..." } ] } — sem webhook de status da Meta por ora, então já conta como enviado.
@@ -74,7 +76,9 @@ public sealed class MensageriaWhatsAppOficial : IMensageriaWhatsApp
         catch (Exception excecao) when (excecao is HttpRequestException or TaskCanceledException or JsonException)
         {
             _logger.LogWarning("API Cloud da Meta indisponível: {Erro}.", excecao.GetType().Name);
-            return ResultadoEnvioWhatsApp.Indisponivel();
+            return excecao is HttpRequestException { HttpRequestError: HttpRequestError.ConnectionError or HttpRequestError.NameResolutionError or HttpRequestError.SecureConnectionError }
+                ? ResultadoEnvioWhatsApp.Indisponivel()
+                : ResultadoEnvioWhatsApp.Ambigua();
         }
     }
 }

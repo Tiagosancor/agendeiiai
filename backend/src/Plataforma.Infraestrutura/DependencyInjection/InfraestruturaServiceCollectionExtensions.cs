@@ -1,4 +1,5 @@
 using Hangfire;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Hangfire.PostgreSql;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -128,6 +129,12 @@ public static class InfraestruturaServiceCollectionExtensions
             .ValidateOnStart();
 
         servicos
+            .AddOptions<OpcoesNotificacoes>()
+            .Bind(configuracao.GetSection(OpcoesNotificacoes.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicos
             .AddOptions<OpcoesLembreteRetorno>()
             .Bind(configuracao.GetSection(OpcoesLembreteRetorno.Secao))
             .ValidateDataAnnotations()
@@ -196,6 +203,15 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddSingleton<IGeradorIcs, GeradorIcs>();
         servicos.AddScoped<IServicoVerificacao, ServicoVerificacao>();
         servicos.AddScoped<INotificador, Notificador>();
+
+        // Outbox transacional de notificações (B7.4-B): gravação na transação do efeito, despachante e limpeza (jobs recorrentes).
+        servicos.TryAddSingleton(TimeProvider.System);
+        servicos.AddScoped<Notificacoes.Outbox.OutboxNotificacoes>();
+        servicos.AddScoped<Notificacoes.Outbox.DespachanteDeCanais>();
+        servicos.AddScoped<Notificacoes.Outbox.ProcessadorNotificacoesDoNegocio>();
+        servicos.AddScoped<Notificacoes.Outbox.JobDespacharNotificacoes>();
+        servicos.AddScoped<Notificacoes.Outbox.JobLimparNotificacoes>();
+        servicos.AddScoped<IConsultaOutboxNotificacoes, Notificacoes.Outbox.ConsultaOutboxNotificacoes>();
         servicos.AddScoped<IGerenciadorCupons, GerenciadorCupons>();
         servicos.AddScoped<Aplicacao.Estoque.IGerenciadorEstoque, Estoque.GerenciadorEstoque>();
         servicos.AddScoped<Aplicacao.Estoque.IServicoVendas, Estoque.ServicoVendas>();

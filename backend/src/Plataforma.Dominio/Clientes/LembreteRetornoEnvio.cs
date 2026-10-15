@@ -11,6 +11,12 @@ public enum StatusLembreteRetorno
     Enviando = 1,
     Enviado = 2,
     Falhou = 3,
+
+    /// <summary>
+    /// Pode ter saído, mas não há como saber (timeout do provedor, queda no meio do envio). Nunca é reenviado — melhor faltar um
+    /// lembrete que duplicar — e não conta como enviado nos relatórios.
+    /// </summary>
+    Desconhecido = 4,
 }
 
 /// <summary>
@@ -87,6 +93,14 @@ public class LembreteRetornoEnvio : EntidadeBase, IEntidadeDoNegocio
     public void MarcarFalha(string erro, DateTimeOffset agora)
     {
         Status = StatusLembreteRetorno.Falhou;
+        Erro = erro.Length > 500 ? erro[..500] : erro;
+        EnviadoEm = agora;
+    }
+
+    /// <summary>Resultado ambíguo (outbox): fica registrado, sem nova tentativa e fora da contagem de enviados.</summary>
+    public void MarcarDesconhecido(string erro, DateTimeOffset agora)
+    {
+        Status = StatusLembreteRetorno.Desconhecido;
         Erro = erro.Length > 500 ? erro[..500] : erro;
         EnviadoEm = agora;
     }

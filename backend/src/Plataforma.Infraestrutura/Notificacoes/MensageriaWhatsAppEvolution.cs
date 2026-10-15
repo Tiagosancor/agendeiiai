@@ -42,6 +42,9 @@ public sealed class MensageriaWhatsAppEvolution : IMensageriaWhatsApp
         var url = $"{_opcoes.UrlBase!.TrimEnd('/')}/message/sendText/{Uri.EscapeDataString(_opcoes.NomeInstancia!)}";
         var corpo = new { number = telefone.Valor.TrimStart('+'), text = mensagem };
 
+        // O que a última falha permite concluir: só se repete o que é seguro (conexão que nem chegou a abrir, 5xx).
+        var ultimaFalha = ResultadoEnvioWhatsApp.Indisponivel();
+
         for (var tentativa = 1; tentativa <= MaximoTentativas; tentativa++)
         {
             using var limite = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -64,9 +67,13 @@ public sealed class MensageriaWhatsAppEvolution : IMensageriaWhatsApp
                 {
                     // Nunca o telefone em texto puro no log (seção 8.1.6).
                     _logger.LogWarning("Evolution API recusou a mensagem para {Telefone}: HTTP {Status}.", telefone.Mascarado(), (int)resposta.StatusCode);
-                    return ResultadoEnvioWhatsApp.Indisponivel();
+                    // 408/429 não são recusa da mensagem: o provedor pediu para tentar mais tarde.
+                    return resposta.StatusCode is HttpStatusCode.RequestTimeout or HttpStatusCode.TooManyRequests
+                        ? ResultadoEnvioWhatsApp.Indisponivel()
+                        : ResultadoEnvioWhatsApp.Recusada();
                 }
 
+                ultimaFalha = ResultadoEnvioWhatsApp.Indisponivel();
                 _logger.LogWarning("Evolution API respondeu HTTP {Status} (tentativa {Tentativa}/{Maximo}).", (int)resposta.StatusCode, tentativa, MaximoTentativas);
             }
             catch (OperationCanceledException)
@@ -74,21 +81,27 @@ public sealed class MensageriaWhatsAppEvolution : IMensageriaWhatsApp
                 if (!cancellationToken.IsCancellationRequested)
                     _logger.LogWarning("Evolution API não respondeu em {Segundos} s — sessão do WhatsApp caída? Sem nova tentativa.", _opcoes.TimeoutSegundos);
 
-                return ResultadoEnvioWhatsApp.Indisponivel();
+                // A requisição pode ter chegado e até ter sido aceita: não há como saber.
+                return ResultadoEnvioWhatsApp.Ambigua();
             }
             catch (HttpRequestException excecao)
             {
+                // Conexão que nem abriu (recusada, DNS, TLS) = nada foi enviado. Qualquer outra queda pode ter ocorrido depois do envio.
+                ultimaFalha = excecao.HttpRequestError is HttpRequestError.ConnectionError or HttpRequestError.NameResolutionError
+                    or HttpRequestError.SecureConnectionError
+                    ? ResultadoEnvioWhatsApp.Indisponivel()
+                    : ResultadoEnvioWhatsApp.Ambigua();
                 _logger.LogWarning("Evolution API fora do ar (tentativa {Tentativa}/{Maximo}): {Erro}.",
                     tentativa, MaximoTentativas, excecao.Message);
             }
             catch (Exception excecao)
             {
                 _logger.LogError(excecao, "Erro inesperado ao enviar WhatsApp pela Evolution API.");
-                return ResultadoEnvioWhatsApp.Indisponivel();
+                return ResultadoEnvioWhatsApp.Ambigua();
             }
         }
 
-        return ResultadoEnvioWhatsApp.Indisponivel();
+        return ultimaFalha;
     }
 
     /// <summary>
