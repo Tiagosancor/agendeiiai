@@ -210,6 +210,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<Notificacoes.Outbox.DespachanteDeCanais>();
         servicos.AddScoped<Notificacoes.Outbox.ProcessadorNotificacoesDoNegocio>();
         servicos.AddScoped<Notificacoes.Outbox.JobDespacharNotificacoes>();
+        servicos.AddScoped<Notificacoes.Outbox.JobLimparNotificacoes>();
+        servicos.AddScoped<IConsultaOutboxNotificacoes, Notificacoes.Outbox.ConsultaOutboxNotificacoes>();
         servicos.AddScoped<IGerenciadorCupons, GerenciadorCupons>();
         servicos.AddScoped<Aplicacao.Estoque.IGerenciadorEstoque, Estoque.GerenciadorEstoque>();
         servicos.AddScoped<Aplicacao.Estoque.IServicoVendas, Estoque.ServicoVendas>();
