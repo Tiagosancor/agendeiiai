@@ -115,6 +115,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<NotificacaoProfissional> NotificacoesProfissional => Set<NotificacaoProfissional>();
 
+    public DbSet<NotificacaoPendente> NotificacoesPendentes => Set<NotificacaoPendente>();
+
     public DbSet<EventoWebhookWhatsApp> EventosWebhookWhatsApp => Set<EventoWebhookWhatsApp>();
 
     public DbSet<CodigoCadastro> CodigosCadastro => Set<CodigoCadastro>();
