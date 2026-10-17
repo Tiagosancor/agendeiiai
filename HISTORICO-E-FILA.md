@@ -1,8 +1,72 @@
 # Histórico e fila do projeto — Agendeiiai
 
-Última atualização: 2026-10-11
+Última atualização: 2026-10-17
 Estado Git verificado: `main` = `origin/main` =
-`9423e0894f9d22edf035d53610ac404f66d0401c`
+`5e8d803fb633abed151603ba1950a918a19d91c7`
+
+## Reconciliação atual — 2026-10-16
+
+Este snapshot prevalece sobre os estados e a fila histórica abaixo, que ainda descrevem
+etapas anteriores. O registro detalhado intermediário está em `HISTORICO-E-FILA.local.md`.
+
+- B7.4-C, monitoramento administrativo da outbox: integrada e publicada pelo PR #21,
+  merge `4053edb0f244d6bf4e24bdf40458bd53c8af51a3`, em 15/10/2026 às 14:54:34
+  (America/Fortaleza). Head homologado: `e454fadfc71565a51f96bb214f84a613f42a1a48`.
+- GitHub consultado em 16/10: PR merged; main no mesmo merge; CI Backend (.NET) e
+  Frontend (Next.js) aprovadas, run `38781229376`. Árvore do merge idêntica à do head
+  homologado (`git diff e454fad HEAD` vazio).
+- Vercel Production: success para o merge; Railway: success para o mesmo merge,
+  deployment `f476944b-02ec-4588-853a-8d80f63ac006`, conforme status do GitHub.
+- Smoke somente leitura em 16/10: API `/health`, landing, login do painel, privacidade,
+  `sw.js`, manifesto do painel e `/plataforma/notificacoes` responderam 200. Os endpoints
+  administrativos `/plataforma/notificacoes/resumo` e `/outbox` responderam 401 sem token.
+  A resposta 200 da página não comprova consulta autenticada nem leitura da fila.
+- Homologação anterior registrada: lint sem errors (12 warnings preexistentes), TypeScript,
+  build, 16/16 E2E isolados, 1/1 smoke full-stack e 2/2 regressões administrativas.
+  Nesta reconciliação não se repetiu a suíte; a CI do merge foi consultada.
+- Main local atualizada por fast-forward. Nenhum novo merge remoto, deploy, migration,
+  alteração de flags, mutação de dados ou comunicação real foi executado nesta sessão.
+- Já integrados no Git e fora da fila de implementação: concorrência de transferência e
+  confirmação (B2), limite de cupom, chaves idempotentes frontend (PR #15), busca/cadastro
+  rápido na Agenda (PR #17), obrigatoriedade da chave (PR #18), jobs multitenant (PR #19)
+  e backend da outbox (PR #20).
+- Ativação das famílias da outbox no Railway: realizada pelo dono, conforme confirmação
+  nesta conversa em 16/10/2026. Ativação retirada da fila; não foi repetida pelo agente.
+  Essa confirmação não equivale a uma verificação independente da migration ou do
+  processamento da fila em produção.
+
+### Pendências vigentes após a reconciliação
+
+| Item | Responsável | Origem e estado |
+|---|---|---|
+| Conferir evidência da migration e acompanhar processamento da outbox | Operação compartilhada/dono | Famílias já ativadas no Railway pelo dono; conferir somente leitura no Neon/monitoramento, sem reaplicar migration nem repetir ativação |
+| Resend com chave idempotente | Claude Code | Ressalva B7.4-B; backlog, risco residual de e-mail repetido após aceite |
+| Durabilidade dos alertas de estoque e avisos de assinatura | Claude Code | Auditoria B7.4; backlog fora das famílias entregues |
+| Escape de HTML dos e-mails | Claude Code | Auditoria B7.4; backlog registrado, sem implementação nesta etapa |
+| Acompanhamento de falhas e estados desconhecidos | Operação/dono | Contrato da outbox; acompanhamento humano, sem reenvio automático de ambíguos WhatsApp |
+| Conferir desconexão de checks/previews Netlify | Operação/dono | Ressalva do PR #15; configuração removida no PR #14, integração externa não verificada |
+| Limpeza de dados retroativos (B3) | Claude Code/dono | Depende de plano e autorização específica; não executada |
+| Relógio central (B4) e comentários XML (T1) | Claude Code | Baixa prioridade; não constituem defeito funcional confirmado |
+| Mobile | Dono | Adiado explicitamente; `mobile/` intocado |
+
+## Atualização local pós-merge do favicon — 2026-10-17
+
+- PR #22, `fix: atualiza favicon da marca`, foi integrado à `main` pelo merge
+  `5e8d803fb633abed151603ba1950a918a19d91c7`. A `main` local foi avançada por
+  fast-forward e está alinhada com `origin/main`.
+- A branch `codex/atualiza-favicon-marca` continha o commit inicial `539d0f5` e a
+  correção `cf4ad64`. O favicon final usa o símbolo neon existente em
+  `frontend/public/brand/calendario-confirmado.svg`, com gradiente ciano, azul e roxo.
+- Arquivos integrados: `frontend/public/brand/favicon.svg` e
+  `frontend/public/favicon.ico`. O ICO contém tamanhos 16, 32 e 48 px.
+- Validação pública somente leitura: `/favicon.ico` respondeu HTTP 200 e seus bytes
+  corresponderam exatamente ao arquivo local (`SHA-256 491f2946ee65d0c66efa2e7ef18904a967412248c4ed8f4d79a68b6e0e228bc8`).
+  `/health` respondeu HTTP 200 com PostgreSQL e `btree_gist` saudáveis.
+- A publicação efetiva foi confirmada pelo conteúdo servido. Não foi feita publicação
+  manual nem mutação em produção. O estado detalhado de CI/Vercel não foi consultado
+  independentemente após o merge.
+- A alteração deste histórico permanece local e sem commit. Arquivos locais preexistentes
+  foram preservados.
 
 ## Finalidade deste documento
 
