@@ -287,6 +287,13 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                 return ResultadoAgendamento.ComSucesso(agendamentoId);
             await TravarAgendaDoProfissionalAsync(dados.ProfissionalId, cancellationToken);
 
+            // A exclusão do profissional toma esta mesma trava: se ela venceu, o profissional já saiu (B2.2) e nada novo entra na agenda dele.
+            if (!await _dbContext.Profissionais.AnyAsync(p => p.Id == dados.ProfissionalId && !p.Excluido, cancellationToken))
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Este profissional não atende mais.");
+            }
+
             // 1) Expira reservas vencidas deste profissional ANTES de checar disponibilidade
             // e inserir (seção 8.2.2) — a exclusion constraint não enxerga now().
             var agora = DateTimeOffset.UtcNow;
@@ -756,6 +763,11 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
             if (agendamento is null)
                 return false;
 
+            // Painel e link: trava a linha e relê do banco antes de decidir (B2.2). Quem muda status, horário ou profissional depois
+            // espera esta transação; quem mudou antes já está refletido — o cancelamento nunca decide sobre uma cópia antiga
+            // (ex.: avisar o profissional que o agendamento tinha antes de uma transferência, ou deixar passar uma mensagem de "remarcado").
+            await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
             // COMMIT ambíguo (B7.2): só na repetição, "já cancelado" é o que a tentativa anterior desta requisição gravou
             // (inclusive a auditoria). O aviso ao profissional sai depois, uma vez, a partir deste resultado.
             if (repetida && agendamento.Status == StatusAgendamento.Cancelado)
@@ -766,10 +778,6 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             if (pelaGestaoPublica)
             {
-                // A decisão do link pode ter envelhecido (e o contexto pode ter a entidade rastreada com o status antigo):
-                // trava a linha, relê do banco e só então confere. Quem muda o status depois espera esta transação.
-                await TravarLinhaERelerAsync(agendamento, cancellationToken);
-
                 if (!GestaoPublicaAgendamento.StatusPermiteCancelarPeloLink(agendamento))
                 {
                     resultado = ResultadoCancelamentoPublico.StatusNaoPermite;
@@ -1004,6 +1012,13 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
 
             await TravarAgendaDoProfissionalAsync(agendamento.ProfissionalId, cancellationToken);
             await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+            // Profissional excluído (a exclusão toma a mesma trava de agenda) não recebe horário novo (B2.2).
+            if (!await _dbContext.Profissionais.AnyAsync(p => p.Id == agendamento.ProfissionalId && !p.Excluido, cancellationToken))
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoAgendamento.ComErro("Este profissional não atende mais.");
+            }
 
             var negocio = await _dbContext.Negocios.AsNoTracking()
                 .FirstAsync(n => n.Id == _contextoNegocio.NegocioId, cancellationToken);
@@ -1522,6 +1537,5 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     }
 
     private Task TravarAgendaDoProfissionalAsync(Guid profissionalId, CancellationToken cancellationToken) =>
-        _dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT pg_advisory_xact_lock(hashtextextended({profissionalId.ToString()}, 0))", cancellationToken);
+        TravaDeAgenda.TravarProfissionalAsync(_dbContext, profissionalId, cancellationToken);
 }

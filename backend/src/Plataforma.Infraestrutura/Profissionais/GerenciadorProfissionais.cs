@@ -14,6 +14,7 @@ using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.Seguranca;
+using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Persistencia;
 
 namespace Plataforma.Infraestrutura.Profissionais;
@@ -395,57 +396,84 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
             itens.Count > 0 ? MensagemFuturos(itens.Count) : null, itens);
     }
 
+    /// <summary>
+    /// Excluir sob a MESMA trava de agenda que criar, remarcar e transferir tomam (<see cref="TravaDeAgenda"/>): a conferência de
+    /// "não há agendamento futuro" e a exclusão acontecem sem que um agendamento novo entre no meio — e quem chega depois da
+    /// exclusão enxerga o profissional já excluído e é recusado (B2.2).
+    /// </summary>
     public async Task<ResultadoExclusao> ExcluirAsync(Guid profissionalId, CancellationToken cancellationToken = default)
     {
-        var profissional = await BuscarAsync(profissionalId, cancellationToken);
-        if (profissional is null)
-            return ResultadoExclusao.NaoEncontrado;
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        var tentativas = new TentativasDaTransacao(_dbContext);
+        string? fotoEnviada = null;
 
-        var futuros = await BuscarAgendamentosFuturosAsync(profissionalId, cancellationToken);
-        if (futuros.Count > 0)
-            return ResultadoExclusao.Bloqueado(MensagemFuturos(futuros.Count));
-
-        var temHistorico = await TemHistoricoAsync(profissionalId, cancellationToken);
-        var fotoEnviada = profissional.FotoArquivo;
-
-        // Usuário do painel ligado a este profissional deixa de estar ligado a ele — e, se só entrava como ele
-        // (perfil Profissional), perde o acesso (seção 7). Excluir o usuário junto é outra ação, explícita, em
-        // "Usuários"; o Administrador dono que também atende continua entrando normalmente.
-        var usuariosVinculados = await _dbContext.Usuarios.Where(u => u.ProfissionalId == profissionalId).ToListAsync(cancellationToken);
-        foreach (var usuario in usuariosVinculados)
+        var resultado = await estrategia.ExecuteAsync(async () =>
         {
-            usuario.DesvincularProfissional();
-            if (usuario.Perfil == Perfil.Profissional)
-                usuario.Desativar();
-        }
+            tentativas.Iniciar();
+            fotoEnviada = null;
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await TravaDeAgenda.TravarProfissionalAsync(_dbContext, profissionalId, cancellationToken);
 
-        // Configuração que só existe por causa dele: sai junto nos dois casos — tira o
-        // profissional da oferta pública e das opções de transferência na hora.
-        _dbContext.ProfissionalServicos.RemoveRange(
-            await _dbContext.ProfissionalServicos.Where(ps => ps.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
+            var profissional = await BuscarAsync(profissionalId, cancellationToken);
+            if (profissional is null)
+            {
+                // Nova tentativa depois de um COMMIT sem resposta: a exclusão da tentativa anterior já está gravada.
+                return tentativas.Repetida
+                    ? ResultadoExclusao.Concluido(await TemHistoricoAsync(profissionalId, cancellationToken))
+                    : ResultadoExclusao.NaoEncontrado;
+            }
 
-        if (temHistorico)
-        {
-            profissional.Excluir(DateTimeOffset.UtcNow);
-            _auditoria.Registrar(AcoesAuditoria.ExcluirLogicamente, nameof(Profissional), profissional.Id, $"Nome: {profissional.Nome}");
-        }
-        else
-        {
-            _dbContext.HorariosTrabalho.RemoveRange(
-                await _dbContext.HorariosTrabalho.Where(h => h.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
-            _dbContext.BloqueiosAgenda.RemoveRange(
-                await _dbContext.BloqueiosAgenda.Where(b => b.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
-            _dbContext.Profissionais.Remove(profissional);
-            _auditoria.Registrar(AcoesAuditoria.ApagarDefinitivo, nameof(Profissional), profissional.Id, $"Nome: {profissional.Nome}");
-        }
+            var futuros = await BuscarAgendamentosFuturosAsync(profissionalId, cancellationToken);
+            if (futuros.Count > 0)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return ResultadoExclusao.Bloqueado(MensagemFuturos(futuros.Count));
+            }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+            var temHistorico = await TemHistoricoAsync(profissionalId, cancellationToken);
+            fotoEnviada = profissional.FotoArquivo;
+
+            // Usuário do painel ligado a este profissional deixa de estar ligado a ele — e, se só entrava como ele
+            // (perfil Profissional), perde o acesso (seção 7). Excluir o usuário junto é outra ação, explícita, em
+            // "Usuários"; o Administrador dono que também atende continua entrando normalmente.
+            var usuariosVinculados = await _dbContext.Usuarios.Where(u => u.ProfissionalId == profissionalId).ToListAsync(cancellationToken);
+            foreach (var usuario in usuariosVinculados)
+            {
+                usuario.DesvincularProfissional();
+                if (usuario.Perfil == Perfil.Profissional)
+                    usuario.Desativar();
+            }
+
+            // Configuração que só existe por causa dele: sai junto nos dois casos — tira o
+            // profissional da oferta pública e das opções de transferência na hora.
+            _dbContext.ProfissionalServicos.RemoveRange(
+                await _dbContext.ProfissionalServicos.Where(ps => ps.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
+
+            if (temHistorico)
+            {
+                profissional.Excluir(DateTimeOffset.UtcNow);
+                _auditoria.Registrar(AcoesAuditoria.ExcluirLogicamente, nameof(Profissional), profissional.Id, $"Nome: {profissional.Nome}");
+            }
+            else
+            {
+                _dbContext.HorariosTrabalho.RemoveRange(
+                    await _dbContext.HorariosTrabalho.Where(h => h.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
+                _dbContext.BloqueiosAgenda.RemoveRange(
+                    await _dbContext.BloqueiosAgenda.Where(b => b.ProfissionalId == profissionalId).ToListAsync(cancellationToken));
+                _dbContext.Profissionais.Remove(profissional);
+                _auditoria.Registrar(AcoesAuditoria.ApagarDefinitivo, nameof(Profissional), profissional.Id, $"Nome: {profissional.Nome}");
+            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return ResultadoExclusao.Concluido(temHistorico);
+        });
 
         // A foto é dado pessoal (sai nos dois casos): o arquivo enviado vai embora depois que a exclusão foi gravada.
-        if (fotoEnviada is not null)
+        if (fotoEnviada is not null && resultado.Tipo is TipoResultadoExclusao.ExcluidoLogicamente or TipoResultadoExclusao.ApagadoDefinitivamente)
             await _arquivos.RemoverAsync(fotoEnviada, cancellationToken);
 
-        return ResultadoExclusao.Concluido(temHistorico);
+        return resultado;
     }
 
     private static string MensagemFuturos(int quantidade) => quantidade == 1
