@@ -3113,6 +3113,193 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.ToTable("codigos_verificacao", (string)null);
                 });
 
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid?>("ClienteId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("cliente_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<Guid>("InstanciaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instancia_id");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("Resumo")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("resumo");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TelefoneCliente")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone_cliente");
+
+                    b.Property<DateTimeOffset>("UltimaMensagemEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ultima_mensagem_em");
+
+                    b.HasKey("Id")
+                        .HasName("pk_conversas_whatsapp");
+
+                    b.HasIndex("InstanciaId", "TelefoneCliente")
+                        .IsUnique()
+                        .HasDatabaseName("ix_conversas_whatsapp_instancia_id_telefone_cliente");
+
+                    b.HasIndex("NegocioId", "UltimaMensagemEm")
+                        .HasDatabaseName("ix_conversas_whatsapp_negocio_id_ultima_mensagem_em");
+
+                    b.ToTable("conversas_whatsapp", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.InstanciaWhatsApp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AgenteAtivo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("agente_ativo");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("HorarioAtendimentoJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("horario_atendimento_json");
+
+                    b.Property<string>("MensagemBoasVindas")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("mensagem_boas_vindas");
+
+                    b.Property<string>("MensagemTransferencia")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("mensagem_transferencia");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("NomeInstancia")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("nome_instancia");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Telefone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone");
+
+                    b.HasKey("Id")
+                        .HasName("pk_instancias_whatsapp");
+
+                    b.HasIndex("NegocioId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_instancias_whatsapp_negocio_id");
+
+                    b.HasIndex("NomeInstancia")
+                        .IsUnique()
+                        .HasDatabaseName("ix_instancias_whatsapp_nome_instancia");
+
+                    b.ToTable("instancias_whatsapp", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.MensagemWhatsApp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("Conteudo")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("conteudo");
+
+                    b.Property<Guid>("ConversaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversa_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("IdExterno")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("id_externo");
+
+                    b.Property<Guid>("InstanciaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("instancia_id");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("NomeFerramenta")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("nome_ferramenta");
+
+                    b.Property<string>("Papel")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("papel");
+
+                    b.HasKey("Id")
+                        .HasName("pk_mensagens_whatsapp");
+
+                    b.HasIndex("ConversaId", "CriadoEm")
+                        .HasDatabaseName("ix_mensagens_whatsapp_conversa_id_criado_em");
+
+                    b.HasIndex("InstanciaId", "IdExterno")
+                        .IsUnique()
+                        .HasDatabaseName("ix_mensagens_whatsapp_instancia_id_id_externo");
+
+                    b.ToTable("mensagens_whatsapp", (string)null);
+                });
+
             modelBuilder.Entity("Plataforma.Infraestrutura.Arquivos.ArquivoBanco", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3635,6 +3822,36 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_usuario_permissoes_usuarios_usuario_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.WhatsAppAgente.InstanciaWhatsApp", null)
+                        .WithMany()
+                        .HasForeignKey("InstanciaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_conversas_whatsapp_instancias_whats_app_instancia_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.InstanciaWhatsApp", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Negocios.Negocio", null)
+                        .WithMany()
+                        .HasForeignKey("NegocioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_instancias_whatsapp_negocios_negocio_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.MensagemWhatsApp", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", null)
+                        .WithMany()
+                        .HasForeignKey("ConversaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_mensagens_whatsapp_conversas_whatsapp_conversa_id");
                 });
 
             modelBuilder.Entity("Plataforma.Infraestrutura.Arquivos.ArquivoBanco", b =>

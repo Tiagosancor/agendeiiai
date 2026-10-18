@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Plataforma.Aplicacao.WhatsAppAgente;
+using Plataforma.Infraestrutura.WhatsAppAgente;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Administracao;
 using Plataforma.Aplicacao.Agendamentos;
@@ -294,6 +296,18 @@ public static class InfraestruturaServiceCollectionExtensions
             });
         servicos.AddScoped<IProcessadorWebhookWhatsApp, ProcessadorWebhookWhatsApp>();
         servicos.AddScoped<IConsultaSaudeWhatsApp, ConsultaSaudeWhatsApp>();
+
+        // Agente de WhatsApp (Fase 1 do plano): instância por negócio na Evolution + webhook por instância.
+        // Independente do provedor acima (códigos de confirmação). Tudo opcional: sem Evolution__*/Whatsapp__*,
+        // o webhook responde 404 e o painel recusa conectar (502).
+        servicos.AddOptions<OpcoesAgenteWhatsApp>().Bind(configuracao.GetSection(OpcoesAgenteWhatsApp.Secao));
+        servicos.AddOptions<OpcoesEvolution>().Bind(configuracao.GetSection(OpcoesEvolution.Secao));
+        servicos.AddOptions<OpcoesRedis>().Bind(configuracao.GetSection(OpcoesRedis.Secao));
+        servicos.AddHttpClient<IClienteEvolution, ClienteEvolution>();
+        servicos.AddSingleton<IDeduplicadorMensagens, DeduplicadorMensagensRedis>();
+        servicos.AddScoped<IRespostaAgente, RespostaAgenteEco>();
+        servicos.AddScoped<IProcessadorWebhookAgente, ProcessadorWebhookAgente>();
+        servicos.AddScoped<IGerenciadorInstanciaWhatsApp, GerenciadorInstanciaWhatsApp>();
 
         servicos
             .AddHealthChecks()

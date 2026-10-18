@@ -22,6 +22,10 @@ var builder = WebApplication.CreateBuilder(args);
 // (telefone mascarado, sem código de verificação em texto puro — seção 8.1.6).
 builder.Host.UseSerilog((contexto, configuracaoLog) => configuracaoLog
     .ReadFrom.Configuration(contexto.Configuration)
+    // O segredo do webhook do agente de WhatsApp vai no caminho (/webhooks/whatsapp/{segredo}): a linha de
+    // log de requisição não pode gravá-lo.
+    .Filter.ByExcluding(evento => evento.Properties.TryGetValue("RequestPath", out var caminho)
+        && caminho.ToString().Contains("/webhooks/whatsapp/", StringComparison.OrdinalIgnoreCase))
     .Enrich.FromLogContext()
     .Enrich.WithProperty("Aplicacao", "Plataforma.Api"));
 
