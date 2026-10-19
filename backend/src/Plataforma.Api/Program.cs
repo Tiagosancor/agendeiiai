@@ -36,7 +36,8 @@ builder.Services.AddControllers(opcoes => opcoes.Filters.Add<Plataforma.Api.Assi
     .AddJsonOptions(opcoes => opcoes.JsonSerializerOptions.Converters.Add(
         new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+// IDs de schema com o nome completo do tipo: records aninhados em controllers diferentes têm o mesmo nome curto
+builder.Services.AddSwaggerGen(opcoes => opcoes.CustomSchemaIds(tipo => tipo.FullName!.Replace('+', '.')));
 
 builder.Services.AdicionarInfraestrutura(builder.Configuration);
 
