@@ -123,11 +123,10 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
         if (chave.TryGetProperty("fromMe", out var deMim) && deMim.ValueKind == JsonValueKind.True)
             return null;
 
-        var jid = Texto(chave, "remoteJid");
         var id = Texto(chave, "id");
-        // TODO: números novos podem vir como "@lid" (sem o telefone) — a Evolution manda o telefone em outro campo
-        // (ex.: key.remoteJidAlt/senderPn). Hoje só "@s.whatsapp.net" é atendido; grupos (@g.us) e difusão ficam de fora de propósito.
-        if (string.IsNullOrWhiteSpace(id) || jid is null || !jid.EndsWith(SufixoIndividual, StringComparison.Ordinal))
+        var jid = JidDoTelefone(chave);
+        // Grupos (@g.us), difusão e "@lid" sem telefone conhecido ficam de fora de propósito.
+        if (string.IsNullOrWhiteSpace(id) || jid is null)
             return null;
 
         var tipo = Texto(dados, "messageType");
@@ -150,6 +149,27 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
             return null;
 
         return new MensagemRecebida(id.Trim(), telefone!.Valor, texto);
+    }
+
+    /// <summary>
+    /// JID com o telefone do cliente (<c>5571...@s.whatsapp.net</c>). O WhatsApp novo identifica o remetente por um
+    /// "@lid" (id opaco, sem telefone) em <c>remoteJid</c> e manda o telefone real em <c>senderPn</c> (v2.3.0, confirmado
+    /// no banco da Evolution) ou <c>remoteJidAlt</c> (Baileys mais novo). Sem nenhum dos dois, ignora: não há telefone.
+    /// </summary>
+    private static string? JidDoTelefone(JsonElement chave)
+    {
+        foreach (var campo in new[] { "remoteJid", "senderPn", "remoteJidAlt" })
+        {
+            var valor = Texto(chave, campo);
+            if (valor is null || !valor.EndsWith(SufixoIndividual, StringComparison.Ordinal))
+                continue;
+
+            // "5571...:12@s.whatsapp.net" = aparelho vinculado; o telefone é o que vem antes do ":".
+            var digitos = valor[..^SufixoIndividual.Length].Split(':')[0];
+            return digitos + SufixoIndividual;
+        }
+
+        return null;
     }
 
     private async Task<ResultadoWebhookAgente> ProcessarMensagemAsync(string nomeInstancia, MensagemRecebida recebida, CancellationToken cancellationToken)

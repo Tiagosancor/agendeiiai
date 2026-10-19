@@ -182,6 +182,28 @@ public sealed class WhatsAppAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Remetente_lid_usa_o_telefone_de_senderPn_e_responde_nele()
+    {
+        var (_, nome) = await SemearInstanciaAsync(agenteAtivo: true);
+
+        await PostarWebhookAsync(Segredo, MensagemRecebida(nome, "ID-LID", "oi", jid: "184273650192384@lid", senderPn: Cliente + "@s.whatsapp.net"));
+
+        (await ConversasAsync()).Single().TelefoneCliente.Should().Be("+" + Cliente);
+        _evolution.Envios.Should().ContainSingle().Which.Telefone.Should().Be("+" + Cliente);
+    }
+
+    [Fact]
+    public async Task Remetente_lid_sem_telefone_conhecido_e_ignorado()
+    {
+        var (_, nome) = await SemearInstanciaAsync(agenteAtivo: true);
+
+        await PostarWebhookAsync(Segredo, MensagemRecebida(nome, "ID-LID-2", "oi", jid: "184273650192384@lid"));
+
+        (await ConversasAsync()).Should().BeEmpty();
+        _evolution.Envios.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Instancia_desconhecida_e_ignorada_com_200()
     {
         var resposta = await PostarWebhookAsync(Segredo, MensagemRecebida("neg-inexistente", "ID-1", "oi"));
@@ -300,9 +322,9 @@ public sealed class WhatsAppAgenteTestes : IAsyncLifetime
     // ---------------------------------------------------------------- apoio
 
     private static string MensagemRecebida(
-        string instancia, string id, string texto, bool deMim = false, string jid = Cliente + "@s.whatsapp.net", string tipo = "conversation") =>
+        string instancia, string id, string texto, bool deMim = false, string jid = Cliente + "@s.whatsapp.net", string tipo = "conversation", string? senderPn = null) =>
         $$$"""
-        {"event":"MESSAGES_UPSERT","instance":"{{{instancia}}}","data":{"key":{"remoteJid":"{{{jid}}}","fromMe":{{{(deMim ? "true" : "false")}}},"id":"{{{id}}}"},"pushName":"Cliente","message":{"conversation":"{{{texto}}}"},"messageType":"{{{tipo}}}","messageTimestamp":1700000000}}
+        {"event":"MESSAGES_UPSERT","instance":"{{{instancia}}}","data":{"key":{"remoteJid":"{{{jid}}}",{{{(senderPn is null ? "" : "\"senderPn\":\"" + senderPn + "\",")}}}"fromMe":{{{(deMim ? "true" : "false")}}},"id":"{{{id}}}"},"pushName":"Cliente","message":{"conversation":"{{{texto}}}"},"messageType":"{{{tipo}}}","messageTimestamp":1700000000}}
         """;
 
     private async Task<HttpResponseMessage> PostarWebhookAsync(string segredo, string corpo, PlataformaWebApplicationFactory? fabrica = null)
