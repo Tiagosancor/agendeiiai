@@ -26,6 +26,12 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
 
     public string? Resumo { get; private set; }
 
+    /// <summary>Trava (lease) da rodada do agente nesta conversa. Tomada por <c>UPDATE</c> condicional, não por esta propriedade.</summary>
+    public DateTimeOffset? ProcessandoAte { get; private set; }
+
+    /// <summary>Instante da última mensagem de usuário já tratada pelo agente (respondida ou descartada por limite).</summary>
+    public DateTimeOffset? ProcessadaAte { get; private set; }
+
     protected ConversaWhatsApp()
     {
     }

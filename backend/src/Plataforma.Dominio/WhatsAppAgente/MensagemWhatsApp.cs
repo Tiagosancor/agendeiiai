@@ -34,6 +34,10 @@ public class MensagemWhatsApp : EntidadeBase, IEntidadeDoNegocio
     {
     }
 
+    /// <summary>Preenche o ID da Evolution depois que o envio (feito com a mensagem já reservada no banco) foi confirmado.</summary>
+    public void DefinirIdExterno(string? idExterno) =>
+        IdExterno = string.IsNullOrWhiteSpace(idExterno) ? null : idExterno.Trim();
+
     public MensagemWhatsApp(
         Guid negocioId, Guid instanciaId, Guid conversaId, string? idExterno,
         PapelMensagemWhatsApp papel, string conteudo, string? nomeFerramenta = null)

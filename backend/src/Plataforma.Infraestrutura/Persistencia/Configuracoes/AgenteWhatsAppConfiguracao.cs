@@ -67,3 +67,21 @@ public sealed class MensagemWhatsAppConfiguracao : IEntityTypeConfiguration<Mens
         builder.HasIndex(m => new { m.ConversaId, m.CriadoEm });
     }
 }
+
+public sealed class UsoIaConfiguracao : IEntityTypeConfiguration<UsoIa>
+{
+    public void Configure(EntityTypeBuilder<UsoIa> builder)
+    {
+        builder.ToTable("usos_ia");
+
+        builder.HasKey(u => u.Id);
+
+        builder.Property(u => u.Modelo).HasMaxLength(100).IsRequired();
+
+        builder.HasOne<Negocio>().WithMany().HasForeignKey(u => u.NegocioId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ConversaWhatsApp>().WithMany().HasForeignKey(u => u.ConversaId).OnDelete(DeleteBehavior.Cascade);
+
+        // Limites por negócio: chamadas no dia e tokens no mês.
+        builder.HasIndex(u => new { u.NegocioId, u.CriadoEm });
+    }
+}

@@ -139,6 +139,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<Plataforma.Dominio.WhatsAppAgente.MensagemWhatsApp> MensagensWhatsApp => Set<Plataforma.Dominio.WhatsAppAgente.MensagemWhatsApp>();
 
+    public DbSet<Plataforma.Dominio.WhatsAppAgente.UsoIa> UsosIa => Set<Plataforma.Dominio.WhatsAppAgente.UsoIa>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         // Pré-requisito da exclusion constraint de horários (seção 8.2.1) — confirmado
