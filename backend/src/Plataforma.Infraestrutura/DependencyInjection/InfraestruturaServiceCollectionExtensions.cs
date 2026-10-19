@@ -305,7 +305,29 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddOptions<OpcoesRedis>().Bind(configuracao.GetSection(OpcoesRedis.Secao));
         servicos.AddHttpClient<IClienteEvolution, ClienteEvolution>();
         servicos.AddSingleton<IDeduplicadorMensagens, DeduplicadorMensagensRedis>();
-        servicos.AddScoped<IRespostaAgente, RespostaAgenteEco>();
+        // Fase 2 (agente de consulta): IA por Ai__Provider (Eco | Gemini | Desligado), resolvido em runtime dentro da factory
+        // (nunca capturando IConfiguration antes do Build). Eco continua sendo o padrão — sem chave nenhuma.
+        servicos.AddOptions<OpcoesIa>().Bind(configuracao.GetSection(OpcoesIa.Secao)).ValidateOnStart();
+        servicos.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<OpcoesIa>, ValidadorOpcoesIa>();
+        servicos.AddHttpClient<GeminiProvider>().RedactLoggedHeaders(cabecalho => string.Equals(cabecalho, GeminiProvider.CabecalhoChave, StringComparison.OrdinalIgnoreCase));
+        servicos.AddTransient<Plataforma.Aplicacao.WhatsAppAgente.Ia.IAiProvider>(sp => sp.GetRequiredService<GeminiProvider>());
+        servicos.AddScoped<IConsultaHorariosPublicos, Plataforma.Infraestrutura.Publico.ConsultaHorariosPublicos>();
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaListarServicos>();
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaListarProfissionais>();
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaConsultarHorarios>();
+        servicos.AddScoped<IExecutorFerramentasAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.ExecutorFerramentasAgente>();
+        servicos.AddScoped<RespostaAgenteEco>();
+        servicos.AddScoped<OrquestradorAgente>();
+        servicos.AddScoped<IRespostaAgente>(sp =>
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OpcoesIa>>().Value.Provider == ProvedorIa.Gemini
+                ? sp.GetRequiredService<OrquestradorAgente>()
+                : sp.GetRequiredService<RespostaAgenteEco>());
+        servicos.AddScoped<LimitadorUsoAgente>();
+        servicos.AddScoped<RecuperadorRespostasAgente>();
+        servicos.AddScoped<IProcessadorRodadaAgente, ProcessadorRodadaAgente>();
+        servicos.AddSingleton<FilaRespostaAgenteEmMemoria>();
+        servicos.AddSingleton<IFilaRespostaAgente>(sp => sp.GetRequiredService<FilaRespostaAgenteEmMemoria>());
+        servicos.AddHostedService<ProcessadorFilaAgente>();
         servicos.AddScoped<IProcessadorWebhookAgente, ProcessadorWebhookAgente>();
         servicos.AddScoped<IGerenciadorInstanciaWhatsApp, GerenciadorInstanciaWhatsApp>();
 

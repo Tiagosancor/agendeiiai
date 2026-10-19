@@ -40,7 +40,10 @@ public sealed class WhatsAppAgenteTestes : IAsyncLifetime
     {
         _evolution = new EspiaClienteEvolution();
         _fabrica = new PlataformaWebApplicationFactory(_postgres.ConnectionString, Configuracao, servicos =>
-            servicos.AddSingleton<IClienteEvolution>(_evolution));
+            {
+            servicos.AddSingleton<IClienteEvolution>(_evolution);
+            servicos.AddSingleton<IFilaRespostaAgente, FilaImediata>();
+        });
         using var aquecimento = _fabrica.CreateClient();
         await _fabrica.ResetarBancoAsync();
     }
@@ -151,6 +154,7 @@ public sealed class WhatsAppAgenteTestes : IAsyncLifetime
         await using var fabrica = new PlataformaWebApplicationFactory(_postgres.ConnectionString, Configuracao, servicos =>
         {
             servicos.AddSingleton<IClienteEvolution>(_evolution);
+            servicos.AddSingleton<IFilaRespostaAgente, FilaImediata>();
             servicos.AddSingleton<IDeduplicadorMensagens>(deduplicador);
         });
         using var aquecimento = fabrica.CreateClient();
@@ -397,13 +401,23 @@ public sealed class EspiaClienteEvolution : IClienteEvolution
     public Task<EstadoInstanciaEvolution> ConsultarStatusAsync(string nomeInstancia, CancellationToken cancellationToken = default) =>
         Task.FromResult(EstadoInstanciaEvolution.Conectando);
 
-    public Task<string?> EnviarTextoAsync(string nomeInstancia, string telefoneE164, string texto, CancellationToken cancellationToken = default)
+    /// <summary>Gancho antes de registrar o envio (n = número da tentativa, 1-based): permite bloquear o envio até o token cancelar.</summary>
+    public Func<int, string, CancellationToken, Task>? AoEnviar { get; set; }
+
+    private int _tentativasDeEnvio;
+
+    public async Task<string?> EnviarTextoAsync(string nomeInstancia, string telefoneE164, string texto, CancellationToken cancellationToken = default)
     {
+        var tentativa = Interlocked.Increment(ref _tentativasDeEnvio);
+        if (AoEnviar is not null)
+            await AoEnviar(tentativa, texto, cancellationToken);
+
         if (FalharEnvio)
             throw new FalhaEvolutionException("fora do ar");
 
-        Envios.Add((nomeInstancia, telefoneE164, texto));
-        return Task.FromResult<string?>($"ENVIO-{Envios.Count}");
+        lock (Envios)
+            Envios.Add((nomeInstancia, telefoneE164, texto));
+        return $"ENVIO-{Guid.NewGuid():N}";
     }
 }
 
