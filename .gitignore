@@ -9,6 +9,7 @@
 /docs/
 /CLAUDE.md
 /prompt-do-projeto.md
+/plano-agente-whatsapp_1.md
 
 # .NET
 backend/**/bin/
@@ -40,3 +41,7 @@ Thumbs.db
 
 # Instruções locais para o Codex
 AGENTS.md
+
+# Camada local de orquestração de agentes (subagentes, comandos, handoffs e scripts)
+/.claude/
+/.agents/
