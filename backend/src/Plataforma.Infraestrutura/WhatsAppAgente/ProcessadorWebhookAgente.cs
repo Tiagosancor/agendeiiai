@@ -27,21 +27,19 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
     private readonly IDeduplicadorMensagens _deduplicador;
-    private readonly IClienteEvolution _evolution;
-    private readonly IRespostaAgente _respostaAgente;
+    private readonly IFilaRespostaAgente _fila;
     private readonly OpcoesAgenteWhatsApp _opcoes;
     private readonly ILogger<ProcessadorWebhookAgente> _logger;
 
     public ProcessadorWebhookAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IDeduplicadorMensagens deduplicador,
-        IClienteEvolution evolution, IRespostaAgente respostaAgente, IOptions<OpcoesAgenteWhatsApp> opcoes,
+        IFilaRespostaAgente fila, IOptions<OpcoesAgenteWhatsApp> opcoes,
         ILogger<ProcessadorWebhookAgente> logger)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _deduplicador = deduplicador;
-        _evolution = evolution;
-        _respostaAgente = respostaAgente;
+        _fila = fila;
         _opcoes = opcoes.Value;
         _logger = logger;
     }
@@ -192,7 +190,7 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
             return ResultadoWebhookAgente.Repetido;
 
         if (instancia.AgenteAtivo && salvo.AgenteResponde)
-            await ResponderAsync(instancia, salvo, recebida.Texto, cancellationToken);
+            await EnfileirarAsync(salvo, cancellationToken);
 
         return ResultadoWebhookAgente.Processado;
     }
@@ -240,28 +238,19 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
         return null;
     }
 
-    /// <summary>Resposta do agente (hoje o eco, Fase 1). Nunca derruba o webhook: falha é logada (só IDs) e a mensagem do cliente já está salva.</summary>
-    private async Task ResponderAsync(InstanciaWhatsApp instancia, ConversaWhatsApp conversa, string texto, CancellationToken cancellationToken)
+    /// <summary>
+    /// A resposta (eco ou IA) NÃO é produzida na requisição: o webhook só enfileira o ID da conversa e responde 200. Falha ao
+    /// enfileirar nunca derruba o webhook — a mensagem já está salva e a varredura de recuperação a encontra.
+    /// </summary>
+    private async Task EnfileirarAsync(ConversaWhatsApp conversa, CancellationToken cancellationToken)
     {
         try
         {
-            var resposta = await _respostaAgente.ResponderAsync(
-                new ContextoRespostaAgente(instancia.NegocioId, instancia.Id, conversa.Id, conversa.TelefoneCliente, texto), cancellationToken);
-
-            if (string.IsNullOrWhiteSpace(resposta))
-                return;
-
-            var idEnvio = await _evolution.EnviarTextoAsync(instancia.NomeInstancia, conversa.TelefoneCliente, resposta, cancellationToken);
-
-            _dbContext.MensagensWhatsApp.Add(new MensagemWhatsApp(
-                instancia.NegocioId, instancia.Id, conversa.Id, idEnvio, PapelMensagemWhatsApp.Assistente, resposta));
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            await _fila.EnfileirarAsync(conversa.Id, cancellationToken);
         }
         catch (Exception excecao) when (excecao is not OperationCanceledException)
         {
-            _dbContext.ChangeTracker.Clear();
-            _logger.LogWarning("Webhook do agente: falha ao responder (conversa {ConversaId}, instância {InstanciaId}): {Tipo}.",
-                conversa.Id, instancia.Id, excecao.GetType().Name);
+            _logger.LogWarning("Webhook do agente: falha ao enfileirar (conversa {ConversaId}): {Tipo}.", conversa.Id, excecao.GetType().Name);
         }
     }
 
