@@ -84,6 +84,9 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
     {
         var erros = new List<string>();
 
+        if (!Enum.IsDefined(o.Provider))
+            erros.Add("Ai__Provider deve ser Eco, Gemini ou Desligado.");
+
         if (o.Provider == ProvedorIa.Gemini)
         {
             if (string.IsNullOrWhiteSpace(o.Gemini.ApiKey))

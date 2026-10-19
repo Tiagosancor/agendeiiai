@@ -469,6 +469,12 @@ public sealed class OpcoesIaTestes
     }
 
     [Fact]
+    public void Provedor_numerico_indefinido_e_recusado()
+    {
+        Validador.Validate(null, new OpcoesIa { Provider = (ProvedorIa)3 }).Failed.Should().BeTrue();
+    }
+
+    [Fact]
     public void Gemini_exige_chave_e_https()
     {
         Validador.Validate(null, new OpcoesIa { Provider = ProvedorIa.Gemini }).Failed.Should().BeTrue();
