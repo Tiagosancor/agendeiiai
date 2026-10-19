@@ -59,7 +59,7 @@ test("www leva ao domínio raiz no mesmo caminho (antes era configuração da Ve
   expect((await resposta!.request().redirectedFrom()!.response())!.status()).toBe(308);
 });
 
-test("Termos e Privacidade do produto aparecem marcados como rascunho", async ({ page }) => {
+test("Termos do produto seguem como rascunho; a Privacidade já está publicada sem a faixa", async ({ page }) => {
   await page.goto(RAIZ);
   await page.getByRole("contentinfo").getByRole("link", { name: "Termos de Uso" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Termos de Uso");
@@ -67,7 +67,8 @@ test("Termos e Privacidade do produto aparecem marcados como rascunho", async ({
 
   await page.goto(`${RAIZ}/privacidade`);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Política de Privacidade");
-  await expect(page.getByTestId("aviso-rascunho")).toBeVisible();
+  await expect(page.getByTestId("aviso-rascunho")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Assistente virtual de WhatsApp" })).toBeVisible();
 
   // Na página de um negócio, a privacidade continua sendo a do negócio (seção 8.4).
   await page.goto("http://acme.agendeiiai.localhost:3000/privacidade");
