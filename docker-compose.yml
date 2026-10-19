@@ -67,6 +67,26 @@ services:
       Whatsapp__WebhookSecret: ${AGENTE_WEBHOOK_SEGREDO:-}
       Whatsapp__UrlPublicaApi: ${AGENTE_URL_PUBLICA_API:-http://api:8080}
       Redis__ConnectionString: ${REDIS_CONNECTION_STRING:-redis:6379}
+      # Agente de WhatsApp (Fase 2): IA. Padrão Eco = comportamento da Fase 1 (dev/e2e sem chave).
+      Ai__Provider: ${AI_PROVIDER:-Eco}
+      Ai__Gemini__ApiKey: ${AI_GEMINI_API_KEY:-}
+      Ai__Gemini__Model: ${AI_GEMINI_MODEL:-gemini-2.5-flash-lite}
+      Ai__NegociosHabilitados: ${AI_NEGOCIOS_HABILITADOS:-}
+      Ai__LimiteMensagensPorTelefonePorHora: ${AI_LIMITE_MENSAGENS_TELEFONE_HORA:-15}
+      Ai__LimiteMensagensPorTelefonePorDia: ${AI_LIMITE_MENSAGENS_TELEFONE_DIA:-45}
+      Ai__LimiteChamadasPorNegocioPorDia: ${AI_LIMITE_CHAMADAS_NEGOCIO_DIA:-250}
+      Ai__CotaMensalTokensPorNegocio: ${AI_COTA_MENSAL_TOKENS:-1500000}
+      Ai__Gemini__TimeoutSegundos: ${AI_GEMINI_TIMEOUT_SEGUNDOS:-15}
+      Ai__TempoMaximoProcessamentoSegundos: ${AI_TEMPO_MAXIMO_PROCESSAMENTO_SEGUNDOS:-40}
+      Ai__MaxMensagensHistorico: ${AI_MAX_MENSAGENS_HISTORICO:-20}
+      Ai__DiasMaximosConsulta: ${AI_DIAS_MAXIMOS_CONSULTA:-60}
+      Ai__Gemini__UrlBase: ${AI_GEMINI_URL_BASE:-https://generativelanguage.googleapis.com/v1beta}
+      Ai__MaxIteracoesFerramentas: ${AI_MAX_ITERACOES_FERRAMENTAS:-5}
+      Ai__MaxChamadasFerramentaPorIteracao: ${AI_MAX_CHAMADAS_FERRAMENTA_ITERACAO:-3}
+      Ai__MaxCaracteresMensagem: ${AI_MAX_CARACTERES_MENSAGEM:-1000}
+      Ai__MaxCaracteresHistorico: ${AI_MAX_CARACTERES_HISTORICO:-8000}
+      Ai__MaxTokensSaida: ${AI_MAX_TOKENS_SAIDA:-512}
+      Ai__MaxCaracteresResposta: ${AI_MAX_CARACTERES_RESPOSTA:-1000}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}
