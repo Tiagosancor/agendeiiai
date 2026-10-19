@@ -60,6 +60,13 @@ services:
       WhatsApp__Evolution__ChaveApi: ${EVOLUTION_CHAVE_API:-}
       WhatsApp__Evolution__NomeInstancia: ${EVOLUTION_NOME_INSTANCIA:-agendeiiai-dev}
       WhatsApp__Evolution__SegredoWebhook: ${EVOLUTION_SEGREDO_WEBHOOK:-}
+      # Agente de WhatsApp (Fase 1): instância por negócio na Evolution + webhook por instância
+      # (POST /webhooks/whatsapp/{segredo}). Vazios = o agente fica desligado (webhook 404, painel 502).
+      Evolution__BaseUrl: ${AGENTE_EVOLUTION_URL_BASE:-http://evolution:8080}
+      Evolution__ApiKey: ${AGENTE_EVOLUTION_CHAVE_API:-}
+      Whatsapp__WebhookSecret: ${AGENTE_WEBHOOK_SEGREDO:-}
+      Whatsapp__UrlPublicaApi: ${AGENTE_URL_PUBLICA_API:-http://api:8080}
+      Redis__ConnectionString: ${REDIS_CONNECTION_STRING:-redis:6379}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}
@@ -90,6 +97,17 @@ services:
       CONTATO_WHATSAPP: ${COBRANCA_WHATSAPP_CONTATO:-}
     ports:
       - "${FRONTEND_PORTA_HOST:-3000}:3000"
+
+  # Redis do agente de WhatsApp: deduplicação de webhook (SET NX EX 600). Sem porta no host. Se cair, o webhook
+  # segue e o índice único do banco barra a duplicata.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   # Instância local do Evolution API (WhatsApp NÃO oficial — viola os termos do WhatsApp e pode
   # levar ao banimento do número; seção 4). Opcional: só sobe com --profile whatsapp. Guarda os
