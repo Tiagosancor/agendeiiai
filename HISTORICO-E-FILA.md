@@ -419,6 +419,57 @@ merge ou deploy foi realizado.
 A ordem pode ser alterada pelo usuário. Cada item deve usar branch própria, preservar os
 gates de release e não misturar frontend visual com correção backend sem necessidade.
 
+## Agente de WhatsApp — Fase 2 (consulta) — 2026-10-19/20
+
+```text
+Etapa: Agente de WhatsApp, Fase 2 (somente consulta: serviços, profissionais, horários)
+Responsável: Claude Code (backend e infra); sem frontend
+Branch: ajuste-agente-whatsapp-fase2
+Base: main (5d55c75)
+Commits: cf6d981 (modelo de dados/migration), 19f1cee (agente de consulta), e67827d (testes),
+  4337a96 (compose/.env.example), 3597f20 (valida Ai__Provider indefinido)
+Status: integrada e implantada — PR #27, merge 20521e0 (CI do GitHub verde). Em 2026-10-20 o dono informou ter
+  aplicado o SQL da migration no Neon e que o deploy saiu (informação do dono; não verificada por mim).
+  Agente segue em Ai__Provider=Eco; Gemini real ainda não testado
+Arquivos/camadas: IAiProvider/GeminiProvider, orquestrador, fila com trava por conversa, ferramentas de
+  leitura, limites, sanitizador, minimizador de dados pessoais, IConsultaHorariosPublicos extraído do
+  controller público, docker-compose.yml, .env.example, CLAUDE.md/AGENTS.md (locais)
+Testes: build 0 erros; unidade 511 aprovados; integração filtrada (WhatsAppAgente*, Idempotencia, Outbox)
+  355 aprovados. NÃO rodou: suíte de integração completa após as correções, Gemini real, export-openapi,
+  subida real da stack
+Migrations: AgenteWhatsAppConsulta (usos_ia + 2 colunas nulas) — antes do deploy; SQL gerado localmente
+  (agente-whatsapp-consulta.sql, não versionado) para o Neon
+Frontend alterado: não (nesta etapa)
+Backend alterado: sim; nenhuma rota, DTO ou permissão nova
+Produção: ativação futura: migration -> deploy com Ai__Provider=Eco (padrão) -> Ai__NegociosHabilitados (piloto)
+  -> Gemini PAGO (decisão do dono, 2026-10-19; gratuito só em dev/homologação)
+Próximo gate: avaliação manual com o Gemini real (dono tem a chave; roteiro em avaliacao-manual.md); ligar o piloto
+```
+
+Revisão cruzada (Codex, `.agents/handoffs/agente-whatsapp-fase2/revisao-backend*.md`), 4 rodadas: 1ª, 5 importantes +
+1 sugestão; 2ª, 3 importantes + 1 sugestão; 3ª (a pedido do dono, além do limite de 2 voltas), 2 importantes +
+1 sugestão; 4ª: **aprovado com ressalvas** (sem críticos/importantes; sugestão do enum corrigida). Todos os
+achados foram corrigidos.
+
+### Política de privacidade do produto — PR #28 (frontend)
+
+Texto do dono publicado em `/privacidade` do domínio raiz, sem a faixa de rascunho (`PaginaLegal` ganhou a prop
+`rascunho`, padrão true; `/termos` mantém a faixa). Branch `ajuste-politica-privacidade`, commit 00c9443, merge
+1c55509. Lint/tsc/build ok; e2e ajustado mas não rodado. Nome, domínio e WhatsApp do canal vêm de
+`MARCA_NOME_PRODUTO`/`MARCA_DOMINIO`/`CONTATO_WHATSAPP`. **Decisão do dono (2026-10-20):** o texto cita criar/remarcar/
+cancelar, aviso de atendimento automatizado e reconhecimento do cliente, que ainda não existem — aceitável, pois o
+produto só será comercializado com tudo implementado. A política **do negócio** (subdomínio) não menciona IA.
+
+| Item | Responsável | Origem e estado |
+|---|---|---|
+| Validar Gemini real (`avaliacao-manual.md`, nome do modelo `gemini-2.5-flash-lite`) | Dono/Claude Code | Pré-requisito da ativação; não feito |
+| Política de privacidade **do negócio** (subdomínio) mencionar a IA | Dono (texto) / Codex | Necessário antes do piloto com clientes reais |
+| Apagar conversas (`mensagens_whatsapp`) ao anonimizar cliente | Claude Code | LGPD; `Cliente.Anonimizar` não apaga; Fases 4/5 |
+| Aviso de atendimento automatizado e demais funções citadas na política | Claude Code | Fases 3/4; exigidas antes de comercializar |
+| Sanitizador: `ok.vamos` pode sumir, `Golpe.Ai` escapa; minimizador é heurística | Claude Code | Risco residual conhecido, documentado em `contrato.md` |
+| `CONTATO_WHATSAPP` no frontend usa `/D/g` (remove a letra D) em `app/page.tsx` | Codex | Provável erro de regex (`/\D/g`); não corrigido |
+| Seção 2 do `prompt-do-projeto.md` ainda cita n8n | Dono | Desatualizada (arquivo local) |
+
 ## Modelo de registro de uma nova etapa
 
 Ao concluir uma etapa, acrescentar ou atualizar:
