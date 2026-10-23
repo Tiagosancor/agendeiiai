@@ -189,6 +189,8 @@ public sealed class GeminiProvider : IAiProvider
                     w.WritePropertyName("args");
                     chamada.Argumentos.WriteTo(w);
                     w.WriteEndObject();
+                    if (!string.IsNullOrEmpty(chamada.AssinaturaPensamento))
+                        w.WriteString("thoughtSignature", chamada.AssinaturaPensamento);
                     w.WriteEndObject();
                 }
             }
@@ -309,7 +311,10 @@ public sealed class GeminiProvider : IAiProvider
                             && chamada.TryGetProperty("name", out var nome) && nome.ValueKind == JsonValueKind.String)
                         {
                             var argumentos = chamada.TryGetProperty("args", out var args) ? args.Clone() : EmptyObject();
-                            chamadas.Add(new AiChamadaFerramenta(nome.GetString()!, argumentos));
+                            var assinatura = parte.TryGetProperty("thoughtSignature", out var sig) && sig.ValueKind == JsonValueKind.String
+                                ? sig.GetString()
+                                : null;
+                            chamadas.Add(new AiChamadaFerramenta(nome.GetString()!, argumentos, assinatura));
                         }
                         else if (parte.TryGetProperty("text", out var t) && t.ValueKind == JsonValueKind.String
                             && !(parte.TryGetProperty("thought", out var pensamento) && pensamento.ValueKind == JsonValueKind.True))

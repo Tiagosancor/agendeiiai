@@ -18,7 +18,12 @@ public sealed record AiMensagem(
 
 public sealed record AiFerramenta(string Nome, string Descricao, JsonElement EsquemaParametros);
 
-public sealed record AiChamadaFerramenta(string Nome, JsonElement Argumentos);
+/// <summary>
+/// Pedido de ferramenta feito pelo modelo. <see cref="AssinaturaPensamento"/> é o <c>thoughtSignature</c> opaco que os modelos
+/// Gemini 3 devolvem na mesma <c>part</c> do <c>functionCall</c> e exigem de volta, idêntico, no turno do modelo. Nunca vai
+/// para log, banco nem resposta ao cliente; nulo em modelos que não a enviam.
+/// </summary>
+public sealed record AiChamadaFerramenta(string Nome, JsonElement Argumentos, string? AssinaturaPensamento = null);
 
 public sealed record AiResultadoFerramenta(string Nome, JsonElement Conteudo);
 
