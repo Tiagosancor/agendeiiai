@@ -462,7 +462,7 @@ public sealed class OpcoesIaTestes
         var opcoes = new OpcoesIa();
 
         opcoes.Provider.Should().Be(ProvedorIa.Eco);
-        opcoes.Gemini.Model.Should().Be("gemini-2.5-flash-lite");
+        opcoes.Gemini.Model.Should().Be("gemini-3.1-flash-lite");
         (opcoes.LimiteMensagensPorTelefonePorHora, opcoes.LimiteMensagensPorTelefonePorDia, opcoes.LimiteChamadasPorNegocioPorDia, opcoes.CotaMensalTokensPorNegocio)
             .Should().Be((15, 45, 250, 1_500_000L));
         Validador.Validate(null, opcoes).Succeeded.Should().BeTrue();
