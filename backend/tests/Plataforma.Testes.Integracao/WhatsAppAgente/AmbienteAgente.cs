@@ -79,6 +79,11 @@ public sealed class ProvedorIaRoteirizado : IAiProvider
         new(null, chamadas.Select(c => new AiChamadaFerramenta(c.Nome, JsonDocument.Parse(c.ArgumentosJson).RootElement.Clone())).ToList(),
             100, 20, "modelo-falso", "STOP");
 
+    /// <summary>Pedido de ferramenta com <c>thoughtSignature</c>, como os modelos Gemini 3 respondem.</summary>
+    public static AiResponse ChamaComAssinatura(string nome, string argumentosJson, string assinatura) =>
+        new(null, [new AiChamadaFerramenta(nome, JsonDocument.Parse(argumentosJson).RootElement.Clone(), assinatura)],
+            100, 20, "modelo-falso", "STOP");
+
     /// <summary>Resultados de ferramenta que o servidor mandou ao modelo nesta requisição.</summary>
     public static List<(string Nome, JsonElement Conteudo)> Resultados(AiRequest requisicao) =>
         requisicao.Mensagens.Where(m => m.Resultado is not null).Select(m => (m.Resultado!.Nome, m.Resultado.Conteudo)).ToList();

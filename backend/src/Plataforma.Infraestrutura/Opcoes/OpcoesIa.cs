@@ -71,7 +71,7 @@ public sealed class OpcoesGemini
     public string? ApiKey { get; set; }
 
     /// <summary>Nome do modelo; confira na documentação do Google AI Studio antes de ativar (modelos são descontinuados).</summary>
-    public string Model { get; set; } = "gemini-2.5-flash-lite";
+    public string Model { get; set; } = "gemini-3.1-flash-lite";
 
     public string UrlBase { get; set; } = "https://generativelanguage.googleapis.com/v1beta";
 
