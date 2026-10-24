@@ -189,6 +189,45 @@ public sealed class GeminiProviderTestes
     }
 
     [Fact]
+    public void Assinatura_de_pensamento_do_Gemini_3_faz_ida_e_volta_na_mesma_part_do_functionCall()
+    {
+        const string corpoResposta = """
+            {"candidates":[{"content":{"role":"model","parts":[
+              {"functionCall":{"name":"listar_profissionais","args":{}},"thoughtSignature":"AbC+/123=="},
+              {"functionCall":{"name":"listar_servicos","args":{}}}]},"finishReason":"STOP"}],
+             "usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2}}
+            """;
+
+        var resposta = GeminiProvider.Interpretar(corpoResposta, "m");
+
+        resposta.Chamadas.Select(c => c.AssinaturaPensamento).Should().Equal("AbC+/123==", null);
+
+        var corpo = GeminiProvider.MontarCorpo(new AiRequest("S",
+            [
+                new AiMensagem(PapelIa.Usuario, "oi"),
+                new AiMensagem(PapelIa.Modelo, null, resposta.Chamadas),
+                new AiMensagem(PapelIa.Ferramenta, Resultado: new AiResultadoFerramenta("listar_profissionais", Json("[]"))),
+                new AiMensagem(PapelIa.Ferramenta, Resultado: new AiResultadoFerramenta("listar_servicos", Json("[]"))),
+            ], [], 100));
+
+        using var documento = JsonDocument.Parse(corpo);
+        var partes = documento.RootElement.GetProperty("contents")[1].GetProperty("parts").EnumerateArray().ToList();
+        partes[0].GetProperty("functionCall").GetProperty("name").GetString().Should().Be("listar_profissionais");
+        partes[0].GetProperty("thoughtSignature").GetString().Should().Be("AbC+/123==");
+        partes[1].TryGetProperty("thoughtSignature", out _).Should().BeFalse("só reenvia o que veio");
+    }
+
+    [Fact]
+    public void Modelo_sem_assinatura_nao_escreve_o_campo()
+    {
+        var resposta = GeminiProvider.Interpretar("""{"candidates":[{"content":{"parts":[{"functionCall":{"name":"a","args":{}}}]}}]}""", "m");
+        resposta.Chamadas.Single().AssinaturaPensamento.Should().BeNull();
+
+        GeminiProvider.MontarCorpo(new AiRequest("S", [new AiMensagem(PapelIa.Modelo, null, resposta.Chamadas)], [], 10))
+            .Should().NotContain("thoughtSignature");
+    }
+
+    [Fact]
     public async Task Interpreta_chamada_de_ferramenta_ignora_pensamento_e_soma_tokens_de_raciocinio()
     {
         var handler = new FakeHandler(_ => Resposta("""
@@ -462,7 +501,7 @@ public sealed class OpcoesIaTestes
         var opcoes = new OpcoesIa();
 
         opcoes.Provider.Should().Be(ProvedorIa.Eco);
-        opcoes.Gemini.Model.Should().Be("gemini-2.5-flash-lite");
+        opcoes.Gemini.Model.Should().Be("gemini-3.1-flash-lite");
         (opcoes.LimiteMensagensPorTelefonePorHora, opcoes.LimiteMensagensPorTelefonePorDia, opcoes.LimiteChamadasPorNegocioPorDia, opcoes.CotaMensalTokensPorNegocio)
             .Should().Be((15, 45, 250, 1_500_000L));
         Validador.Validate(null, opcoes).Succeeded.Should().BeTrue();

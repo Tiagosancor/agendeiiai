@@ -85,6 +85,36 @@ public sealed class AgenteConsultaTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Assinatura_de_pensamento_da_chamada_volta_identica_no_turno_do_modelo_e_nao_vaza()
+    {
+        var c = await _ambiente.SemearAsync();
+        const string assinatura = "ASSINATURA-OPACA-gemini3==";
+
+        // Modelo "Gemini 3": exige a assinatura de volta na 2ª chamada (senão responde HTTP 400, como o real).
+        _ambiente.Provedor.Roteiro = (requisicao, n) =>
+        {
+            if (n == 1)
+                return ProvedorIaRoteirizado.ChamaComAssinatura("listar_profissionais", "{}", assinatura);
+
+            var devolvida = requisicao.Mensagens.Where(m => m.Papel == PapelIa.Modelo).SelectMany(m => m.Chamadas ?? []).SingleOrDefault();
+            if (devolvida?.AssinaturaPensamento != assinatura)
+                throw new FalhaProvedorIaException("http", 400);
+
+            return ProvedorIaRoteirizado.Texto("Temos a Ana e o Beto.");
+        };
+
+        (await _ambiente.EnviarAsync(c, "quem atende aí?")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        _ambiente.Provedor.Chamadas.Should().Be(2);
+        _ambiente.UltimaEntrega().Should().Be("Temos a Ana e o Beto.");
+        (await _ambiente.UsosAsync()).Should().OnlyContain(u => u.Sucesso);
+
+        // A assinatura não é persistida: nem nas mensagens nem nos usos.
+        var mensagens = await _ambiente.MensagensAsync();
+        JsonSerializer.Serialize(mensagens.Select(m => new { m.Conteudo, m.NomeFerramenta })).Should().NotContain(assinatura);
+    }
+
+    [Fact]
     public async Task Qualquer_profissional_agrega_quem_faz_o_servico_e_trunca_em_30_como_o_publico_na_mesma_ordem()
     {
         var c = await _ambiente.SemearAsync();
