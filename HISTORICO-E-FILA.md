@@ -451,6 +451,27 @@ Revisão cruzada (Codex, `.agents/handoffs/agente-whatsapp-fase2/revisao-backend
 1 sugestão; 4ª: **aprovado com ressalvas** (sem críticos/importantes; sugestão do enum corrigida). Todos os
 achados foram corrigidos.
 
+### Gemini real: modelo e thoughtSignature — PR #29 (2026-10-23)
+
+Primeira conversa real com o Gemini (negócio piloto do dono, chave **sem faturamento**) revelou dois defeitos, ambos corrigidos
+na `main` (commits `322ecd1` e `c47f85c`, merge `6efb0f3`; CI Backend/Frontend/Vercel verdes):
+- **Modelo padrão:** `gemini-2.5-flash-lite` aparecia em `GET /v1beta/models` mas a chamada real dava 404 "no longer available to new users"
+  (o mesmo para `gemini-2.5-flash`). Padrão trocado para `gemini-3.1-flash-lite` (respondeu OK com a chave do dono, junto com
+  `gemini-3.5-flash-lite`, `gemini-3.5-flash` e os `-latest`). **Lição:** estar na lista de modelos não prova que a chave pode chamá-lo —
+  teste com `generateContent` real antes de fixar um nome. Troca sem deploy por `Ai__Gemini__Model`.
+- **`thoughtSignature`:** com ferramenta, a 2ª iteração dava HTTP 400 (log: `provedor de IA falhou ... iteração 2: http HTTP 400`) e o cliente caía
+  no fallback. O `GeminiProvider` descartava a `thoughtSignature` do `functionCall`, que os modelos Gemini 3 exigem de volta. Agora é lida e
+  reescrita idêntica no turno do modelo (compatível com modelos sem assinatura; nunca em log/banco). Diagnóstico por leitura do código e do
+  contrato do Gemini 3 — **o corpo do 400 nunca foi visto** (o código não o registra, de propósito).
+- **Estado:** a 1ª chamada sem ferramenta funcionou em produção (200, ~4 s, resposta enviada pela Evolution). Uma chamada deu timeout de 15 s
+  (`Ai__Gemini__TimeoutSegundos`; sugerido 30). O **deploy do Railway do merge `6efb0f3` falhou na fase de build por erro de infraestrutura**
+  ("Failed to build an image", sem causa nos logs; CI do GitHub verde) — reexecutar o deploy do mesmo commit.
+- **Pendente de confirmação do dono:** com o deploy novo, repetir uma pergunta que use ferramenta ("quais profissionais vocês têm?") e
+  confirmar que o 400 sumiu; só então rodar os roteiros de `avaliacao-manual.md`. Revisão do Codex da correção (`gemini-3-assinatura`)
+  foi iniciada antes do merge e não concluiu até este registro.
+- **Ruído de log (não relacionado):** `POST /webhooks/evolution/status` responde 401 em rajada — o token do webhook do provedor antigo
+  (códigos de confirmação) não bate; não afeta o agente. Backlog de infra do dono/Claude Code.
+
 ### Política de privacidade do produto — PR #28 (frontend)
 
 Texto do dono publicado em `/privacidade` do domínio raiz, sem a faixa de rascunho (`PaginaLegal` ganhou a prop
@@ -462,7 +483,9 @@ produto só será comercializado com tudo implementado. A política **do negóci
 
 | Item | Responsável | Origem e estado |
 |---|---|---|
-| Validar Gemini real (`avaliacao-manual.md`, nome do modelo `gemini-2.5-flash-lite`) | Dono/Claude Code | Pré-requisito da ativação; não feito |
+| Validar Gemini real: pergunta com ferramenta após o deploy + roteiros de `avaliacao-manual.md` | Dono/Claude Code | Pré-requisito da ativação; em andamento (ver bloco acima) |
+| Deploy do Railway do merge 6efb0f3 falhou no build (infra) | Dono | Redeploy do mesmo commit |
+| 401 em rajada em `/webhooks/evolution/status` | Dono/Claude Code | Segredo do webhook antigo não bate; sem efeito no agente |
 | Política de privacidade **do negócio** (subdomínio) mencionar a IA | Dono (texto) / Codex | Necessário antes do piloto com clientes reais |
 | Apagar conversas (`mensagens_whatsapp`) ao anonimizar cliente | Claude Code | LGPD; `Cliente.Anonimizar` não apaga; Fases 4/5 |
 | Aviso de atendimento automatizado e demais funções citadas na política | Claude Code | Fases 3/4; exigidas antes de comercializar |
