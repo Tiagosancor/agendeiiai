@@ -8,4 +8,7 @@ public enum OrigemAgendamento
 
     /// <summary>Cliente que chegou sem ter agendado, lançado no balcão.</summary>
     Encaixe = 3,
+
+    /// <summary>Marcado pelo agente de WhatsApp (Fase 3). Nada grava este valor antes da fatia de escrita.</summary>
+    WhatsApp = 4,
 }

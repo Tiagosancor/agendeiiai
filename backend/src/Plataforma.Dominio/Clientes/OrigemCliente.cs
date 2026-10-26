@@ -8,4 +8,7 @@ public enum OrigemCliente
 
     /// <summary>Cadastro rápido no balcão, ao lançar um atendimento sem agendamento (seção 7).</summary>
     Encaixe = 3,
+
+    /// <summary>Cliente criado pelo agente de WhatsApp (Fase 3). Nada grava este valor antes da fatia de escrita.</summary>
+    WhatsApp = 4,
 }
