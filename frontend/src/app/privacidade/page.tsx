@@ -92,6 +92,8 @@ export default async function PaginaPrivacidade() {
 
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Contato</h2>
       <p>Para exercer esses direitos, entre em contato diretamente com {nome} pelos canais informados na página inicial.</p>
+
+      <p className="text-xs text-gray-500 dark:text-neutral-400">Versão 2.0 desta política.</p>
     </main>
   );
 }

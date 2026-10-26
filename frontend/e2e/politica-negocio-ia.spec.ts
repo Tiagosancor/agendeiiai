@@ -22,6 +22,7 @@ test("política do negócio explica o assistente, os dados enviados e o aceite p
   await expect(conteudo).toContainText("Google (modelo Gemini)");
   await expect(conteudo).toContainText("que pode processar os dados fora do Brasil");
   await expect(conteudo).toContainText("esse filtro não é perfeito");
+  await expect(conteudo).toContainText("Versão 2.0 desta política.");
   await expect(conteudo).toContainText("Não pedimos código de confirmação no WhatsApp");
   await expect(conteudo).toContainText("continuamos enviando um código de 6 dígitos para confirmar o telefone");
   await expect(conteudo).toContainText("As reservas que você não confirma expiram sozinhas em 10 minutos");
