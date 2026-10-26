@@ -488,6 +488,19 @@ na `main` (commits `322ecd1` e `c47f85c`, merge `6efb0f3`; CI Backend/Frontend/V
   (o token de `?token=` nunca batia). Corrigido pelo dono; log passou a mostrar só 200. O `WEBHOOK_GLOBAL_URL` não tinha `\n`. O webhook global só dispara
   `MESSAGES_UPDATE` (único `WEBHOOK_EVENTS_*` configurado) — suficiente para o status de entrega; nada a restringir.
 - **Rotação da apikey da Evolution:** concluída pelo dono antes deste registro.
+- **PR #34 (merge `7383e24`, commit `48bb073`):** `ProcessadorWebhookWhatsApp.AplicarAsync` confere com `AnyAsync` se o evento de status já existe antes de
+  inserir; o repetido (a Evolution entrega 2x quase junto) deixa de gerar `ERR` com pilha do EF Core (a resposta já era 200). O índice único e o
+  `catch` seguem como garantia da corrida rara. Teste novo de idempotência; 14 de integração `WhatsAppEvolution` ok. **A confirmar em produção:** sumiço
+  dos `ERR` de `ix_eventos_webhook_whatsapp_provedor_id_evento`.
+- **Reserva do Gemini em produção (2026-10-26):** 1º teste real — principal 503, reserva `gemini-3.5-flash-lite` respondeu e a mensagem foi enviada; o disjuntor
+  abriu e as seguintes foram direto à reserva. A reserva é lenta (8–19 s por volta); pergunta com ferramentas (3 voltas) estourou o prazo de **40 s**
+  (`Ai__TempoMaximoProcessamentoSegundos`, padrão 40; validador 5–85; o lease de 90 s é outra coisa) e caiu no fallback. Decisão do dono: ajustar pela variável
+  (60–75 s). O faturamento do Gemini segue pendente e é o que mais reduz os 503. O modelo chamou `listar_profissionais` 3x na mesma volta (desperdício; sem ajuste).
+- **Sessão da Evolution e "Aguardando mensagem" — observando:** o celular de destino às vezes mostrava "Aguardando mensagem" (WhatsApp sem conseguir decifrar; o envio
+  aparece como 201 na API). Hipótese: sessão/identidade do aparelho recriada. Ações do dono: Evolution atualizada de v2.3.0 para **v2.3.7** e
+  `DATABASE_SAVE_DATA_INSTANCE=true` criada (antes só havia `DATABASE_ENABLED/PROVIDER/CONNECTION_*`); Serverless desligado; `/evolution/instances` conferido.
+  Após o redeploy o WhatsApp **continuou conectado** sem QR e o aviso aparentemente parou. **Não resolvido de forma comprovada** (era intermitente): reabrir se
+  voltar; testar com um número novo e dedicado ao negócio antes do piloto. Não se sabe qual das duas mudanças (v2.3.7 ou a variável) ajudou.
 
 ### Política de privacidade do produto — PR #28 (frontend)
 
@@ -502,7 +515,9 @@ produto só será comercializado com tudo implementado. A política **do negóci
 |---|---|---|
 | Validar Gemini real: pergunta com ferramenta após o deploy + roteiros de `avaliacao-manual.md` | Dono/Claude Code | Pré-requisito da ativação; em andamento (ver bloco acima) |
 | Deploy do Railway do merge 6efb0f3 falhou no build (infra) | Dono | Redeploy do mesmo commit |
-| Validar o modelo de reserva com o Gemini real e ligar o faturamento do Gemini | Dono | Pergunta com ferramenta após o deploy do PR #32; faturamento antes de clientes reais |
+| Validar o modelo de reserva com o Gemini real e ligar o faturamento do Gemini | Dono | Reserva testada (funciona, mas lenta); subir `Ai__TempoMaximoProcessamentoSegundos` (60–75), testar reserva mais rápida e ligar o faturamento antes de clientes reais |
+| "Aguardando mensagem" no celular de destino | Dono | Observando após v2.3.7 + `DATABASE_SAVE_DATA_INSTANCE=true`; testar com número novo dedicado |
+| Confirmar que o `ERR` de chave duplicada em `eventos_webhook_whatsapp` sumiu (PR #34) | Dono | Olhar o log do Railway por alguns dias |
 | Política de privacidade **do negócio** (subdomínio) mencionar a IA | Dono (texto) / Codex | Necessário antes do piloto com clientes reais |
 | Apagar conversas (`mensagens_whatsapp`) ao anonimizar cliente | Claude Code | LGPD; `Cliente.Anonimizar` não apaga; Fases 4/5 |
 | Aviso de atendimento automatizado e demais funções citadas na política | Claude Code | Fases 3/4; exigidas antes de comercializar |
