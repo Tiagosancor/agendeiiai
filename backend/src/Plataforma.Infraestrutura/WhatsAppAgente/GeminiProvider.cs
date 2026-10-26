@@ -30,7 +30,7 @@ public sealed class GeminiProvider : IAiProvider
     public async Task<AiResponse> GenerateAsync(AiRequest requisicao, CancellationToken cancellationToken = default)
     {
         var gemini = _opcoes.Value.Gemini;
-        var modelo = gemini.Model;
+        var modelo = string.IsNullOrWhiteSpace(requisicao.Modelo) ? gemini.Model : requisicao.Modelo;
         var url = $"{gemini.UrlBase.TrimEnd('/')}/models/{Uri.EscapeDataString(modelo)}:generateContent";
         var corpo = MontarCorpo(requisicao);
 

@@ -55,6 +55,9 @@ public sealed class ProvedorIaRoteirizado : IAiProvider
 
     public TimeSpan Atraso { get; set; }
 
+    /// <summary>Atraso decidido por requisição (ex.: só o modelo principal trava); vale no lugar de <see cref="Atraso"/>.</summary>
+    public Func<AiRequest, TimeSpan>? AtrasoPor { get; set; }
+
     public int Chamadas => Volatile.Read(ref _chamadas);
 
     public IReadOnlyList<AiRequest> Requisicoes => _requisicoes.ToArray();
@@ -64,8 +67,9 @@ public sealed class ProvedorIaRoteirizado : IAiProvider
         var n = Interlocked.Increment(ref _chamadas);
         _requisicoes.Enqueue(requisicao);
 
-        if (Atraso > TimeSpan.Zero)
-            await Task.Delay(Atraso, cancellationToken);
+        var atraso = AtrasoPor?.Invoke(requisicao) ?? Atraso;
+        if (atraso > TimeSpan.Zero)
+            await Task.Delay(atraso, cancellationToken);
 
         if (FalharComHttp500)
             throw new FalhaProvedorIaException("http", 500);
