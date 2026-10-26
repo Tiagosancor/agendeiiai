@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Negocios;
 using Plataforma.Dominio.WhatsAppAgente;
 
@@ -83,5 +84,32 @@ public sealed class UsoIaConfiguracao : IEntityTypeConfiguration<UsoIa>
 
         // Limites por negócio: chamadas no dia e tokens no mês.
         builder.HasIndex(u => new { u.NegocioId, u.CriadoEm });
+    }
+}
+
+public sealed class PendenciaAgendamentoWhatsAppConfiguracao : IEntityTypeConfiguration<PendenciaAgendamentoWhatsApp>
+{
+    public void Configure(EntityTypeBuilder<PendenciaAgendamentoWhatsApp> builder)
+    {
+        builder.ToTable("pendencias_agendamento_whatsapp");
+
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(p => p.NomeInformado).HasMaxLength(PendenciaAgendamentoWhatsApp.TamanhoMaximoNome);
+        builder.Property(p => p.VersaoTermos).HasMaxLength(20);
+        builder.Ignore(p => p.Aguardando);
+
+        // xmin: dois "sim" ou um "sim" e um preparo novo ao mesmo tempo - só a primeira transição grava.
+        builder.Property<uint>("Versao").IsRowVersion();
+
+        builder.HasOne<Negocio>().WithMany().HasForeignKey(p => p.NegocioId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ConversaWhatsApp>().WithMany().HasForeignKey(p => p.ConversaId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Agendamento>().WithMany().HasForeignKey(p => p.AgendamentoId).OnDelete(DeleteBehavior.Restrict);
+
+        // Uma pendência aguardando por conversa (a nova substitui a anterior antes de ser criada).
+        builder.HasIndex(p => p.ConversaId).IsUnique().HasFilter("status = 'Aguardando'");
+        builder.HasIndex(p => new { p.NegocioId, p.CriadoEm });
+        builder.HasIndex(p => p.AgendamentoId);
     }
 }
