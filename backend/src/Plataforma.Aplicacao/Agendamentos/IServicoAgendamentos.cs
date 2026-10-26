@@ -37,6 +37,21 @@ public interface IServicoAgendamentos
     Task<ResultadoAgendamento> ConfirmarReservaPublicaAsync(
         ConfirmarReservaPublica dados, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reserva de 10 min pedida pelo agente de WhatsApp (Fase 3), origem <c>WhatsApp</c> e sem cliente ainda. Revalida no servidor
+    /// (profissional ativo, serviço do negócio e feito por ele, assinatura, horário exatamente na oferta pública) e depois usa o
+    /// mesmo caminho da reserva pública (trava por profissional, forçado, exclusion constraint). Não aceita motivo de forçar.
+    /// Horário fora da oferta ou perdido na corrida volta como conflito, com até 5 alternativas.
+    /// </summary>
+    Task<ResultadoAgendamento> CriarReservaAgenteAsync(CriarReservaAgente dados, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Confirma a pendência do agente depois do "sim" do cliente (avaliado pelo servidor): identifica ou cria o cliente pelo
+    /// telefone da conversa, registra o consentimento e confirma a reserva, tudo na mesma transação. Repetir a mesma
+    /// confirmação não duplica nada. Não aceita motivo de forçar.
+    /// </summary>
+    Task<ResultadoConfirmacaoAgente> ConfirmarReservaAgenteAsync(ConfirmarReservaAgente dados, CancellationToken cancellationToken = default);
+
     /// <summary>Só para feedback imediato do botão "Aplicar" (seção 6.2.4) — não grava nada; a revalidação que vale é a de <see cref="ConfirmarReservaPublicaAsync"/>.</summary>
     Task<ResultadoPreVisualizacaoCupom> PreVisualizarCupomAsync(
         Guid agendamentoId, string codigoCupom, CancellationToken cancellationToken = default);
@@ -133,6 +148,55 @@ public sealed record PreviaForcar(IReadOnlyList<string> Regras, string? Impedime
 public sealed record ResultadoEncaixe(ResultadoAgendamento Agendamento, Guid? ClienteId);
 
 public sealed record CriarReservaPublica(Guid ProfissionalId, IReadOnlyList<Guid> ServicoIds, DateTimeOffset Inicio);
+
+/// <summary>Reserva pedida pelo agente de WhatsApp: um serviço só, no horário (UTC) que o servidor validou na oferta pública.</summary>
+public sealed record CriarReservaAgente(Guid ProfissionalId, Guid ServicoId, DateTimeOffset Inicio);
+
+/// <summary>
+/// <c>TelefoneConversa</c> é o número do webhook (nunca do modelo) e precisa ser o da conversa dona da pendência.
+/// <c>NomeInformado</c> só vale para cliente novo (cliente existente nunca tem o cadastro alterado).
+/// </summary>
+public sealed record ConfirmarReservaAgente(Guid PendenciaId, string TelefoneConversa, string? NomeInformado, Guid? MensagemConfirmacaoId);
+
+public enum MotivoRecusaConfirmacaoAgente
+{
+    Nenhum = 0,
+
+    /// <summary>Pendência inexistente, de outro negócio ou de outra conversa.</summary>
+    NaoEncontrada,
+
+    /// <summary>Já recusada, expirada, substituída ou falhada.</summary>
+    Encerrada,
+
+    /// <summary>O prazo da pendência ou da reserva passou (a reserva foi liberada).</summary>
+    Expirada,
+
+    /// <summary>Profissional ou serviço saiu da oferta, bloqueio novo ou horário passado (reserva liberada).</summary>
+    IndisponivelAgora,
+
+    /// <summary>Assinatura suspensa: nada é gravado e o agente fica em silêncio.</summary>
+    AssinaturaSuspensa,
+
+    /// <summary>Cliente novo e nenhum nome foi informado: nada é gravado.</summary>
+    NomeNecessario,
+
+    /// <summary>Perdeu o horário para outro agendamento na confirmação (409 com alternativas).</summary>
+    Conflito,
+}
+
+/// <summary>
+/// <c>ConfirmadaAgora</c> é verdadeiro só para a chamada que de fato confirmou (quem envia o texto de confirmação e os avisos).
+/// A repetição da mesma confirmação devolve sucesso com <c>ConfirmadaAgora = false</c>.
+/// </summary>
+public sealed record ResultadoConfirmacaoAgente(
+    bool Sucesso, Guid? AgendamentoId, bool ConfirmadaAgora, MotivoRecusaConfirmacaoAgente Motivo = MotivoRecusaConfirmacaoAgente.Nenhum,
+    IReadOnlyList<DateTimeOffset>? ProximosHorariosLivres = null)
+{
+    public static ResultadoConfirmacaoAgente Confirmada(Guid agendamentoId, bool agora) => new(true, agendamentoId, agora);
+
+    public static ResultadoConfirmacaoAgente Recusada(MotivoRecusaConfirmacaoAgente motivo, IReadOnlyList<DateTimeOffset>? proximos = null) =>
+        new(false, null, false, motivo, proximos);
+}
 
 public sealed record ConfirmarReservaPublica(
     Guid AgendamentoId, string NomeCliente, string TelefoneCliente, string? EmailCliente,

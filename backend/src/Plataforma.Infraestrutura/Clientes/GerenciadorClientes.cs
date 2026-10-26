@@ -134,6 +134,11 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
             .Where(a => a.ClienteId == clienteId)
             .ExecuteUpdateAsync(s => s.SetProperty(a => a.NomeInformado, (string?)null), cancellationToken);
 
+        // A conversa do WhatsApp guardava o cliente como atalho (Fase 3): deixa de apontar para ele.
+        await _dbContext.ConversasWhatsApp
+            .Where(c => c.ClienteId == clienteId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ClienteId, (Guid?)null), cancellationToken);
+
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }

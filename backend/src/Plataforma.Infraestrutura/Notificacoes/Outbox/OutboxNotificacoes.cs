@@ -77,7 +77,12 @@ public sealed class OutboxNotificacoes
         var negocio = await ObterNegocioAsync(agendamento.NegocioId, cancellationToken);
         var expira = _opcoes.PrazoDeCriacao(FamiliaNotificacao.Operacional, _relogio.GetUtcNow());
 
-        await EnfileirarAsync(agendamento.NegocioId, CanaisDoCliente(negocio, cliente).Select(canal => new NovaNotificacao(
+        // Agendamento feito pelo agente de WhatsApp: a confirmação sai na própria conversa (texto do servidor), nunca pelo
+        // WhatsApp da plataforma. O e-mail sai só se o cadastro tiver.
+        var canaisConfirmacao = CanaisDoCliente(negocio, cliente)
+            .Where(canal => agendamento.Origem != Plataforma.Dominio.Agendamentos.OrigemAgendamento.WhatsApp || canal != CanalNotificacao.WhatsApp);
+
+        await EnfileirarAsync(agendamento.NegocioId, canaisConfirmacao.Select(canal => new NovaNotificacao(
             TipoNotificacao.Confirmacao, canal, TiposDeNotificacao.ChaveConfirmacao(agendamento.Id), expira,
             agendamento.Id, clienteId, null, TiposDeNotificacao.VersaoDoHorario(agendamento.Inicio))), cancellationToken);
     }
