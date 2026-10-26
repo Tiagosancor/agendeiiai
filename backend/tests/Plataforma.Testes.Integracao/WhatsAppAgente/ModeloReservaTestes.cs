@@ -3,6 +3,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Plataforma.Aplicacao.WhatsAppAgente.Ia;
 using Plataforma.Testes.Integracao.Infraestrutura;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Plataforma.Testes.Integracao.WhatsAppAgente;
@@ -177,6 +178,58 @@ public sealed class ModeloReservaTestes : IAsyncLifetime
 
         // 1ª mensagem: principal (falha) + reserva; 2ª: só a reserva.
         _ambiente.Provedor.Requisicoes.Select(r => r.Modelo).Should().Equal(null, Reserva, Reserva);
+    }
+
+    [Fact]
+    public async Task Disjuntor_aberto_para_um_negocio_nao_muda_o_modelo_de_outro_negocio()
+    {
+        var a = await _ambiente.SemearAsync("Negócio A");
+        var b = await _ambiente.SemearAsync("Negócio B");
+        var principalFalha = true;
+        _ambiente.Provedor.Roteiro = (r, _) => r.Modelo is null && principalFalha ? throw new FalhaProvedorIaException("http", 503) : Responde(r, "ok");
+
+        await _ambiente.EnviarAsync(a, "oi");
+        principalFalha = false;
+        await _ambiente.EnviarAsync(b, "oi");
+        await _ambiente.EnviarAsync(a, "de novo");
+
+        // A: principal (falha) + reserva; B: principal (disjuntor de A não vale para B); A de novo: direto à reserva.
+        _ambiente.Provedor.Requisicoes.Select(r => r.Modelo).Should().Equal(null, Reserva, null, Reserva);
+    }
+
+    private sealed class ExecutorQueTravaAteOPrazo : Plataforma.Aplicacao.WhatsAppAgente.IExecutorFerramentasAgente
+    {
+        public IReadOnlyList<Plataforma.Aplicacao.WhatsAppAgente.IFerramentaAgente> Ferramentas => [];
+
+        public async Task<JsonElement> ExecutarAsync(
+            Plataforma.Aplicacao.WhatsAppAgente.ContextoConversaAgente contexto, string nome, JsonElement argumentos, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return default;
+        }
+    }
+
+    [Fact]
+    public async Task Ferramenta_cancelada_pelo_prazo_do_principal_ainda_chama_a_reserva_e_nao_registra_nova_falha()
+    {
+        await _ambiente.DisposeAsync();
+        _ambiente = new AmbienteAgente(_postgres);
+        await _ambiente.IniciarAsync(new Dictionary<string, string?>
+        {
+            ["Ai:Gemini:Model"] = Principal,
+            ["Ai:Gemini:ModeloReserva"] = Reserva,
+            ["Ai:TempoMaximoProcessamentoSegundos"] = "5",
+            ["Ai:LimiteChamadasPorNegocioPorDia"] = "250",
+        }, ajustarServicos: s => s.AddScoped<Plataforma.Aplicacao.WhatsAppAgente.IExecutorFerramentasAgente, ExecutorQueTravaAteOPrazo>());
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (r, _) => r.Modelo is null ? Chama(r, "listar_servicos", "ASSINATURA") : Responde(r, "Resposta da reserva.");
+
+        await _ambiente.EnviarAsync(c, "quais serviços?");
+
+        _ambiente.UltimaEntrega().Should().Be("Resposta da reserva.");
+        _ambiente.Provedor.Requisicoes.Select(r => r.Modelo).Should().Equal(null, Reserva);
+        // O principal já foi contabilizado como sucesso (a chamada ao modelo respondeu); o prazo da ferramenta não gera outra linha.
+        (await _ambiente.UsosAsync()).Select(u => (u.Modelo, u.Sucesso)).Should().Equal((Principal, true), (Reserva, true));
     }
 
     [Fact]

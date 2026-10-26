@@ -110,14 +110,14 @@ public sealed class OrquestradorAgente : IRespostaAgente
         if (reserva is null)
             return (await RodarModeloAsync(contexto, null, historico, prompt, ferramentas, contextoConversa, relogio, orcamento, cancellationToken)).Texto;
 
-        if (!_disjuntor.Aberto(DateTimeOffset.UtcNow))
+        if (!_disjuntor.Aberto(contexto.NegocioId, DateTimeOffset.UtcNow))
         {
             var principal = await RodarModeloAsync(contexto, null, historico, prompt, ferramentas, contextoConversa, relogio,
                 orcamento * FracaoDoOrcamentoDoPrincipal, cancellationToken);
             if (!principal.FalhaDeCapacidade)
                 return principal.Texto;
 
-            _disjuntor.Abrir(DateTimeOffset.UtcNow);
+            _disjuntor.Abrir(contexto.NegocioId, DateTimeOffset.UtcNow);
             if (relogio.Elapsed >= orcamento)
                 return null;
 
@@ -221,7 +221,20 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 }
                 else
                 {
-                    conteudo = await _executor.ExecutarAsync(contextoConversa, chamada.Nome, chamada.Argumentos, limite.Token);
+                    try
+                    {
+                        conteudo = await _executor.ExecutarAsync(contextoConversa, chamada.Nome, chamada.Argumentos, limite.Token);
+                    }
+                    catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                    {
+                        // O prazo local (fatia do principal) acabou DURANTE a ferramenta. A chamada ao modelo já foi contabilizada como
+                        // sucesso, então não se registra falha de novo; o principal conta como falha de capacidade e a reserva recomeça
+                        // do histórico original. Cancelamento externo continua propagando.
+                        _logger.LogWarning("Agente: prazo esgotado durante a ferramenta (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}).",
+                            contexto.ConversaId, iteracao, modeloRegistrado);
+                        return new ResultadoModelo(null, FalhaDeCapacidade: modelo is null);
+                    }
+
                     _logger.LogInformation("Agente: ferramenta executada (conversa {ConversaId}, ferramenta {Ferramenta}).",
                         contexto.ConversaId, NomeSeguro(chamada.Nome, ferramentas));
                 }
