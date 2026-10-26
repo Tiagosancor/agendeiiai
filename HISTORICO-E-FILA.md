@@ -470,7 +470,24 @@ na `main` (commits `322ecd1` e `c47f85c`, merge `6efb0f3`; CI Backend/Frontend/V
   confirmar que o 400 sumiu; só então rodar os roteiros de `avaliacao-manual.md`. Revisão do Codex da correção (`gemini-3-assinatura`)
   foi iniciada antes do merge e não concluiu até este registro.
 - **Ruído de log (não relacionado):** `POST /webhooks/evolution/status` responde 401 em rajada — o token do webhook do provedor antigo
-  (códigos de confirmação) não bate; não afeta o agente. Backlog de infra do dono/Claude Code.
+  (códigos de confirmação) não bate; não afeta o agente. Resolvido em 2026-10-26 (ver bloco abaixo).
+
+### Webhook com corpo grande (PR #31) e modelo de reserva do Gemini (PR #32) — 2026-10-26
+
+- **PR #31 (merge `d6ee28f`, commit `7b2df8d`):** `POST /webhooks/evolution/status` autentica antes de ler o corpo, com teto de 256 KB; acima dele
+  responde 200 sem processar (Warning curto, sem pilha). Corrige o 500 em `contacts.update` com foto. Testes em `WhatsAppEvolutionTestes`.
+- **PR #32 (merge `741aa75`, commits `4ec6f93` e `e829649`):** `Ai__Gemini__ModeloReserva` (opcional; vazio = comportamento anterior; deve ser diferente
+  do principal). A reserva entra depois da nova tentativa existente, só em timeout, erro de rede ou HTTP 404/408/429/500/502/503/504 (nunca 400/401/403);
+  `thoughtSignature` não cruza modelos (a reserva refaz a rodada); o principal usa no máximo 60% do prazo de 90 s; disjuntor de 60 s **por negócio**
+  (`DisjuntorModeloIa`); `UsoIa.Modelo` guarda quem respondeu. Revisão do Codex: reprovou a 1ª versão (disjuntor compartilhado entre negócios; timeout
+  durante a ferramenta não chamava a reserva); corrigido em `e829649` com teste para cada. Build ok, 532 unidade, 86 integração `WhatsAppAgente`;
+  a suíte completa de integração ficou para a CI. **Não validado com o Gemini real:** status exatos de 404/503, existência/qualidade do modelo de reserva
+  e contagem de cota nas tentativas que falham.
+- **Estado em produção (dono, 2026-10-26):** `Ai__Gemini__ModeloReserva` definida no Railway; falta testar pergunta com ferramenta e olhar o log.
+- **401 em rajada em `/webhooks/evolution/status` — resolvido:** `WhatsApp__Evolution__SegredoWebhook` estava com a URL inteira em vez de só o segredo
+  (o token de `?token=` nunca batia). Corrigido pelo dono; log passou a mostrar só 200. O `WEBHOOK_GLOBAL_URL` não tinha `\n`. O webhook global só dispara
+  `MESSAGES_UPDATE` (único `WEBHOOK_EVENTS_*` configurado) — suficiente para o status de entrega; nada a restringir.
+- **Rotação da apikey da Evolution:** concluída pelo dono antes deste registro.
 
 ### Política de privacidade do produto — PR #28 (frontend)
 
@@ -485,7 +502,7 @@ produto só será comercializado com tudo implementado. A política **do negóci
 |---|---|---|
 | Validar Gemini real: pergunta com ferramenta após o deploy + roteiros de `avaliacao-manual.md` | Dono/Claude Code | Pré-requisito da ativação; em andamento (ver bloco acima) |
 | Deploy do Railway do merge 6efb0f3 falhou no build (infra) | Dono | Redeploy do mesmo commit |
-| 401 em rajada em `/webhooks/evolution/status` | Dono/Claude Code | Segredo do webhook antigo não bate; sem efeito no agente |
+| Validar o modelo de reserva com o Gemini real e ligar o faturamento do Gemini | Dono | Pergunta com ferramenta após o deploy do PR #32; faturamento antes de clientes reais |
 | Política de privacidade **do negócio** (subdomínio) mencionar a IA | Dono (texto) / Codex | Necessário antes do piloto com clientes reais |
 | Apagar conversas (`mensagens_whatsapp`) ao anonimizar cliente | Claude Code | LGPD; `Cliente.Anonimizar` não apaga; Fases 4/5 |
 | Aviso de atendimento automatizado e demais funções citadas na política | Claude Code | Fases 3/4; exigidas antes de comercializar |
