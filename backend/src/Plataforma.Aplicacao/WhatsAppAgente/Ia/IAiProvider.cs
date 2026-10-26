@@ -27,8 +27,12 @@ public sealed record AiChamadaFerramenta(string Nome, JsonElement Argumentos, st
 
 public sealed record AiResultadoFerramenta(string Nome, JsonElement Conteudo);
 
+/// <summary>
+/// Pedido ao modelo. <see cref="Modelo"/> nulo = o modelo principal da configuração; preenchido = esse modelo (o de reserva).
+/// </summary>
 public sealed record AiRequest(
-    string PromptSistema, IReadOnlyList<AiMensagem> Mensagens, IReadOnlyList<AiFerramenta> Ferramentas, int MaxTokensSaida);
+    string PromptSistema, IReadOnlyList<AiMensagem> Mensagens, IReadOnlyList<AiFerramenta> Ferramentas, int MaxTokensSaida,
+    string? Modelo = null);
 
 public sealed record AiResponse(
     string? Texto, IReadOnlyList<AiChamadaFerramenta> Chamadas, int TokensEntrada, int TokensSaida, string Modelo, string MotivoFim);
@@ -48,6 +52,14 @@ public sealed class FalhaProvedorIaException : Exception
     public string Tipo { get; }
 
     public int? StatusHttp { get; }
+
+    /// <summary>
+    /// Falha em que outro modelo pode dar certo: timeout, erro de rede e HTTP 404 (modelo aposentado), 408, 429 e 500/502/503/504
+    /// (capacidade/instabilidade do lado do provedor). 400/401/403 e resposta inválida NÃO entram: o erro é nosso (pedido ou chave)
+    /// e outro modelo só gastaria uma chamada.
+    /// </summary>
+    public bool FalhaDeCapacidade =>
+        Tipo is "timeout" or "rede" || (Tipo == "http" && StatusHttp is 404 or 408 or 429 or 500 or 502 or 503 or 504);
 
     public FalhaProvedorIaException(string tipo, int? statusHttp = null, Exception? interna = null)
         : base($"Falha do provedor de IA ({tipo}{(statusHttp is null ? string.Empty : $", HTTP {statusHttp}")}).", interna)

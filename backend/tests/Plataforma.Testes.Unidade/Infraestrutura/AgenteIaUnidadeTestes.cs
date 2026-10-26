@@ -189,6 +189,17 @@ public sealed class GeminiProviderTestes
     }
 
     [Fact]
+    public async Task Modelo_da_requisicao_troca_o_da_configuracao_so_na_url()
+    {
+        var handler = new FakeHandler(_ => Resposta("""{"candidates":[{"content":{"parts":[{"text":"ola"}]},"finishReason":"STOP"}]}"""));
+
+        var resposta = await Criar(handler).GenerateAsync(Pedido with { Modelo = "gemini-reserva" });
+
+        handler.Requisicoes.Single().Uri.ToString().Should().EndWith("/models/gemini-reserva:generateContent");
+        resposta.Modelo.Should().Be("gemini-reserva");
+    }
+
+    [Fact]
     public void Assinatura_de_pensamento_do_Gemini_3_faz_ida_e_volta_na_mesma_part_do_functionCall()
     {
         const string corpoResposta = """
@@ -526,6 +537,40 @@ public sealed class OpcoesIaTestes
     [InlineData(6)]
     public void Iteracoes_de_ferramenta_ficam_entre_1_e_5(int valor) =>
         Validador.Validate(null, new OpcoesIa { MaxIteracoesFerramentas = valor }).Failed.Should().BeTrue();
+
+    [Fact]
+    public void Modelo_de_reserva_vazio_ou_so_espacos_e_desligado_e_valido()
+    {
+        new OpcoesGemini { ModeloReserva = null }.TemModeloReserva.Should().BeFalse();
+        new OpcoesGemini { ModeloReserva = "  " }.TemModeloReserva.Should().BeFalse();
+        Validador.Validate(null, new OpcoesIa { Provider = ProvedorIa.Gemini, Gemini = { ApiKey = "k", ModeloReserva = "" } }).Succeeded.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("gemini-2.5-flash", true)]
+    [InlineData("gemini-3.1-flash-lite", false)]
+    [InlineData("GEMINI-3.1-FLASH-LITE", false)]
+    [InlineData("com espaco", false)]
+    [InlineData("a/b", false)]
+    public void Modelo_de_reserva_precisa_ser_um_nome_diferente_do_principal(string reserva, bool valido) =>
+        Validador.Validate(null, new OpcoesIa { Provider = ProvedorIa.Gemini, Gemini = { ApiKey = "k", ModeloReserva = reserva } })
+            .Succeeded.Should().Be(valido);
+
+    [Theory]
+    [InlineData("http", 503, true)]
+    [InlineData("http", 429, true)]
+    [InlineData("http", 404, true)]
+    [InlineData("http", 500, true)]
+    [InlineData("http", 502, true)]
+    [InlineData("http", 504, true)]
+    [InlineData("timeout", null, true)]
+    [InlineData("rede", null, true)]
+    [InlineData("http", 400, false)]
+    [InlineData("http", 401, false)]
+    [InlineData("http", 403, false)]
+    [InlineData("resposta_invalida", null, false)]
+    public void Falha_de_capacidade_so_para_o_que_outro_modelo_pode_resolver(string tipo, int? status, bool esperado) =>
+        new FalhaProvedorIaException(tipo, status).FalhaDeCapacidade.Should().Be(esperado);
 
     [Fact]
     public void Lista_de_negocios_habilitados_vazia_vale_para_todos_e_preenchida_restringe()

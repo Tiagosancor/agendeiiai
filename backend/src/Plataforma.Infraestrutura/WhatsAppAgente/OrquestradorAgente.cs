@@ -30,11 +30,16 @@ public sealed class OrquestradorAgente : IRespostaAgente
     private readonly OpcoesMarca _marca;
     private readonly ILogger<OrquestradorAgente> _logger;
     private readonly LimitadorUsoAgente _limitador;
+    private readonly DisjuntorModeloIa _disjuntor;
+
+    /// <summary>Fatia do orçamento de tempo que o modelo principal pode gastar quando há reserva (o resto é da reserva).</summary>
+    private const double FracaoDoOrcamentoDoPrincipal = 0.6;
 
     public OrquestradorAgente(
         PlataformaDbContext dbContext, IAiProvider provedor, IExecutorFerramentasAgente executor, LimitadorUsoAgente limitador,
-        IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca, ILogger<OrquestradorAgente> logger)
+        DisjuntorModeloIa disjuntor, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca, ILogger<OrquestradorAgente> logger)
     {
+        _disjuntor = disjuntor;
         _dbContext = dbContext;
         _provedor = provedor;
         _executor = executor;
@@ -79,7 +84,12 @@ public sealed class OrquestradorAgente : IRespostaAgente
         $"Aqui é o assistente virtual de {ConstrutorPromptAgente.LimparNome(nomeNegocio)}. Não consegui consultar as informações agora. " +
         $"Para ver os horários e agendar, acesse: {link}";
 
-    /// <summary>Devolve o texto do modelo (ainda sem sanitizar) ou <c>null</c> se estourou laço/tempo ou veio vazio.</summary>
+    /// <summary>
+    /// Devolve o texto do modelo (ainda sem sanitizar) ou <c>null</c> se estourou laço/tempo ou veio vazio. Tenta o modelo principal
+    /// e, só em falha de capacidade (<see cref="FalhaProvedorIaException.FalhaDeCapacidade"/>), o de reserva — refazendo a rodada
+    /// DO ZERO com o histórico original: o <c>thoughtSignature</c> pertence ao modelo que o gerou e os turnos de ferramenta dele
+    /// (com as assinaturas) não passam para a reserva. Ferramentas são só leitura, então executá-las de novo é seguro.
+    /// </summary>
     private async Task<string?> ConversarAsync(
         ContextoRespostaAgente contexto, string nomeNegocio, string fuso, string link, CancellationToken cancellationToken)
     {
@@ -88,21 +98,67 @@ public sealed class OrquestradorAgente : IRespostaAgente
         var agoraLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(fuso));
 
         var prompt = ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link);
-        var mensagens = await MontarHistoricoAsync(contexto.ConversaId, contexto.LimiteHistorico, cancellationToken);
-        if (mensagens.Count == 0)
+        var historico = await MontarHistoricoAsync(contexto.ConversaId, contexto.LimiteHistorico, cancellationToken);
+        if (historico.Count == 0)
             return null;
 
         var ferramentas = _executor.Ferramentas
             .Select(f => new AiFerramenta(f.Nome, f.Descricao, f.Esquema)).ToList();
         var contextoConversa = new ContextoConversaAgente(contexto.NegocioId, contexto.InstanciaId, contexto.ConversaId);
 
+        var reserva = _opcoes.Gemini.TemModeloReserva ? _opcoes.Gemini.ModeloReserva!.Trim() : null;
+        if (reserva is null)
+            return (await RodarModeloAsync(contexto, null, historico, prompt, ferramentas, contextoConversa, relogio, orcamento, cancellationToken)).Texto;
+
+        if (!_disjuntor.Aberto(DateTimeOffset.UtcNow))
+        {
+            var principal = await RodarModeloAsync(contexto, null, historico, prompt, ferramentas, contextoConversa, relogio,
+                orcamento * FracaoDoOrcamentoDoPrincipal, cancellationToken);
+            if (!principal.FalhaDeCapacidade)
+                return principal.Texto;
+
+            _disjuntor.Abrir(DateTimeOffset.UtcNow);
+            if (relogio.Elapsed >= orcamento)
+                return null;
+
+            // A rodada recomeça com o custo reavaliado: a tentativa que falhou também entrou em usos_ia.
+            var motivo = await _limitador.VerificarCustoAsync(DateTimeOffset.UtcNow, cancellationToken);
+            if (motivo != MotivoLimiteAgente.Nenhum)
+            {
+                _logger.LogWarning("Agente: limite {Motivo} atingido antes do modelo de reserva (conversa {ConversaId}).", motivo, contexto.ConversaId);
+                return null;
+            }
+
+            _logger.LogWarning("Agente: modelo principal indisponível; usando o de reserva {Reserva} (conversa {ConversaId}).", reserva, contexto.ConversaId);
+        }
+        else
+        {
+            _logger.LogInformation("Agente: disjuntor do modelo principal aberto; direto ao de reserva {Reserva} (conversa {ConversaId}).", reserva, contexto.ConversaId);
+        }
+
+        return (await RodarModeloAsync(contexto, reserva, historico, prompt, ferramentas, contextoConversa, relogio, orcamento, cancellationToken)).Texto;
+    }
+
+    private sealed record ResultadoModelo(string? Texto, bool FalhaDeCapacidade);
+
+    /// <summary>
+    /// Laço de ferramentas de UM modelo (<paramref name="modelo"/> nulo = o principal), até <paramref name="fim"/> (tempo decorrido
+    /// do relógio da rodada). Parte sempre do <paramref name="historico"/> original.
+    /// </summary>
+    private async Task<ResultadoModelo> RodarModeloAsync(
+        ContextoRespostaAgente contexto, string? modelo, List<AiMensagem> historico, string prompt, List<AiFerramenta> ferramentas,
+        ContextoConversaAgente contextoConversa, Stopwatch relogio, TimeSpan fim, CancellationToken cancellationToken)
+    {
+        var mensagens = historico;
+        var modeloRegistrado = modelo ?? _opcoes.Gemini.Model;
         for (var iteracao = 1; iteracao <= _opcoes.MaxIteracoesFerramentas; iteracao++)
         {
-            var restante = orcamento - relogio.Elapsed;
+            var restante = fim - relogio.Elapsed;
             if (restante <= TimeSpan.Zero)
             {
-                _logger.LogWarning("Agente: orçamento de tempo esgotado (conversa {ConversaId}, iteração {Iteracao}).", contexto.ConversaId, iteracao);
-                return null;
+                _logger.LogWarning("Agente: orçamento de tempo esgotado (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}).", contexto.ConversaId, iteracao, modeloRegistrado);
+                // Estourou o tempo do principal na 2ª+ volta: a reserva ainda pode tentar com o tempo que sobrou.
+                return new ResultadoModelo(null, FalhaDeCapacidade: modelo is null);
             }
 
             // A checagem do processador vale só para a 1ª chamada: nas seguintes o uso desta própria rodada já conta.
@@ -113,7 +169,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 {
                     _logger.LogWarning("Agente: limite {Motivo} atingido no meio da rodada (conversa {ConversaId}, iteração {Iteracao}).",
                         motivo, contexto.ConversaId, iteracao);
-                    return null;
+                    return new ResultadoModelo(null, false);
                 }
             }
 
@@ -124,15 +180,18 @@ public sealed class OrquestradorAgente : IRespostaAgente
             var inicio = relogio.Elapsed;
             try
             {
-                resposta = await _provedor.GenerateAsync(new AiRequest(prompt, mensagens, ferramentas, _opcoes.MaxTokensSaida), limite.Token);
+                resposta = await _provedor.GenerateAsync(new AiRequest(prompt, mensagens, ferramentas, _opcoes.MaxTokensSaida, modelo), limite.Token);
             }
             catch (Exception excecao) when (excecao is FalhaProvedorIaException || (excecao is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
-                await RegistrarUsoAsync(contexto, _opcoes.Gemini.Model, 0, 0, sucesso: false, cancellationToken);
-                _logger.LogWarning("Agente: provedor de IA falhou (conversa {ConversaId}, iteração {Iteracao}): {Tipo}{Status}.",
-                    contexto.ConversaId, iteracao, (excecao as FalhaProvedorIaException)?.Tipo ?? "timeout",
+                // A tentativa falha também é gravada (sucesso = false) e conta nos limites de chamadas por dia, como sempre.
+                await RegistrarUsoAsync(contexto, modeloRegistrado, 0, 0, sucesso: false, cancellationToken);
+                _logger.LogWarning("Agente: provedor de IA falhou (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}): {Tipo}{Status}.",
+                    contexto.ConversaId, iteracao, modeloRegistrado, (excecao as FalhaProvedorIaException)?.Tipo ?? "timeout",
                     (excecao as FalhaProvedorIaException)?.StatusHttp is int s ? $" HTTP {s}" : string.Empty);
-                return null;
+                // Timeout (nosso prazo) e falha de capacidade passam para a reserva; 400/401/403 e resposta inválida, não.
+                var capacidade = excecao is not FalhaProvedorIaException falha || falha.FalhaDeCapacidade;
+                return new ResultadoModelo(null, capacidade && modelo is null);
             }
 
             await RegistrarUsoAsync(contexto, resposta.Modelo, resposta.TokensEntrada, resposta.TokensSaida, sucesso: true, cancellationToken);
@@ -140,14 +199,14 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 contexto.ConversaId, iteracao, resposta.TokensEntrada, resposta.TokensSaida, (long)(relogio.Elapsed - inicio).TotalMilliseconds, resposta.Chamadas.Count);
 
             if (resposta.Chamadas.Count == 0)
-                return resposta.Texto;
+                return new ResultadoModelo(resposta.Texto, false);
 
             // Estourou as voltas e o modelo ainda pede ferramenta: não executa mais nada; vai para o fallback.
             if (iteracao == _opcoes.MaxIteracoesFerramentas)
             {
                 _logger.LogWarning("Agente: limite de {Max} iterações de ferramenta atingido (conversa {ConversaId}).",
                     _opcoes.MaxIteracoesFerramentas, contexto.ConversaId);
-                return null;
+                return new ResultadoModelo(null, false);
             }
 
             var resultados = new List<AiMensagem>();
@@ -181,7 +240,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
             mensagens = [.. mensagens, new AiMensagem(PapelIa.Modelo, resposta.Texto, resposta.Chamadas), .. resultados];
         }
 
-        return null;
+        return new ResultadoModelo(null, false);
     }
 
     private async Task RegistrarUsoAsync(ContextoRespostaAgente contexto, string modelo, int entrada, int saida, bool sucesso, CancellationToken cancellationToken)

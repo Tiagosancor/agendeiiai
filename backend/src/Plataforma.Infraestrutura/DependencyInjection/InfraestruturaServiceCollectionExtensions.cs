@@ -316,6 +316,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaListarProfissionais>();
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaConsultarHorarios>();
         servicos.AddScoped<IExecutorFerramentasAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.ExecutorFerramentasAgente>();
+        servicos.AddSingleton<DisjuntorModeloIa>();
         servicos.AddScoped<RespostaAgenteEco>();
         servicos.AddScoped<OrquestradorAgente>();
         servicos.AddScoped<IRespostaAgente>(sp =>

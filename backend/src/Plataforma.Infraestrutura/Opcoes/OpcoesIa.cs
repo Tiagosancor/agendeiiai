@@ -73,6 +73,14 @@ public sealed class OpcoesGemini
     /// <summary>Nome do modelo; confira na documentação do Google AI Studio antes de ativar (modelos são descontinuados).</summary>
     public string Model { get; set; } = "gemini-3.1-flash-lite";
 
+    /// <summary>
+    /// Modelo de reserva (<c>Ai__Gemini__ModeloReserva</c>). Vazio = desligado. Usado só quando o principal falha por capacidade
+    /// (503/429/404/5xx, timeout, rede) — nunca em 400/401/403.
+    /// </summary>
+    public string? ModeloReserva { get; set; }
+
+    public bool TemModeloReserva => !string.IsNullOrWhiteSpace(ModeloReserva);
+
     public string UrlBase { get; set; } = "https://generativelanguage.googleapis.com/v1beta";
 
     public int TimeoutSegundos { get; set; } = 15;
@@ -93,6 +101,14 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
                 erros.Add("Ai__Gemini__ApiKey é obrigatória com Ai__Provider=Gemini.");
             if (string.IsNullOrWhiteSpace(o.Gemini.Model))
                 erros.Add("Ai__Gemini__Model é obrigatório com Ai__Provider=Gemini.");
+            if (o.Gemini.TemModeloReserva)
+            {
+                var reserva = o.Gemini.ModeloReserva!.Trim();
+                if (!System.Text.RegularExpressions.Regex.IsMatch(reserva, "^[A-Za-z0-9._-]+$"))
+                    erros.Add("Ai__Gemini__ModeloReserva deve ser só o nome do modelo (letras, números, ponto, hífen e sublinhado).");
+                else if (string.Equals(reserva, o.Gemini.Model?.Trim(), StringComparison.OrdinalIgnoreCase))
+                    erros.Add("Ai__Gemini__ModeloReserva deve ser diferente de Ai__Gemini__Model (reserva igual ao principal não protege de nada).");
+            }
             if (!Uri.TryCreate(o.Gemini.UrlBase, UriKind.Absolute, out var url) || url.Scheme != Uri.UriSchemeHttps)
                 erros.Add("Ai__Gemini__UrlBase deve ser uma URL https.");
         }

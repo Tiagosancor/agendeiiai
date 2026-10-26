@@ -71,6 +71,7 @@ services:
       Ai__Provider: ${AI_PROVIDER:-Eco}
       Ai__Gemini__ApiKey: ${AI_GEMINI_API_KEY:-}
       Ai__Gemini__Model: ${AI_GEMINI_MODEL:-gemini-3.1-flash-lite}
+      Ai__Gemini__ModeloReserva: ${AI_GEMINI_MODELO_RESERVA:-}
       Ai__NegociosHabilitados: ${AI_NEGOCIOS_HABILITADOS:-}
       Ai__LimiteMensagensPorTelefonePorHora: ${AI_LIMITE_MENSAGENS_TELEFONE_HORA:-15}
       Ai__LimiteMensagensPorTelefonePorDia: ${AI_LIMITE_MENSAGENS_TELEFONE_DIA:-45}
