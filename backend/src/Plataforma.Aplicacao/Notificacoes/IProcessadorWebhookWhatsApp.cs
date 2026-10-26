@@ -8,6 +8,13 @@ namespace Plataforma.Aplicacao.Notificacoes;
 /// </summary>
 public interface IProcessadorWebhookWhatsApp
 {
+    /// <summary>
+    /// Confere só o acesso (provedor/segredo), sem corpo — para o controller autenticar ANTES de ler o corpo.
+    /// Devolve <see cref="ResultadoWebhookWhatsApp.NaoConfigurado"/>, <see cref="ResultadoWebhookWhatsApp.TokenInvalido"/>
+    /// ou <c>null</c> quando o acesso é válido.
+    /// </summary>
+    ResultadoWebhookWhatsApp? Autenticar(string? token);
+
     Task<ResultadoWebhookWhatsApp> ProcessarAsync(string? token, string corpo, CancellationToken cancellationToken = default);
 }
 
