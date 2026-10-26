@@ -154,8 +154,16 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
     /// "@lid" (id opaco, sem telefone) em <c>remoteJid</c> e manda o telefone real em <c>senderPn</c> (v2.3.0, confirmado
     /// no banco da Evolution) ou <c>remoteJidAlt</c> (Baileys mais novo). Sem nenhum dos dois, ignora: não há telefone.
     /// </summary>
-    private static string? JidDoTelefone(JsonElement chave)
+    public static string? JidDoTelefone(JsonElement chave)
     {
+        // Grupo, difusão, status e canal (newsletter) nunca são um cliente: descarta ANTES de olhar senderPn/remoteJidAlt,
+        // que num grupo trazem o telefone de um participante (plano da Fase 3, E5).
+        var remoto = Texto(chave, "remoteJid");
+        if (remoto is not null && (remoto.EndsWith("@g.us", StringComparison.Ordinal)
+            || remoto.EndsWith("@broadcast", StringComparison.Ordinal)
+            || remoto.EndsWith("@newsletter", StringComparison.Ordinal)))
+            return null;
+
         foreach (var campo in new[] { "remoteJid", "senderPn", "remoteJidAlt" })
         {
             var valor = Texto(chave, campo);

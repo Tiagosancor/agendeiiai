@@ -50,6 +50,32 @@ public sealed partial class TelefoneE164 : IEquatable<TelefoneE164>
         }
     }
 
+    /// <summary>
+    /// Formas equivalentes de um celular brasileiro, por causa do 9º dígito que algumas contas do WhatsApp ainda não têm.
+    /// Primeiro a forma de 13 dígitos (<c>+55 DD 9XXXXXXXX</c>, a preferida para criar), depois a de 12 (<c>+55 DD XXXXXXXX</c>),
+    /// esta só quando o assinante começa com 6–9 (celular; fixo começa com 2–5 e não ganha 9). Fora do Brasil ou fora
+    /// desses formatos devolve só o próprio número. Função pura.
+    /// </summary>
+    public IReadOnlyList<TelefoneE164> FormasEquivalentes()
+    {
+        var v = Valor;
+        if (!v.StartsWith("+55", StringComparison.Ordinal))
+            return [this];
+
+        var resto = v[3..]; // DD + assinante
+        if (resto.Length == 11 && resto[2] == '9' && resto[0] != '0')
+        {
+            // Com o 9: o número sem ele só vale se o que sobra começa com 6–9.
+            var semNove = resto[3] is >= '6' and <= '9' ? "+55" + resto[..2] + resto[3..] : null;
+            return semNove is null ? [this] : [this, new TelefoneE164(semNove)];
+        }
+
+        if (resto.Length == 10 && resto[0] != '0' && resto[2] is >= '6' and <= '9')
+            return [new TelefoneE164("+55" + resto[..2] + "9" + resto[2..]), this];
+
+        return [this];
+    }
+
     private static string Normalizar(string valor)
     {
         var texto = valor.Trim();
