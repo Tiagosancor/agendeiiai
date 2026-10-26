@@ -33,14 +33,20 @@ public sealed class ProcessadorWebhookWhatsApp : IProcessadorWebhookWhatsApp
         _logger = logger;
     }
 
-    public async Task<ResultadoWebhookWhatsApp> ProcessarAsync(string? token, string corpo, CancellationToken cancellationToken = default)
+    public ResultadoWebhookWhatsApp? Autenticar(string? token)
     {
         var segredo = _opcoes.Evolution.SegredoWebhook;
         if (_opcoes.Provedor != ProvedorWhatsApp.EvolutionApi || string.IsNullOrWhiteSpace(segredo))
             return ResultadoWebhookWhatsApp.NaoConfigurado;
 
-        if (!TokenConfere(token, segredo))
-            return ResultadoWebhookWhatsApp.TokenInvalido;
+        return TokenConfere(token, segredo) ? null : ResultadoWebhookWhatsApp.TokenInvalido;
+    }
+
+    public async Task<ResultadoWebhookWhatsApp> ProcessarAsync(string? token, string corpo, CancellationToken cancellationToken = default)
+    {
+        var acesso = Autenticar(token);
+        if (acesso is not null)
+            return acesso.Value;
 
         List<(string IdMensagem, StatusCanal Status)> eventos;
         try

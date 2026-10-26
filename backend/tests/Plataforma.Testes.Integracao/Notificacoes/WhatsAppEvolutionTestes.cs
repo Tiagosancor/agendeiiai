@@ -186,6 +186,39 @@ public sealed class WhatsAppEvolutionTestes : IAsyncLifetime
         (await CodigoMaisRecenteAsync(_fabrica, telefone)).CanalWhatsAppStatus.Should().Be(StatusCanal.Enviado);
     }
 
+    private static StringContent CorpoGrande() => new(
+        JsonSerializer.Serialize(new { @event = "contacts.update", data = new { foto = new string('x', 300 * 1024) } }),
+        Encoding.UTF8, "application/json");
+
+    [Fact]
+    public async Task Webhook_com_corpo_grande_e_token_errado_continua_401()
+    {
+        using var anonimo = _fabrica.CreateClient();
+        (await anonimo.PostAsync("/webhooks/evolution/status?token=errado", CorpoGrande())).StatusCode
+            .Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Webhook_com_corpo_grande_e_token_certo_responde_200_sem_processar_nem_500()
+    {
+        var antes = await ContarTodosEventosAsync();
+
+        (await PostarWebhookAsync(CorpoGrande())).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await ContarTodosEventosAsync()).Should().Be(antes);
+
+        // Corpo normal logo depois continua processando.
+        var idMensagem = $"MSG-{Guid.NewGuid():N}";
+        (await PostarWebhookAsync(CorpoStatus(idMensagem, "DELIVERY_ACK"))).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ContarEventosAsync(idMensagem)).Should().Be(1);
+    }
+
+    private async Task<int> ContarTodosEventosAsync()
+    {
+        using var escopo = _fabrica.Services.CreateScope();
+        return await escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>().EventosWebhookWhatsApp.CountAsync();
+    }
+
     [Fact]
     public async Task Webhook_nao_existe_quando_o_provedor_nao_e_o_evolution()
     {
