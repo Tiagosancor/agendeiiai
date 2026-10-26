@@ -172,6 +172,24 @@ public sealed class WhatsAppEvolutionTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Mesmo_evento_duas_vezes_grava_uma_linha_e_nao_altera_o_registro_de_origem()
+    {
+        var (slug, _) = await SemearNegocioAsync(_fabrica);
+        var telefone = TelefoneAleatorio();
+        var idMensagem = await SolicitarCodigoComIdAsync(slug, telefone);
+
+        (await PostarWebhookAsync(CorpoStatus(idMensagem, "SERVER_ACK"))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var depoisDoPrimeiro = await CodigoMaisRecenteAsync(_fabrica, telefone);
+
+        (await PostarWebhookAsync(CorpoStatus(idMensagem, "SERVER_ACK"))).StatusCode.Should().Be(HttpStatusCode.OK);
+        var depoisDoSegundo = await CodigoMaisRecenteAsync(_fabrica, telefone);
+
+        (await ContarEventosAsync(idMensagem)).Should().Be(1);
+        depoisDoSegundo.CanalWhatsAppStatus.Should().Be(depoisDoPrimeiro.CanalWhatsAppStatus);
+        depoisDoSegundo.AtualizadoEm.Should().Be(depoisDoPrimeiro.AtualizadoEm);
+    }
+
+    [Fact]
     public async Task Webhook_que_chega_antes_de_o_envio_ser_gravado_nao_se_perde()
     {
         var (slug, _) = await SemearNegocioAsync(_fabrica);

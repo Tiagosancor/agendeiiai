@@ -78,7 +78,17 @@ public sealed class ProcessadorWebhookWhatsApp : IProcessadorWebhookWhatsApp
             _dbContext.ChangeTracker.Clear();
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-            _dbContext.EventosWebhookWhatsApp.Add(new EventoWebhookWhatsApp(Provedor, idMensagem, status));
+            // O IdEvento é montado pela própria entidade (única fonte da regra).
+            var evento = new EventoWebhookWhatsApp(Provedor, idMensagem, status);
+
+            // Conferência prévia: o repetido é o caso comum (a instância entrega duas vezes quase junto) e
+            // estourar o índice único faz o EF registrar erro com pilha. O índice segue como garantia da corrida.
+            var jaExiste = await _dbContext.EventosWebhookWhatsApp
+                .AnyAsync(e => e.Provedor == Provedor && e.IdEvento == evento.IdEvento, cancellationToken);
+            if (jaExiste)
+                return false;
+
+            _dbContext.EventosWebhookWhatsApp.Add(evento);
             try
             {
                 await _dbContext.SaveChangesAsync(cancellationToken);
