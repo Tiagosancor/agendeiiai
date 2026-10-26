@@ -112,10 +112,11 @@ public sealed partial class ServicoAgendamentos
 
                 if (pendencia.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada)
                 {
-                    // Repetição: o webhook do "sim" de novo, ou um segundo "sim". Só a tentativa desta mesma requisição, depois
-                    // de um COMMIT ambíguo, é "quem confirmou agora" (e deve mandar a confirmação).
+                    // Repetição: o webhook do "sim" de novo, ou um segundo "sim". Só quem gravou é "quem confirmou agora" (e deve
+                    // mandar a confirmação): a marca é o instante único desta requisição, gravado em ConcluidaEm. Uma nova tentativa
+                    // depois de COMMIT ambíguo se reconhece; outra requisição (mesmo id de mensagem, ou ambos nulos) não.
                     await transacao.RollbackAsync(cancellationToken);
-                    var fuiEu = tentativas.Repetida && pendencia.ConfirmacaoMensagemId == dados.MensagemConfirmacaoId;
+                    var fuiEu = pendencia.ConcluidaEm?.UtcTicks == momento.UtcTicks;
                     if (fuiEu)
                         agendamentoNotificar = pendencia.AgendamentoId;
                     return ResultadoConfirmacaoAgente.Confirmada(pendencia.AgendamentoId, fuiEu);
@@ -127,12 +128,14 @@ public sealed partial class ServicoAgendamentos
                     return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.Encerrada);
                 }
 
-                var agora = DateTimeOffset.UtcNow;
                 var agendamento = await _dbContext.Agendamentos
                     .Include(a => a.Servicos)
                     .FirstOrDefaultAsync(a => a.Id == pendencia.AgendamentoId, cancellationToken);
                 if (agendamento is not null)
                     await TravarLinhaERelerAsync(agendamento, cancellationToken);
+
+                // O instante vale DEPOIS de ter a trava e o estado relido: a espera pela trava pode atravessar o prazo.
+                var agora = DateTimeOffset.UtcNow;
 
                 // Prazo da pendência ou da reserva vencido, reserva cancelada ou já tomada: nunca confirma, e a reserva é liberada.
                 if (agendamento is null || pendencia.Vencida(agora) || agendamento.Status != StatusAgendamento.Reservado

@@ -11,6 +11,9 @@ using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Notificacoes;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.WhatsAppAgente;
+using System.Data.Common;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Plataforma.Infraestrutura.Persistencia;
 using Plataforma.Testes.Integracao.Infraestrutura;
 using Xunit;
 
@@ -27,6 +30,8 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     private const string TelefoneSem9 = "+557188887777";
 
     private readonly PostgresContainerFixture _postgres;
+    private readonly InterceptadorDeCommit _commit = new();
+    private readonly GanchoAntesDaTravaDaPendencia _gancho = new();
     private AmbienteAgente _ambiente = null!;
 
     public AgendamentoPeloAgenteTestes(PostgresContainerFixture postgres) => _postgres = postgres;
@@ -36,7 +41,8 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _ambiente = new AmbienteAgente(_postgres);
-        await _ambiente.IniciarAsync();
+        await _ambiente.IniciarAsync(ajustarServicos: servicos =>
+            servicos.ConfigureDbContext<PlataformaDbContext>(o => o.AddInterceptors(_commit, _gancho)));
     }
 
     public async Task DisposeAsync() => await _ambiente.DisposeAsync();
@@ -604,6 +610,145 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
 
     // ---------------------------------------------------------------- apoio
 
+    // ------------------------------------------- quem confirmou agora (retentativas) e instante da checagem
+
+    [Fact]
+    public async Task Falha_transitoria_antes_do_commit_repete_e_a_propria_requisicao_confirma_uma_vez()
+    {
+        var c = await _ambiente.SemearAsync();
+        await DefinirEmailDoProfissionalAsync(c.Beto, "beto@teste.com");
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+
+        _commit.ArmarFalhaAntesDoCommit();
+        var r = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, null);
+
+        _commit.Falhas.Should().Be(1, "a falha simulada precisa ter acontecido");
+        r.Sucesso.Should().BeTrue();
+        r.ConfirmadaAgora.Should().BeTrue("a repetição foi quem gravou");
+        (await PendenciaAsync(pendente.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Confirmada);
+        Email().Enviados.Count(e => e.Destinatario == "beto@teste.com").Should().Be(1);
+        (await Fabrica.NoBancoAsync(db => db.LogsAuditoriaNegocio.IgnoreQueryFilters().CountAsync(l => l.Acao == "AgendarPeloWhatsApp"))).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Commit_ambiguo_confirmado_pelo_servidor_e_reconhecido_na_repeticao_sem_duplicar()
+    {
+        var c = await _ambiente.SemearAsync();
+        await DefinirEmailDoProfissionalAsync(c.Beto, "beto@teste.com");
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+
+        _commit.ArmarCommitAmbiguo();
+        var r = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, Guid.NewGuid());
+
+        _commit.Falhas.Should().Be(1);
+        r.Sucesso.Should().BeTrue();
+        r.ConfirmadaAgora.Should().BeTrue("a resposta do commit se perdeu, mas foi esta requisição que gravou");
+        (await ClientesAsync(c.NegocioId)).Should().HaveCount(1);
+        Email().Enviados.Count(e => e.Destinatario == "beto@teste.com").Should().Be(1, "um único aviso ao profissional");
+        (await Fabrica.NoBancoAsync(db => db.LogsAuditoriaNegocio.IgnoreQueryFilters().CountAsync(l => l.Acao == "AgendarPeloWhatsApp"))).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Requisicao_que_falhou_antes_do_commit_nao_se_acha_vencedora_quando_outra_confirma_no_meio_mesmo_com_ids_nulos()
+    {
+        var c = await _ambiente.SemearAsync();
+        await DefinirEmailDoProfissionalAsync(c.Beto, "beto@teste.com");
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+
+        ResultadoConfirmacaoAgente? vencedora = null;
+        // A 1ª tentativa da requisição A falha antes do commit; antes de a 2ª travar a pendência, a requisição B confirma.
+        _commit.ArmarFalhaAntesDoCommit();
+        _gancho.Armar(1, async () => vencedora = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, null));
+
+        var a = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, null);
+
+        vencedora.Should().NotBeNull();
+        vencedora!.Sucesso.Should().BeTrue();
+        vencedora.ConfirmadaAgora.Should().BeTrue();
+        a.Sucesso.Should().BeTrue();
+        a.ConfirmadaAgora.Should().BeFalse("quem gravou foi a outra requisição");
+        a.AgendamentoId.Should().Be(vencedora.AgendamentoId);
+        Email().Enviados.Count(e => e.Destinatario == "beto@teste.com").Should().Be(1, "um único aviso ao profissional");
+        (await Fabrica.NoBancoAsync(db => db.LogsAuditoriaNegocio.IgnoreQueryFilters().CountAsync(l => l.Acao == "AgendarPeloWhatsApp"))).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Espera_pela_trava_que_atravessa_o_prazo_da_pendencia_nao_confirma()
+    {
+        var c = await _ambiente.SemearAsync();
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+        await Fabrica.NoBancoAsync(async db =>
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE pendencias_agendamento_whatsapp SET expira_em = now() + interval '3 seconds' WHERE id = {pendente.PendenciaId}");
+            return 0;
+        });
+
+        // Outra transação segura a linha do agendamento até passar do prazo.
+        using var escopoTrava = Fabrica.Services.CreateScope();
+        var dbTrava = escopoTrava.ServiceProvider.GetRequiredService<PlataformaDbContext>();
+        await using (var trava = await dbTrava.Database.BeginTransactionAsync())
+        {
+            await dbTrava.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM agendamentos WHERE id = {pendente.AgendamentoId} FOR UPDATE");
+
+            var tarefa = ConfirmarAsync(c, pendente.PendenciaId, Telefone, "Maria", Guid.NewGuid());
+            await Task.Delay(TimeSpan.FromSeconds(4.5));
+            tarefa.IsCompleted.Should().BeFalse("está esperando a trava da linha");
+            await trava.CommitAsync();
+
+            var r = await tarefa;
+            r.Sucesso.Should().BeFalse();
+            r.Motivo.Should().Be(MotivoRecusaConfirmacaoAgente.Expirada);
+        }
+
+        (await AgendamentoAsync(pendente.AgendamentoId)).Status.Should().Be(StatusAgendamento.Expirado);
+        (await PendenciaAsync(pendente.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Expirada);
+        (await ClientesAsync(c.NegocioId)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Cancelamento_avisando_o_cliente_do_agente_sem_email_sai_pelo_whatsapp_sem_outbox()
+    {
+        var c = await _ambiente.SemearAsync();
+        await LigarWhatsAppDeConfirmacaoAsync(c.NegocioId);
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+        (await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, Guid.NewGuid())).Sucesso.Should().BeTrue();
+        var espia = Fabrica.Services.GetRequiredService<EspiaWhatsApp>();
+        espia.Enviados.Clear();
+
+        using (var escopo = Escopo(c.NegocioId))
+            (await escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>().CancelarAvisandoClienteAsync(pendente.AgendamentoId)).Should().BeTrue();
+
+        espia.Enviados.Should().ContainSingle(e => e.Telefone.Valor == Telefone, "o aviso de cancelamento mantém o telefone; só a confirmação inicial o dispensa");
+    }
+
+    /// <summary>Roda uma ação antes de a confirmação travar a pendência (depois de pular as N primeiras vezes), uma única vez.</summary>
+    private sealed class GanchoAntesDaTravaDaPendencia : DbCommandInterceptor
+    {
+        private Func<Task>? _acao;
+        private int _pular;
+
+        public void Armar(int pular, Func<Task> acao) => (_pular, _acao) = (pular, acao);
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (_acao is not null && command.CommandText.Contains("FROM pendencias_agendamento_whatsapp") && command.CommandText.Contains("FOR UPDATE"))
+            {
+                if (_pular > 0)
+                    _pular--;
+                else
+                {
+                    var acao = _acao;
+                    _acao = null;
+                    await acao();
+                }
+            }
+
+            return result;
+        }
+    }
+
     private sealed record Preparada(Guid PendenciaId, Guid AgendamentoId, Guid ConversaId);
 
     private static DateOnly Dia() => AmbienteAgente.ProximaSegunda();
@@ -787,6 +932,45 @@ public sealed class AgendamentoPeloAgenteOutboxTestes : IAsyncLifetime
             .Should().BeEquivalentTo([CanalNotificacao.Email], "a confirmação ao cliente sai na conversa; o e-mail só porque o cadastro tem");
         fila.Where(n => n.Tipo == TipoNotificacao.ProfissionalNovo).Select(n => n.Canal)
             .Should().BeEquivalentTo([CanalNotificacao.Email, CanalNotificacao.WhatsApp], "o profissional continua avisado pelos canais dele");
+    }
+
+    [Fact]
+    public async Task Cancelamento_avisando_o_cliente_do_agente_sem_email_enfileira_o_whatsapp()
+    {
+        var f = _ambiente.Fabrica;
+        var c = await _ambiente.SemearAsync();
+        var inicio = SemeadorDeComissoes.Local(AmbienteAgente.ProximaSegunda(), 10, 0);
+        await f.NoBancoAsync(async db =>
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE negocios SET whats_app_ativo_para_confirmacoes = true WHERE id = {c.NegocioId}");
+            return 0;
+        });
+
+        Guid agendamentoId;
+        using (var escopo = Escopo(f, c.NegocioId))
+        {
+            var servico = escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>();
+            var reserva = await servico.CriarReservaAgenteAsync(new CriarReservaAgente(c.Beto, c.Corte, inicio));
+            reserva.Sucesso.Should().BeTrue(reserva.MensagemErro);
+            agendamentoId = reserva.AgendamentoId!.Value;
+
+            var db = escopo.ServiceProvider.GetRequiredService<Plataforma.Infraestrutura.Persistencia.PlataformaDbContext>();
+            var instancia = await db.InstanciasWhatsApp.FirstAsync();
+            var conversa = new ConversaWhatsApp(c.NegocioId, instancia.Id, "+5571988887777", DateTimeOffset.UtcNow);
+            db.ConversasWhatsApp.Add(conversa);
+            var pendencia = new PendenciaAgendamentoWhatsApp(
+                c.NegocioId, conversa.Id, agendamentoId, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10), "Maria");
+            db.PendenciasAgendamentoWhatsApp.Add(pendencia);
+            await db.SaveChangesAsync();
+            (await servico.ConfirmarReservaAgenteAsync(new ConfirmarReservaAgente(pendencia.Id, "+5571988887777", null, Guid.NewGuid()))).Sucesso.Should().BeTrue();
+        }
+
+        using (var escopo = Escopo(f, c.NegocioId))
+            (await escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>().CancelarAvisandoClienteAsync(agendamentoId)).Should().BeTrue();
+
+        var fila = await f.NoBancoAsync(db => db.NotificacoesPendentes.IgnoreQueryFilters().Where(n => n.NegocioId == c.NegocioId).ToListAsync());
+        fila.Where(n => n.Tipo == TipoNotificacao.Cancelamento).Select(n => n.Canal)
+            .Should().BeEquivalentTo([CanalNotificacao.WhatsApp], "cliente sem e-mail: o cancelamento sai pelo WhatsApp");
     }
 
     private static IServiceScope Escopo(Plataforma.Testes.Integracao.Infraestrutura.PlataformaWebApplicationFactory f, Guid negocioId)

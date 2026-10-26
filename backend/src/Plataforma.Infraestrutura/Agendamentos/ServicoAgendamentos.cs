@@ -847,8 +847,8 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
 
         await _notificador.EnviarCancelamentoClienteAsync(new DadosNotificacaoAgendamento(
             cliente.Nome, cliente.Email,
-            // Agendamento do agente de WhatsApp: a confirmação sai na própria conversa, nunca pelo WhatsApp da plataforma.
-            agendamento.Origem == OrigemAgendamento.WhatsApp ? null : cliente.Telefone, agendamento.Inicio, agendamento.Fim,
+            // Cancelamento avisa pelos canais do cadastro, também para agendamento do agente de WhatsApp (a exceção é só da confirmação).
+            cliente.Telefone, agendamento.Inicio, agendamento.Fim,
             agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, linkPagina, linkPagina), cancellationToken);
 
         return true;
