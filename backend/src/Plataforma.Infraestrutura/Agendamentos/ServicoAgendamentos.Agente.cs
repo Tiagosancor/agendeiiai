@@ -69,6 +69,10 @@ public sealed partial class ServicoAgendamentos
         if (!TelefoneE164.TentarCriar(dados.TelefoneConversa, out var telefone) || telefone is null)
             return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.NaoEncontrada);
 
+        // Nome informado agora: a regra de domínio vale aqui também, não só na ferramenta (nada é gravado se for inválido).
+        if (!string.IsNullOrWhiteSpace(dados.NomeInformado) && !NomeClienteWhatsApp.EhValido(dados.NomeInformado))
+            return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.NomeInvalido);
+
         // Assinatura suspensa: nada é gravado e o agente fica em silêncio (a reserva expira sozinha). Lida fora da transação.
         if (await _assinaturas.ObterAsync(negocioId, cancellationToken) is { PermiteOperar: false })
             return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.AssinaturaSuspensa);
@@ -159,20 +163,36 @@ public sealed partial class ServicoAgendamentos
                     return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.IndisponivelAgora);
                 }
 
-                // Cliente pelo telefone da conversa (as duas formas do 9º dígito), sem nunca mexer em cadastro existente.
+                // Cliente pelo telefone da conversa (as duas formas do 9º dígito), sem nunca mexer em cadastro existente. Depois de
+                // identificado, a linha do cliente é travada e relida: a anonimização (que toma a mesma trava) pode ter passado entre
+                // a leitura e agora, e um cadastro anonimizado nunca recebe o agendamento (identifica-se de novo pelo telefone).
                 var nome = string.IsNullOrWhiteSpace(dados.NomeInformado) ? pendencia.NomeInformado : dados.NomeInformado;
-                var clienteId = await IdentificarOuCriarClienteDoAgenteAsync(negocioId, telefone, nome, cancellationToken);
-                if (clienteId is null)
+                Cliente? clienteEscolhido = null;
+                for (var volta = 0; volta < 3 && clienteEscolhido is null; volta++)
                 {
-                    await transacao.RollbackAsync(cancellationToken);
-                    return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.NomeNecessario);
+                    var identificado = await IdentificarOuCriarClienteDoAgenteAsync(negocioId, telefone, nome, cancellationToken);
+                    if (identificado.Motivo is { } motivoNome)
+                    {
+                        await transacao.RollbackAsync(cancellationToken);
+                        return ResultadoConfirmacaoAgente.Recusada(motivoNome);
+                    }
+
+                    if (await TravarClienteAindaValidoAsync(identificado.Cliente!, telefone, cancellationToken))
+                        clienteEscolhido = identificado.Cliente;
                 }
 
-                agendamento.VincularCliente(clienteId.Value);
+                if (clienteEscolhido is null)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.Encerrada);
+                }
+
+                var clienteId = clienteEscolhido.Id;
+                agendamento.VincularCliente(clienteId);
                 agendamento.RegistrarConsentimentoWhatsApp(momento, VersaoTermos.Atual);
                 agendamento.ConfirmarReserva();
                 pendencia.Confirmar(momento, dados.MensagemConfirmacaoId, VersaoTermos.Atual, operacaoId);
-                conversa.VincularCliente(clienteId.Value);
+                conversa.VincularCliente(clienteId);
 
                 if (usaOutbox)
                 {
@@ -239,37 +259,54 @@ public sealed partial class ServicoAgendamentos
             b => b.ProfissionalId == agendamento.ProfissionalId && b.InicioUtc < fim && b.FimUtc > inicio, cancellationToken);
     }
 
+    private readonly record struct ClienteIdentificado(Cliente? Cliente, MotivoRecusaConfirmacaoAgente? Motivo);
+
     /// <summary>
     /// Procura o cliente pelas duas formas do 9º dígito (a de 13 dígitos primeiro) e usa o que existir, sem alterar nada do
-    /// cadastro. Se não existe, cria na forma preferida com origem WhatsApp; nulo se faltou o nome. Corrida de duas
-    /// confirmações com o mesmo telefone: <c>EhViolacaoDeUnicidade</c> e nova busca.
+    /// cadastro. Se não existe, cria na forma preferida com origem WhatsApp; recusa se faltou o nome (<c>NomeNecessario</c>) ou
+    /// se ele não passa na regra de domínio (<c>NomeInvalido</c>). Corrida de duas confirmações com o mesmo telefone:
+    /// <c>EhViolacaoDeUnicidade</c> e nova busca.
     /// </summary>
-    private async Task<Guid?> IdentificarOuCriarClienteDoAgenteAsync(
+    private async Task<ClienteIdentificado> IdentificarOuCriarClienteDoAgenteAsync(
         Guid negocioId, TelefoneE164 telefone, string? nome, CancellationToken cancellationToken)
     {
         var formas = telefone.FormasEquivalentes();
 
         var existente = await BuscarClientePorFormasAsync(negocioId, formas, cancellationToken);
         if (existente is not null)
-            return existente.Id;
+            return new(existente, null);
 
-        var nomeLimpo = nome?.Trim();
-        if (string.IsNullOrEmpty(nomeLimpo))
-            return null;
+        if (string.IsNullOrWhiteSpace(nome))
+            return new(null, MotivoRecusaConfirmacaoAgente.NomeNecessario);
+        if (!NomeClienteWhatsApp.TentarNormalizar(nome, out var nomeLimpo))
+            return new(null, MotivoRecusaConfirmacaoAgente.NomeInvalido);
 
         var novo = Cliente.Criar(negocioId, nomeLimpo, formas[0], OrigemCliente.WhatsApp);
         _dbContext.Clientes.Add(novo);
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
-            return novo.Id;
+            return new(novo, null);
         }
         catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
         {
             _dbContext.Entry(novo).State = EntityState.Detached;
             var daCorrida = await BuscarClientePorFormasAsync(negocioId, formas, cancellationToken);
-            return daCorrida?.Id ?? throw excecao;
+            return daCorrida is null ? throw excecao : new(daCorrida, null);
         }
+    }
+
+    /// <summary>
+    /// Trava a linha do cliente (<c>FOR UPDATE</c>, a mesma da anonimização em <c>GerenciadorClientes.ExcluirAsync</c>) e relê.
+    /// Falso se ele foi excluído/anonimizado ou deixou de ter este telefone enquanto esperávamos: quem chama identifica de novo.
+    /// </summary>
+    private async Task<bool> TravarClienteAindaValidoAsync(Cliente cliente, TelefoneE164 telefone, CancellationToken cancellationToken)
+    {
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM clientes WHERE id = {cliente.Id} FOR UPDATE", cancellationToken);
+        await _dbContext.Entry(cliente).ReloadAsync(cancellationToken);
+
+        return !cliente.Excluido && cliente.Telefone is { } atual && telefone.FormasEquivalentes().Contains(atual);
     }
 
     private async Task<Cliente?> BuscarClientePorFormasAsync(

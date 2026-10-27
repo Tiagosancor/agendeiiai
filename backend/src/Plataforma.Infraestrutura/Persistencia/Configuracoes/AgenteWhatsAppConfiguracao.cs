@@ -109,6 +109,9 @@ public sealed class PendenciaAgendamentoWhatsAppConfiguracao : IEntityTypeConfig
 
         // Uma pendência aguardando por conversa (a nova substitui a anterior antes de ser criada).
         builder.HasIndex(p => p.ConversaId).IsUnique().HasFilter("status = 'Aguardando'");
+        // Busca de pendências vencidas do job (global por expira_em e depois por negócio): só as abertas, que são poucas; o
+        // histórico encerrado cresce sem entrar no índice.
+        builder.HasIndex(p => new { p.ExpiraEm, p.NegocioId }).HasFilter("status = 'Aguardando'");
         builder.HasIndex(p => new { p.NegocioId, p.CriadoEm });
         builder.HasIndex(p => p.AgendamentoId);
     }

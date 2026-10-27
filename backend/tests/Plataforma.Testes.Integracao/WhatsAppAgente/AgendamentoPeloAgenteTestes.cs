@@ -32,6 +32,7 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     private readonly PostgresContainerFixture _postgres;
     private readonly InterceptadorDeCommit _commit = new();
     private readonly GanchoAntesDaTravaDaPendencia _gancho = new();
+    private readonly GanchoAntesDaTravaDoCliente _ganchoCliente = new();
     private AmbienteAgente _ambiente = null!;
 
     public AgendamentoPeloAgenteTestes(PostgresContainerFixture postgres) => _postgres = postgres;
@@ -42,7 +43,7 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     {
         _ambiente = new AmbienteAgente(_postgres);
         await _ambiente.IniciarAsync(ajustarServicos: servicos =>
-            servicos.ConfigureDbContext<PlataformaDbContext>(o => o.AddInterceptors(_commit, _gancho)));
+            servicos.ConfigureDbContext<PlataformaDbContext>(o => o.AddInterceptors(_commit, _gancho, _ganchoCliente)));
     }
 
     public async Task DisposeAsync() => await _ambiente.DisposeAsync();
@@ -646,6 +647,76 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Anonimizacao_que_passa_entre_a_identificacao_e_o_vinculo_nao_deixa_o_agendamento_no_cadastro_anonimizado()
+    {
+        var c = await _ambiente.SemearAsync();
+        var antigo = await Fabrica.NoBancoAsync(async db =>
+        {
+            var cli = Cliente.Criar(c.NegocioId, "Maria Antiga", TelefoneE164.Criar(Telefone));
+            db.Clientes.Add(cli);
+            await db.SaveChangesAsync();
+            return cli.Id;
+        });
+        var pendente = await PreparadaAsync(c, Telefone, "Maria Nova", H(10, 0));
+
+        // A confirmação já identificou o cliente antigo; antes de travá-lo, a anonimização roda por inteiro.
+        _ganchoCliente.Armar(async () =>
+        {
+            using var escopo = Escopo(c.NegocioId);
+            (await escopo.ServiceProvider.GetRequiredService<IGerenciadorClientes>().ExcluirAsync(antigo)).Should().BeTrue();
+        });
+
+        var r = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, Guid.NewGuid());
+
+        _ganchoCliente.Disparou.Should().BeTrue("o gancho precisa ter rodado no meio da confirmação");
+        r.Sucesso.Should().BeTrue();
+        var agendamento = await AgendamentoAsync(pendente.AgendamentoId);
+        agendamento.ClienteId.Should().NotBeNull().And.NotBe(antigo, "o cadastro anonimizado nunca recebe o agendamento");
+        var clientes = await ClientesAsync(c.NegocioId);
+        clientes.Single(x => x.Id == antigo).Excluido.Should().BeTrue();
+        var novo = clientes.Single(x => x.Id == agendamento.ClienteId);
+        novo.Excluido.Should().BeFalse();
+        novo.Nome.Should().Be("Maria Nova");
+        novo.Telefone!.Valor.Should().Be(Telefone);
+        (await ConversaAsync(pendente.ConversaId)).ClienteId.Should().Be(novo.Id, "a conversa não volta ao id anonimizado");
+    }
+
+    [Fact]
+    public async Task Nome_invalido_na_confirmacao_e_recusado_sem_gravar_nada()
+    {
+        var c = await _ambiente.SemearAsync();
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+
+        foreach (var invalido in new[] { "<b>Maria</b>", "Maria 2", "www.golpe.com", "M", new string('a', 81) })
+        {
+            var r = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, invalido, Guid.NewGuid());
+            r.Sucesso.Should().BeFalse(invalido);
+            r.Motivo.Should().Be(MotivoRecusaConfirmacaoAgente.NomeInvalido, invalido);
+        }
+
+        (await ClientesAsync(c.NegocioId)).Should().BeEmpty();
+        (await AgendamentoAsync(pendente.AgendamentoId)).Status.Should().Be(StatusAgendamento.Reservado);
+        (await PendenciaAsync(pendente.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Aguardando);
+
+        // Com um nome bom a mesma pendência confirma.
+        (await ConfirmarAsync(c, pendente.PendenciaId, Telefone, "Maria", Guid.NewGuid())).Sucesso.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Nome_invalido_guardado_na_pendencia_tambem_e_recusado_para_cliente_novo()
+    {
+        var c = await _ambiente.SemearAsync();
+        var pendente = await PreparadaAsync(c, Telefone, "Maria 2", H(10, 0));
+
+        var r = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, Guid.NewGuid());
+
+        r.Sucesso.Should().BeFalse();
+        r.Motivo.Should().Be(MotivoRecusaConfirmacaoAgente.NomeInvalido);
+        (await ClientesAsync(c.NegocioId)).Should().BeEmpty();
+        (await PendenciaAsync(pendente.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Aguardando);
+    }
+
+    [Fact]
     public async Task Reserva_e_confirmacao_publicas_continuam_com_origem_link_publico()
     {
         var c = await _ambiente.SemearAsync();
@@ -799,6 +870,30 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
                     _acao = null;
                     await acao();
                 }
+            }
+
+            return result;
+        }
+    }
+
+    /// <summary>Roda uma ação (uma só vez) antes de a confirmação travar a linha do cliente, isto é, depois de identificá-lo.</summary>
+    private sealed class GanchoAntesDaTravaDoCliente : DbCommandInterceptor
+    {
+        private Func<Task>? _acao;
+
+        public bool Disparou { get; private set; }
+
+        public void Armar(Func<Task> acao) => (_acao, Disparou) = (acao, false);
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            if (_acao is not null && command.CommandText.Contains("FROM clientes") && command.CommandText.Contains("FOR UPDATE"))
+            {
+                var acao = _acao;
+                _acao = null;
+                Disparou = true;
+                await acao();
             }
 
             return result;

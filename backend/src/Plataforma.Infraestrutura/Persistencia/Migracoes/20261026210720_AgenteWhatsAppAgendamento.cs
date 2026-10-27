@@ -74,6 +74,12 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                 filter: "status = 'Aguardando'");
 
             migrationBuilder.CreateIndex(
+                name: "ix_pendencias_agendamento_whatsapp_expira_em_negocio_id",
+                table: "pendencias_agendamento_whatsapp",
+                columns: new[] { "expira_em", "negocio_id" },
+                filter: "status = 'Aguardando'");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_pendencias_agendamento_whatsapp_negocio_id_criado_em",
                 table: "pendencias_agendamento_whatsapp",
                 columns: new[] { "negocio_id", "criado_em" });

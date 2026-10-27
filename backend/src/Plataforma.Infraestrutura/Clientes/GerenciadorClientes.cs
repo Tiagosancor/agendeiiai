@@ -122,25 +122,42 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
 
     public async Task<bool> ExcluirAsync(Guid clienteId, CancellationToken cancellationToken = default)
     {
-        var cliente = await _dbContext.Clientes.FindAsync([clienteId], cancellationToken);
-        if (cliente is null)
-            return false;
+        // Transação com a linha do cliente travada (FOR UPDATE): é a mesma trava que a confirmação do agente de WhatsApp toma
+        // depois de identificar o cliente, então uma não passa por cima da outra. Ordem global: pendência → agendamento →
+        // cliente (aqui só o cliente, e os UPDATEs abaixo só alcançam linhas que já apontam para ele).
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        return await estrategia.ExecuteAsync(async () =>
+        {
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
-        cliente.Anonimizar(DateTimeOffset.UtcNow);
+            await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT 1 FROM clientes WHERE id = {clienteId} FOR UPDATE", cancellationToken);
 
-        // Zera também o que o cliente informou de próprio punho no link público (seção 8.1.4)
-        // nos agendamentos já feitos — o nome do cadastro já foi anonimizado acima.
-        await _dbContext.Agendamentos
-            .Where(a => a.ClienteId == clienteId)
-            .ExecuteUpdateAsync(s => s.SetProperty(a => a.NomeInformado, (string?)null), cancellationToken);
+            var cliente = await _dbContext.Clientes.FindAsync([clienteId], cancellationToken);
+            if (cliente is null)
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return false;
+            }
 
-        // A conversa do WhatsApp guardava o cliente como atalho (Fase 3): deixa de apontar para ele.
-        await _dbContext.ConversasWhatsApp
-            .Where(c => c.ClienteId == clienteId)
-            .ExecuteUpdateAsync(s => s.SetProperty(c => c.ClienteId, (Guid?)null), cancellationToken);
+            await _dbContext.Entry(cliente).ReloadAsync(cancellationToken);
+            cliente.Anonimizar(DateTimeOffset.UtcNow);
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return true;
+            // Zera também o que o cliente informou de próprio punho no link público (seção 8.1.4)
+            // nos agendamentos já feitos — o nome do cadastro já foi anonimizado acima.
+            await _dbContext.Agendamentos
+                .Where(a => a.ClienteId == clienteId)
+                .ExecuteUpdateAsync(s => s.SetProperty(a => a.NomeInformado, (string?)null), cancellationToken);
+
+            // A conversa do WhatsApp guardava o cliente como atalho (Fase 3): deixa de apontar para ele.
+            await _dbContext.ConversasWhatsApp
+                .Where(c => c.ClienteId == clienteId)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.ClienteId, (Guid?)null), cancellationToken);
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return true;
+        });
     }
 
     private static ClienteResumo Mapear(Cliente cliente) =>

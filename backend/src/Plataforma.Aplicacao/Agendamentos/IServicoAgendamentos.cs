@@ -180,13 +180,16 @@ public enum MotivoRecusaConfirmacaoAgente
     /// <summary>Cliente novo e nenhum nome foi informado: nada é gravado.</summary>
     NomeNecessario,
 
+    /// <summary>O nome informado não passa na regra de <c>NomeClienteWhatsApp</c> (tamanho, caracteres, endereço de site): nada é gravado.</summary>
+    NomeInvalido,
+
     /// <summary>Perdeu o horário para outro agendamento na confirmação (409 com alternativas).</summary>
     Conflito,
 }
 
 /// <summary>
 /// <c>ConfirmadaAgora</c> é verdadeiro só para a chamada que de fato confirmou (quem envia o texto de confirmação e os avisos).
-/// Quem de fato gravou é identificado por uma marca exclusiva da requisição (<c>PendenciaAgendamentoWhatsApp.ConcluidaEm</c>), então
+/// Quem de fato gravou é identificado por um id aleatório da operação (<c>PendenciaAgendamentoWhatsApp.ConfirmacaoOperacaoId</c>), então
 /// a nova tentativa após falha transitória só é "agora" se foi ela (ou a tentativa anterior, em COMMIT ambíguo) que gravou;
 /// qualquer outra confirmação da mesma pendência devolve sucesso com <c>ConfirmadaAgora = false</c>, mesmo com ids de mensagem iguais ou nulos.
 /// </summary>

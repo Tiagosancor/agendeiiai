@@ -3395,6 +3395,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasDatabaseName("ix_pendencias_agendamento_whatsapp_conversa_id")
                         .HasFilter("status = 'Aguardando'");
 
+                    b.HasIndex("ExpiraEm", "NegocioId")
+                        .HasDatabaseName("ix_pendencias_agendamento_whatsapp_expira_em_negocio_id")
+                        .HasFilter("status = 'Aguardando'");
+
                     b.HasIndex("NegocioId", "CriadoEm")
                         .HasDatabaseName("ix_pendencias_agendamento_whatsapp_negocio_id_criado_em");
 
