@@ -29,7 +29,15 @@ public sealed record ProfissionalDaFerramenta(
     [property: JsonPropertyName("nome")] string Nome,
     [property: JsonPropertyName("funcao")] string? Funcao,
     [property: JsonPropertyName("preco"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Preco,
-    [property: JsonPropertyName("duracao_minutos"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DuracaoMinutos);
+    [property: JsonPropertyName("duracao_minutos"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? DuracaoMinutos,
+    [property: JsonPropertyName("servicos"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] IReadOnlyList<ServicoDoProfissionalDaFerramenta>? Servicos = null);
+
+/// <summary>Serviço que o profissional realiza, com o preço e a duração do vínculo (dado já público no catálogo).</summary>
+public sealed record ServicoDoProfissionalDaFerramenta(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("nome")] string Nome,
+    [property: JsonPropertyName("preco")] string Preco,
+    [property: JsonPropertyName("duracao_minutos")] int DuracaoMinutos);
 
 public sealed record HorarioDaFerramenta(
     [property: JsonPropertyName("hora")] string Hora,
@@ -80,7 +88,7 @@ public sealed class FerramentaListarProfissionais : IFerramentaAgente
     public string Nome => "listar_profissionais";
 
     public string Descricao =>
-        "Lista os profissionais do estabelecimento. Com servico_id, só quem realiza aquele serviço, com o preço e a duração de cada um.";
+        "Lista os profissionais do estabelecimento, cada um com os serviços que realiza (id, nome, preço e duração dele): use isto para saber o que cada profissional faz, sem consultar serviço por serviço. Com servico_id, só quem realiza aquele serviço, com o preço e a duração de cada um.";
 
     public JsonElement Esquema { get; } = RespostaFerramenta.Esquema(
         """{"type":"object","properties":{"servico_id":{"type":"string","description":"UUID do serviço, obtido em listar_servicos"}},"additionalProperties":false}""");
@@ -94,14 +102,16 @@ public sealed class FerramentaListarProfissionais : IFerramentaAgente
 
         var profissionais = await _catalogo.ListarProfissionaisAsync(cancellationToken);
 
+        var servicos = await _catalogo.ListarServicosAsync(cancellationToken);
+
         if (servicoId is null)
         {
+            var catalogo = servicos.SelectMany(c => c.Servicos).GroupBy(s => s.Id).ToDictionary(g => g.Key, g => g.First());
             return RespostaFerramenta.De(profissionais
-                .Select(p => new ProfissionalDaFerramenta(p.Id, RespostaFerramenta.Limpar(p.Nome), Funcao(p), null, null))
+                .Select(p => new ProfissionalDaFerramenta(p.Id, RespostaFerramenta.Limpar(p.Nome), Funcao(p), null, null, ServicosDele(p, catalogo)))
                 .ToList());
         }
 
-        var servicos = await _catalogo.ListarServicosAsync(cancellationToken);
         if (!servicos.Any(c => c.Servicos.Any(s => s.Id == servicoId)))
             return RespostaFerramenta.Erro(ErrosFerramenta.ServicoDesconhecido);
 
@@ -118,6 +128,24 @@ public sealed class FerramentaListarProfissionais : IFerramentaAgente
         }
 
         return RespostaFerramenta.De(lista);
+    }
+
+    /// <summary>Só serviços que existem no catálogo público (ativos); preço/duração do vínculo, ou os do serviço se o vínculo não os traz.</summary>
+    private static List<ServicoDoProfissionalDaFerramenta> ServicosDele(ProfissionalPublico p, Dictionary<Guid, ServicoPublico> catalogo)
+    {
+        var lista = new List<ServicoDoProfissionalDaFerramenta>();
+        foreach (var servicoId in p.ServicoIds.Distinct())
+        {
+            if (!catalogo.TryGetValue(servicoId, out var servico))
+                continue;
+
+            var vinculo = p.Servicos?.FirstOrDefault(s => s.ServicoId == servicoId);
+            lista.Add(new ServicoDoProfissionalDaFerramenta(
+                servicoId, RespostaFerramenta.Limpar(servico.Nome),
+                FormatacaoBrasil.Reais(vinculo?.Preco ?? servico.Preco), vinculo?.DuracaoMinutos ?? servico.DuracaoMinutos));
+        }
+
+        return lista;
     }
 
     private static string? Funcao(ProfissionalPublico p) =>
