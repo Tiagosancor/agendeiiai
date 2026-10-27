@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.WhatsAppAgente;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.Assinaturas;
 using Plataforma.Dominio.Clientes;
@@ -410,6 +411,66 @@ public sealed class ConfirmacaoNoAgenteTestes : IAsyncLifetime
         _ambiente.Evolution.Envios.Count(e => e.Texto.StartsWith("Agendamento confirmado")).Should().Be(1);
         (await _ambiente.MarcadoresAsync(MarcadoresAgente.Confirmado)).Should().ContainSingle();
         (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Agendado);
+    }
+
+    private async Task<CenarioAgente> PreparadoSemFilaAsync()
+    {
+        await IniciarAsync(fila: typeof(FilaQuePerde));
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (_, n) => n == 1 ? Chama(("preparar_agendamento", Prepara(c, c.Ana, "10:00", "Maria Souza"))) : Texto("ok");
+        await _ambiente.EnviarAsync(c, "quero corte");
+        await _ambiente.ProcessarConversaAsync();
+        return c;
+    }
+
+    [Fact]
+    public async Task Recusa_definitiva_da_Evolution_nao_fica_anunciada_e_a_recuperacao_envia_a_confirmacao_uma_vez()
+    {
+        var c = await PreparadoSemFilaAsync();
+        var chamadasIa = _ambiente.Provedor.Chamadas;
+
+        _ambiente.Evolution.FalharEnvio = true;
+        await _ambiente.EnviarAsync(c, "sim");
+        await _ambiente.ProcessarConversaAsync();
+
+        (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Agendado);
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.Confirmado)).Should().BeEmpty("nada foi enviado: não pode parecer anunciada");
+        ConfirmacaoEntregue().Should().BeNull();
+
+        _ambiente.Evolution.FalharEnvio = false;
+        await _ambiente.ProcessarConversaAsync();
+        await _ambiente.ProcessarConversaAsync();
+
+        _ambiente.Evolution.Envios.Count(e => e.Texto.StartsWith("Agendamento confirmado")).Should().Be(1);
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.Confirmado)).Should().ContainSingle();
+        _ambiente.Provedor.Chamadas.Should().Be(chamadasIa, "a recuperação não chama a IA");
+    }
+
+    [Fact]
+    public async Task Resultado_ambiguo_da_Evolution_nao_reenvia_a_confirmacao_nem_chama_a_IA()
+    {
+        var c = await PreparadoSemFilaAsync();
+        var chamadasIa = _ambiente.Provedor.Chamadas;
+
+        _ambiente.Evolution.AoEnviar = (_, texto, _) => texto.StartsWith("Agendamento confirmado")
+            ? throw new FalhaEvolutionException("conexão encerrada após o envio", ambigua: true)
+            : Task.CompletedTask;
+        await _ambiente.EnviarAsync(c, "sim");
+        await _ambiente.ProcessarConversaAsync();
+
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.Confirmado)).Should().ContainSingle("a reserva fica: supressão do ambíguo");
+
+        // Queda depois do envio ambíguo e antes de marcar o lote: a recuperação só dá o lote por tratado, sem reenviar nem chamar a IA.
+        await _ambiente.NoBancoAsync(async db =>
+            await db.ConversasWhatsApp.IgnoreQueryFilters().ExecuteUpdateAsync(x => x.SetProperty(k => k.ProcessadaAte, (DateTimeOffset?)null)));
+        _ambiente.Evolution.AoEnviar = null;
+        await _ambiente.ProcessarConversaAsync();
+        await _ambiente.ProcessarConversaAsync();
+
+        ConfirmacaoEntregue().Should().BeNull();
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.Confirmado)).Should().ContainSingle();
+        _ambiente.Provedor.Chamadas.Should().Be(chamadasIa);
+        (await _ambiente.ConversasAsync()).Single().ProcessadaAte.Should().NotBeNull();
     }
 
     // ---------------------------------------------------------------- o que muda entre o preparo e o "sim"

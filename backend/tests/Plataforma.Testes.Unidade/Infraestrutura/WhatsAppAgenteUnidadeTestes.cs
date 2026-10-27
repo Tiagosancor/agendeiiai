@@ -100,6 +100,69 @@ public sealed class WhatsAppAgenteUnidadeTestes
         await foraDoAr.Invoking(c => c.EnviarTextoAsync("neg-1", "+5571988887777", "oi")).Should().ThrowAsync<FalhaEvolutionException>();
     }
 
+    private static async Task<FalhaEvolutionException> FalhaDoEnvioAsync(ClienteEvolution cliente) =>
+        (await cliente.Invoking(c => c.EnviarTextoAsync("neg-1", "+5571988887777", "oi")).Should().ThrowAsync<FalhaEvolutionException>()).Which;
+
+    [Theory]
+    [InlineData(HttpRequestError.ConnectionError, false)]
+    [InlineData(HttpRequestError.NameResolutionError, false)]
+    [InlineData(HttpRequestError.SecureConnectionError, false)]
+    [InlineData(HttpRequestError.ResponseEnded, true)]
+    [InlineData(HttpRequestError.InvalidResponse, true)]
+    [InlineData(HttpRequestError.Unknown, true)]
+    public async Task Cliente_Evolution_classifica_a_falha_de_transporte(HttpRequestError erro, bool ambigua)
+    {
+        var cliente = CriarCliente(new ManipuladorFalso(_ => throw new HttpRequestException(erro, "falha")));
+
+        (await FalhaDoEnvioAsync(cliente)).Ambigua.Should().Be(ambigua);
+    }
+
+    [Fact]
+    public async Task Cliente_Evolution_leitura_da_resposta_que_cai_e_ambigua()
+    {
+        var cliente = CriarCliente(new ManipuladorFalso(_ => new HttpResponseMessage(HttpStatusCode.Created) { Content = new ConteudoQueCai() }));
+
+        (await FalhaDoEnvioAsync(cliente)).Ambigua.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Cliente_Evolution_timeout_e_ambiguo_e_4xx_e_5xx_sao_definitivos()
+    {
+        var opcoes = Options.Create(new OpcoesEvolution { BaseUrl = "http://evolution.invalid", ApiKey = "chave-global", TimeoutSegundos = 1 });
+        var lento = new ClienteEvolution(new HttpClient(new ManipuladorLento()), opcoes, NullLogger<ClienteEvolution>.Instance);
+        (await FalhaDoEnvioAsync(lento)).Ambigua.Should().BeTrue();
+
+        (await FalhaDoEnvioAsync(CriarCliente(new ManipuladorFalso(_ => new HttpResponseMessage(HttpStatusCode.BadGateway))))).Ambigua.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Cliente_Evolution_4xx_no_envio_e_recusa_definitiva_de_quem_chama()
+    {
+        var cliente = CriarCliente(new ManipuladorFalso(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)));
+
+        (await FalhaDoEnvioAsync(cliente)).Ambigua.Should().BeFalse();
+    }
+
+    private sealed class ManipuladorLento : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage requisicao, CancellationToken cancellationToken)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
+    private sealed class ConteudoQueCai : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? contexto) => throw new IOException("conexão resetada");
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = -1;
+            return false;
+        }
+    }
+
     private static ClienteEvolution CriarCliente(ManipuladorFalso manipulador) => new(
         new HttpClient(manipulador),
         Options.Create(new OpcoesEvolution { BaseUrl = "http://evolution.invalid", ApiKey = "chave-global" }),

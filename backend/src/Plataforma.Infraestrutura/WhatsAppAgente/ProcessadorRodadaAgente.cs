@@ -325,11 +325,36 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
         if (!await RenovarLeaseAsync(lease, cancellationToken))
             return;
-        if (!await MarcarProcessadaAsync(lease, ultima, cancellationToken))
+
+        if (mensagem is null)
+        {
+            await MarcarProcessadaAsync(lease, ultima, cancellationToken);
+            return;
+        }
+
+        // A confirmação do agendamento é a única mensagem cuja entrega não pode se perder: o lote só é marcado como tratado DEPOIS
+        // do envio. Queda no meio => o lote continua pendente e a recuperação acha a pendência Confirmada sem a mensagem anunciada.
+        // Ambíguo (timeout) mantém a reserva gravada (supressão: nunca duplica) e marca o lote; falha definitiva comprovada apaga a
+        // reserva e deixa o lote pendente para a recuperação reenviar. Os demais textos fixos mantêm "marca antes de enviar".
+        var confirmacao = mensagem.Marcador == MarcadoresAgente.Confirmado;
+        if (!confirmacao && !await MarcarProcessadaAsync(lease, ultima, cancellationToken))
             return;
 
-        if (mensagem is not null)
-            await EnviarEGravarAsync(lease, conversa, instancia, mensagem.Texto, PapelMensagemWhatsApp.Sistema, mensagem.Marcador, cancellationToken, mensagem.TextoGravado);
+        var envio = await EnviarEGravarAsync(lease, conversa, instancia, mensagem.Texto, PapelMensagemWhatsApp.Sistema, mensagem.Marcador, cancellationToken, mensagem.TextoGravado);
+
+        if (!confirmacao)
+            return;
+
+        if (envio.Estado is EstadoEnvio.FalhaDefinitiva or EstadoEnvio.SemPrazo)
+        {
+            // Comprovadamente não enviada: a reserva não pode ficar parecendo "confirmação anunciada".
+            if (envio.MensagemId is { } mensagemId)
+                await _dbContext.MensagensWhatsApp.Where(m => m.Id == mensagemId).ExecuteDeleteAsync(CancellationToken.None);
+            _logger.LogWarning("Agente: confirmação não enviada, ficará para a recuperação (conversa {ConversaId}).", conversa.Id);
+            return;
+        }
+
+        await MarcarProcessadaAsync(lease, ultima, cancellationToken);
     }
 
     // ---------------------------------------------------------------- aviso de atendimento automatizado (Fase 3)
