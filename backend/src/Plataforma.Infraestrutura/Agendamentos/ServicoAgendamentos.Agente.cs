@@ -76,7 +76,9 @@ public sealed partial class ServicoAgendamentos
         var usaOutbox = _outbox.Usa(FamiliaNotificacao.Operacional);
         var estrategia = _dbContext.Database.CreateExecutionStrategy();
         var tentativas = new TentativasDaTransacao(_dbContext);
-        var momento = NovoMomentoDaRequisicao();
+        // Identidade da operação: aleatória, criada uma vez e reaproveitada nas retentativas da estratégia.
+        var operacaoId = Guid.NewGuid();
+        var momento = DateTimeOffset.UtcNow;
         Guid? agendamentoNotificar = null;
 
         ResultadoConfirmacaoAgente resultado;
@@ -113,10 +115,10 @@ public sealed partial class ServicoAgendamentos
                 if (pendencia.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada)
                 {
                     // Repetição: o webhook do "sim" de novo, ou um segundo "sim". Só quem gravou é "quem confirmou agora" (e deve
-                    // mandar a confirmação): a marca é o instante único desta requisição, gravado em ConcluidaEm. Uma nova tentativa
+                    // mandar a confirmação): a marca é o id aleatório desta operação, gravado em ConfirmacaoOperacaoId. Uma nova tentativa
                     // depois de COMMIT ambíguo se reconhece; outra requisição (mesmo id de mensagem, ou ambos nulos) não.
                     await transacao.RollbackAsync(cancellationToken);
-                    var fuiEu = pendencia.ConcluidaEm?.UtcTicks == momento.UtcTicks;
+                    var fuiEu = pendencia.ConfirmadaPor(operacaoId);
                     if (fuiEu)
                         agendamentoNotificar = pendencia.AgendamentoId;
                     return ResultadoConfirmacaoAgente.Confirmada(pendencia.AgendamentoId, fuiEu);
@@ -169,7 +171,7 @@ public sealed partial class ServicoAgendamentos
                 agendamento.VincularCliente(clienteId.Value);
                 agendamento.RegistrarConsentimentoWhatsApp(momento, VersaoTermos.Atual);
                 agendamento.ConfirmarReserva();
-                pendencia.Confirmar(momento, dados.MensagemConfirmacaoId, VersaoTermos.Atual);
+                pendencia.Confirmar(momento, dados.MensagemConfirmacaoId, VersaoTermos.Atual, operacaoId);
                 conversa.VincularCliente(clienteId.Value);
 
                 if (usaOutbox)

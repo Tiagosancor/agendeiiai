@@ -3337,6 +3337,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("uuid")
                         .HasColumnName("confirmacao_mensagem_id");
 
+                    b.Property<Guid?>("ConfirmacaoOperacaoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmacao_operacao_id");
+
                     b.Property<Guid>("ConversaId")
                         .HasColumnType("uuid")
                         .HasColumnName("conversa_id");

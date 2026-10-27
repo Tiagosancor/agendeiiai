@@ -475,6 +475,62 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Job_expira_pendencia_abandonada_limpa_o_nome_e_libera_o_horario_sem_nova_mensagem()
+    {
+        var c = await _ambiente.SemearAsync();
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+        await VencerAsync(pendente);
+
+        await ExecutarJobAsync();
+
+        var p = await PendenciaAsync(pendente.PendenciaId);
+        p.Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Expirada);
+        p.ConcluidaEm.Should().NotBeNull();
+        p.NomeInformado.Should().BeNull();
+        (await AgendamentoAsync(pendente.AgendamentoId)).Status.Should().Be(StatusAgendamento.Expirado);
+        (await ReservarAsync(c, c.Beto, c.Corte, H(10, 0))).Sucesso.Should().BeTrue("o horário voltou a ficar livre");
+    }
+
+    [Fact]
+    public async Task Job_nao_toca_pendencia_confirmada_nem_ainda_valida_e_isola_os_negocios()
+    {
+        var a = await _ambiente.SemearAsync("Negócio A");
+        var b = await _ambiente.SemearAsync("Negócio B");
+        var vencidaA = await PreparadaAsync(a, Telefone, "Maria", H(10, 0));
+        var validaA = await PreparadaAsync(a, "+5571977776666", "Joana", H(11, 0));
+        var confirmadaB = await PreparadaAsync(b, Telefone, "Maria", H(10, 0));
+        var vencidaB = await PreparadaAsync(b, "+5571966665555", "Ana", H(11, 0));
+        (await ConfirmarAsync(b, confirmadaB.PendenciaId, Telefone, "Maria", Guid.NewGuid())).Sucesso.Should().BeTrue();
+        await VencerAsync(vencidaA);
+        await VencerAsync(vencidaB);
+        await VencerAsync(confirmadaB); // confirmada com prazo vencido: continua intacta
+
+        await ExecutarJobAsync();
+
+        (await PendenciaAsync(vencidaA.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Expirada);
+        (await PendenciaAsync(vencidaB.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Expirada);
+        var valida = await PendenciaAsync(validaA.PendenciaId);
+        valida.Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Aguardando);
+        valida.NomeInformado.Should().Be("Joana");
+        (await AgendamentoAsync(validaA.AgendamentoId)).Status.Should().Be(StatusAgendamento.Reservado);
+        (await PendenciaAsync(confirmadaB.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Confirmada);
+        (await AgendamentoAsync(confirmadaB.AgendamentoId)).Status.Should().Be(StatusAgendamento.Agendado);
+    }
+
+    private Task VencerAsync(Preparada p) => Fabrica.NoBancoAsync(async db =>
+    {
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE pendencias_agendamento_whatsapp SET expira_em = now() - interval '1 minute' WHERE id = {p.PendenciaId}");
+        return 0;
+    });
+
+    private async Task ExecutarJobAsync()
+    {
+        using var escopo = Fabrica.Services.CreateScope();
+        await escopo.ServiceProvider.GetRequiredService<Plataforma.Infraestrutura.Agendamentos.JobExpirarReservas>().ExecutarAsync();
+    }
+
+    [Fact]
     public async Task Reserva_expirada_pelo_prazo_nao_confirma()
     {
         var c = await _ambiente.SemearAsync();

@@ -31,6 +31,7 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     resumo_enviado_em = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
                     confirmacao_mensagem_id = table.Column<Guid>(type: "uuid", nullable: true),
                     concluida_em = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    confirmacao_operacao_id = table.Column<Guid>(type: "uuid", nullable: true),
                     nome_informado = table.Column<string>(type: "character varying(80)", maxLength: 80, nullable: true),
                     versao_termos = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
                     xmin = table.Column<uint>(type: "xid", rowVersion: true, nullable: false),

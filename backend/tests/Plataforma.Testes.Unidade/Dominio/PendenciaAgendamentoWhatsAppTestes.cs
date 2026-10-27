@@ -56,7 +56,7 @@ public sealed class PendenciaAgendamentoWhatsAppTestes
         var sim = Guid.NewGuid();
 
         p.RegistrarResumoEnviado(resumo, Agora.AddSeconds(2));
-        p.Confirmar(Agora.AddMinutes(1), sim, "1.0");
+        p.Confirmar(Agora.AddMinutes(1), sim, "1.0", Guid.NewGuid());
 
         p.Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Confirmada);
         p.ResumoMensagemId.Should().Be(resumo);
@@ -95,7 +95,7 @@ public sealed class PendenciaAgendamentoWhatsAppTestes
         var p = Nova();
         p.Expirar(Agora);
 
-        ((Action)(() => p.Confirmar(Agora, Guid.NewGuid(), "1.0"))).Should().Throw<InvalidOperationException>();
+        ((Action)(() => p.Confirmar(Agora, Guid.NewGuid(), "1.0", Guid.NewGuid()))).Should().Throw<InvalidOperationException>();
         ((Action)(() => p.Recusar(Agora))).Should().Throw<InvalidOperationException>();
         ((Action)(() => p.Substituir(Agora))).Should().Throw<InvalidOperationException>();
         ((Action)(() => p.RegistrarResumoEnviado(Guid.NewGuid(), Agora))).Should().Throw<InvalidOperationException>();
@@ -103,10 +103,24 @@ public sealed class PendenciaAgendamentoWhatsAppTestes
     }
 
     [Fact]
+    public void Duas_operacoes_com_o_mesmo_instante_so_a_vencedora_se_reconhece()
+    {
+        var p = Nova();
+        var vencedora = Guid.NewGuid();
+        var outra = Guid.NewGuid();
+
+        p.Confirmar(Agora, null, "1.0", vencedora);
+
+        p.ConfirmadaPor(vencedora).Should().BeTrue();
+        p.ConfirmadaPor(outra).Should().BeFalse("o instante é o mesmo, mas a operação é outra");
+        p.ConcluidaEm.Should().Be(Agora);
+    }
+
+    [Fact]
     public void Confirmada_nao_volta_atras()
     {
         var p = Nova();
-        p.Confirmar(Agora, null, "1.0");
+        p.Confirmar(Agora, null, "1.0", Guid.NewGuid());
 
         ((Action)(() => p.Expirar(Agora))).Should().Throw<InvalidOperationException>();
         p.Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Confirmada);

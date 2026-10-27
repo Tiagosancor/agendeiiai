@@ -44,6 +44,12 @@ public class PendenciaAgendamentoWhatsApp : EntidadeBase, IEntidadeDoNegocio
 
     public DateTimeOffset? ConcluidaEm { get; private set; }
 
+    /// <summary>
+    /// Identificador ALEATÓRIO da operação que confirmou (gerado antes da estratégia de retentativa e igual em todas as
+    /// tentativas dela). Só quem o conhece se reconhece como "quem confirmou agora"; instantes não servem (podem colidir).
+    /// </summary>
+    public Guid? ConfirmacaoOperacaoId { get; private set; }
+
     /// <summary>Nome que o cliente novo digitou. Apagado assim que a pendência sai de <c>Aguardando</c>.</summary>
     public string? NomeInformado { get; private set; }
 
@@ -83,13 +89,17 @@ public class PendenciaAgendamentoWhatsApp : EntidadeBase, IEntidadeDoNegocio
         ResumoEnviadoEm = em;
     }
 
-    public void Confirmar(DateTimeOffset agora, Guid? confirmacaoMensagemId, string versaoTermos)
+    public void Confirmar(DateTimeOffset agora, Guid? confirmacaoMensagemId, string versaoTermos, Guid operacaoId)
     {
         ExigirAguardando();
         Concluir(StatusPendenciaAgendamentoWhatsApp.Confirmada, agora);
         ConfirmacaoMensagemId = confirmacaoMensagemId;
         VersaoTermos = versaoTermos;
+        ConfirmacaoOperacaoId = operacaoId;
     }
+
+    /// <summary>Foi esta operação que confirmou a pendência?</summary>
+    public bool ConfirmadaPor(Guid operacaoId) => Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && ConfirmacaoOperacaoId == operacaoId;
 
     public void Recusar(DateTimeOffset agora) => Encerrar(StatusPendenciaAgendamentoWhatsApp.Recusada, agora);
 
