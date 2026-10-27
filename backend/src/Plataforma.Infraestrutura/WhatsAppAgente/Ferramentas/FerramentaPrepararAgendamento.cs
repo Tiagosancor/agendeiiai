@@ -153,6 +153,10 @@ public sealed class FerramentaPrepararAgendamento : IFerramentaDeEscritaAgente
             new CriarReservaAgente(profissional.Id, servico.Id, inicio), cancellationToken);
         if (!reserva.Sucesso || reserva.AgendamentoId is null)
         {
+            // O DbContext é o MESMO da rodada: a reserva que perdeu a corrida (exclusion constraint) deixaria o agendamento rejeitado
+            // rastreado, e o próximo SaveChanges (auditoria da ferramenta, mensagens) tentaria inseri-lo de novo.
+            _dbContext.ChangeTracker.Clear();
+
             if (reserva.Conflito)
             {
                 var alternativas = (reserva.ProximosHorariosLivres ?? [])

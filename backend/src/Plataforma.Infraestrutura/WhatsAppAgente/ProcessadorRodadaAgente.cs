@@ -48,14 +48,16 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private readonly OpcoesIa _opcoes;
     private readonly OpcoesMarca _marca;
     private readonly GerenciadorPendenciasAgente _pendencias;
+    private readonly ConfirmadorPendenciaAgente _confirmador;
     private readonly ILogger<ProcessadorRodadaAgente> _logger;
 
     public ProcessadorRodadaAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IRespostaAgente resposta, IClienteEvolution evolution,
         IConsultaSituacaoAssinatura assinatura, LimitadorUsoAgente limitador, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca,
-        GerenciadorPendenciasAgente pendencias, ILogger<ProcessadorRodadaAgente> logger)
+        GerenciadorPendenciasAgente pendencias, ConfirmadorPendenciaAgente confirmador, ILogger<ProcessadorRodadaAgente> logger)
     {
         _pendencias = pendencias;
+        _confirmador = confirmador;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _resposta = resposta;
@@ -233,6 +235,17 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             return;
         }
 
+        // Resposta ao resumo de um agendamento ("sim"/"não"): decidida pelo servidor, sem chamar a IA e antes dos limites de custo.
+        if (_opcoes.AgendamentoAtivoPara(conversa.NegocioId))
+        {
+            var plano = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
+            if (plano is not null)
+            {
+                await TratarRespostaAoResumoAsync(lease, conversa, instancia, plano, ultima, cancellationToken);
+                return;
+            }
+        }
+
         if (_opcoes.Provider == ProvedorIa.Gemini)
         {
             var motivo = await _limitador.VerificarAsync(conversaId, agora, cancellationToken);
@@ -285,8 +298,65 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         if (resposta.PendenciaPreparadaId is { } pendenciaId)
             await EnviarResumoAsync(lease, conversa, instancia, pendenciaId, cancellationToken);
         else if (!string.IsNullOrWhiteSpace(resposta.Texto))
-            await EnviarEGravarAsync(lease, conversa, instancia, resposta.Texto, PapelMensagemWhatsApp.Assistente, null, cancellationToken);
+        {
+            // O aviso de atendimento automatizado vai colado no início da primeira resposta (e de novo a cada N dias).
+            var aviso = await AvisoAutomatizadoPendenteAsync(conversa, instancia, cancellationToken);
+            var texto = aviso is null ? resposta.Texto : aviso + "\n\n" + resposta.Texto;
+            var envio = await EnviarEGravarAsync(lease, conversa, instancia, texto, PapelMensagemWhatsApp.Assistente, null, cancellationToken);
+            if (aviso is not null && envio.Estado == EstadoEnvio.Enviado)
+                await RegistrarAvisoAutomatizadoAsync(conversa.Id);
+        }
     }
+
+    // ---------------------------------------------------------------- confirmação pelo servidor (Fase 3)
+
+    /// <summary>
+    /// Executa o plano do confirmador com o lease conferido ANTES de escrever e DEPOIS, quando se marca o lote como tratado. A
+    /// confirmação em si é idempotente (id aleatório da operação); se o lease se perder entre o commit e o envio, a rodada seguinte
+    /// acha a pendência <c>Confirmada</c> sem a mensagem <c>agendamento_confirmado</c> e só anuncia.
+    /// </summary>
+    private async Task TratarRespostaAoResumoAsync(
+        Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, PlanoConfirmacao plano, DateTimeOffset ultima, CancellationToken cancellationToken)
+    {
+        if (!await RenovarLeaseAsync(lease, cancellationToken))
+            return;
+
+        var mensagem = await _confirmador.ExecutarAsync(plano, conversa, instancia, cancellationToken);
+
+        if (!await RenovarLeaseAsync(lease, cancellationToken))
+            return;
+        if (!await MarcarProcessadaAsync(lease, ultima, cancellationToken))
+            return;
+
+        if (mensagem is not null)
+            await EnviarEGravarAsync(lease, conversa, instancia, mensagem.Texto, PapelMensagemWhatsApp.Sistema, mensagem.Marcador, cancellationToken, mensagem.TextoGravado);
+    }
+
+    // ---------------------------------------------------------------- aviso de atendimento automatizado (Fase 3)
+
+    /// <summary>
+    /// Texto fixo (uma vez por conversa a cada <c>Ai__AvisoAutomatizadoDias</c>) dizendo que o atendimento é automatizado e por IA.
+    /// Só com o agendamento ligado para o negócio; fora disso o comportamento é o da Fase 2.
+    /// </summary>
+    private async Task<string?> AvisoAutomatizadoPendenteAsync(ConversaWhatsApp conversa, InstanciaWhatsApp instancia, CancellationToken cancellationToken)
+    {
+        if (!_opcoes.AgendamentoAtivoPara(conversa.NegocioId))
+            return null;
+        if (conversa.AvisoAutomatizadoEm is { } ultimo && ultimo > DateTimeOffset.UtcNow.AddDays(-_opcoes.AvisoAutomatizadoDias))
+            return null;
+
+        var negocio = await _dbContext.Negocios.AsNoTracking().Where(n => n.Id == conversa.NegocioId)
+            .Select(n => new { n.NomeExibido, Slug = n.Slug.Valor }).FirstOrDefaultAsync(cancellationToken);
+        if (negocio is null)
+            return null;
+
+        return new TextosAgendamentoAgente(ConstrutorUrlPublica.Construir(_marca, negocio.Slug, string.Empty), instancia.Telefone)
+            .AvisoAutomatizado(negocio.NomeExibido);
+    }
+
+    private Task RegistrarAvisoAutomatizadoAsync(Guid conversaId) =>
+        _dbContext.ConversasWhatsApp.Where(c => c.Id == conversaId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.AvisoAutomatizadoEm, (DateTimeOffset?)DateTimeOffset.UtcNow), CancellationToken.None);
 
     // ---------------------------------------------------------------- resumo do agendamento (Fase 3)
 
@@ -311,9 +381,16 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             return;
         }
 
+        var aviso = await AvisoAutomatizadoPendenteAsync(conversa, instancia, cancellationToken);
+        if (aviso is not null)
+            texto = aviso + "\n\n" + texto;
+
         var envio = await EnviarEGravarAsync(
             lease, conversa, instancia, texto, PapelMensagemWhatsApp.Sistema, MarcadoresAgente.Resumo, cancellationToken,
             aoReservar: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
+
+        if (aviso is not null && envio.Estado == EstadoEnvio.Enviado)
+            await RegistrarAvisoAutomatizadoAsync(conversa.Id);
 
         if (envio.Estado is EstadoEnvio.FalhaDefinitiva or EstadoEnvio.SemPrazo)
         {

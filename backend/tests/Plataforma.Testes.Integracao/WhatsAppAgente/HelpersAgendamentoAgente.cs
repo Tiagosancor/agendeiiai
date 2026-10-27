@@ -1,6 +1,14 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Plataforma.Api.Controllers.Painel;
+using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.WhatsAppAgente;
 using Plataforma.Aplicacao.WhatsAppAgente.Ia;
+using Plataforma.Dominio.Usuarios;
+using Plataforma.Infraestrutura.Persistencia;
 using Plataforma.Dominio.Agendamentos;
 using Plataforma.Dominio.WhatsAppAgente;
 using Plataforma.Testes.Integracao.Infraestrutura;
@@ -34,6 +42,59 @@ public static class HelpersAgendamentoAgente
             ? erro.GetString()
             : null;
     }
+
+    /// <summary>
+    /// Faz o modelo pedir <c>preparar_agendamento</c> uma vez e depois só responder "ok". Devolve o erro que ele viu
+    /// (nulo = a rodada terminou na ferramenta, sem nova chamada ao modelo).
+    /// </summary>
+    public static async Task<string?> PrepararAsync(
+        this AmbienteAgente ambiente, CenarioAgente c, string argumentos, string telefone = Tel, string mensagem = "quero agendar")
+    {
+        var antes = ambiente.Provedor.Chamadas;
+        ambiente.Provedor.Roteiro = (_, n) => n == antes + 1 ? ProvedorIaRoteirizado.Chama(("preparar_agendamento", argumentos)) : ProvedorIaRoteirizado.Texto("ok");
+        await ambiente.EnviarAsync(c, mensagem, telefone);
+
+        return ambiente.Provedor.Chamadas == antes + 1 ? null : Erro(ambiente.Provedor.Requisicoes[antes + 1]);
+    }
+
+    /// <summary>Roda a rodada da conversa deste telefone (para ambientes com a fila desligada, onde o webhook só grava).</summary>
+    public static async Task ProcessarConversaAsync(this AmbienteAgente ambiente, string telefone = Tel)
+    {
+        var digitos = new string(telefone.Where(char.IsAsciiDigit).ToArray());
+        var conversa = (await ambiente.ConversasAsync()).Single(x => x.TelefoneCliente.EndsWith(digitos, StringComparison.Ordinal));
+        using var escopo = ambiente.Fabrica.Services.CreateScope();
+        await escopo.ServiceProvider.GetRequiredService<IProcessadorRodadaAgente>().ProcessarAsync(conversa.Id, CancellationToken.None);
+    }
+
+    /// <summary>Cliente HTTP autenticado como Administrador do negócio do cenário (o painel enxerga o que o agente agendou).</summary>
+    public static async Task<HttpClient> AdminAsync(this AmbienteAgente ambiente, CenarioAgente c)
+    {
+        var email = $"admin-{Guid.NewGuid():N}@teste.com";
+        using (var escopo = ambiente.Fabrica.Services.CreateScope())
+        {
+            var db = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
+            var hasher = escopo.ServiceProvider.GetRequiredService<ISenhaHasher>();
+            db.Usuarios.Add(Usuario.Criar(c.NegocioId, "Admin", email, Perfil.Administrador, hasher.Hash(SenhaAdmin)));
+            await db.SaveChangesAsync();
+        }
+
+        using var anonimo = ambiente.Fabrica.CreateClient();
+        var login = await anonimo.PostAsJsonAsync("/painel/auth/login", new RequisicaoLogin(email, SenhaAdmin));
+        login.EnsureSuccessStatusCode();
+        var corpo = await login.Content.ReadFromJsonAsync<RespostaLogin>();
+        var cliente = ambiente.Fabrica.CreateClient();
+        cliente.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", corpo!.AccessToken);
+        return cliente;
+    }
+
+    private const string SenhaAdmin = "SenhaForte!123";
+
+    public static Task DefinirEmailDoProfissionalAsync(this AmbienteAgente ambiente, Guid profissionalId, string email) =>
+        ambiente.NoBancoAsync(async db =>
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE profissionais SET email = {email} WHERE id = {profissionalId}");
+            return 0;
+        });
 
     public static Task<List<PendenciaAgendamentoWhatsApp>> PendenciasAsync(this AmbienteAgente ambiente) =>
         ambiente.NoBancoAsync(db => db.PendenciasAgendamentoWhatsApp.IgnoreQueryFilters().AsNoTracking().OrderBy(p => p.CriadoEm).ToListAsync());

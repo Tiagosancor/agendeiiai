@@ -49,15 +49,8 @@ public sealed class PrepararAgendamentoAgenteTestes : IAsyncLifetime
         await _ambiente.IniciarAsync(config, capturarLogs: logs);
     }
 
-    /// <summary>Faz o modelo pedir <c>preparar_agendamento</c> uma vez e depois só responder "ok". Devolve o erro que ele viu (nulo = rodada encerrada).</summary>
-    private async Task<string?> PrepararAsync(CenarioAgente c, string argumentos, string telefone = Tel, string mensagem = "quero agendar")
-    {
-        var antes = _ambiente.Provedor.Chamadas;
-        _ambiente.Provedor.Roteiro = (_, n) => n == antes + 1 ? Chama(("preparar_agendamento", argumentos)) : Texto("ok");
-        await _ambiente.EnviarAsync(c, mensagem, telefone);
-
-        return _ambiente.Provedor.Chamadas == antes + 1 ? null : Erro(_ambiente.Provedor.Requisicoes[antes + 1]);
-    }
+    private Task<string?> PrepararAsync(CenarioAgente c, string argumentos, string telefone = Tel, string mensagem = "quero agendar") =>
+        _ambiente.PrepararAsync(c, argumentos, telefone, mensagem);
 
     // ---------------------------------------------------------------- caminho feliz do preparo
 
@@ -76,7 +69,7 @@ public sealed class PrepararAgendamentoAgenteTestes : IAsyncLifetime
         await _ambiente.EnviarAsync(c, "quero corte segunda às 10h com a Ana");
 
         Erro(_ambiente.Provedor.Requisicoes[1]).Should().Be("nome_necessario");
-        _ambiente.UltimaEntrega().Should().Be("Qual é o seu nome completo?");
+        _ambiente.UltimaEntrega().Should().EndWith("Qual é o seu nome completo?").And.Contain("atendimento automatizado");
         (await _ambiente.AgendamentosAsync()).Should().BeEmpty("sem nome não há reserva");
 
         await _ambiente.EnviarAsync(c, "Maria Souza");

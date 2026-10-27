@@ -319,6 +319,7 @@ public static class InfraestruturaServiceCollectionExtensions
         // Fase 3: a ferramenta de escrita é registrada sempre, mas só é oferecida/executada com Ai__Agendamento__Modo ligado.
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaPrepararAgendamento>();
         servicos.AddScoped<GerenciadorPendenciasAgente>();
+        servicos.AddScoped<ConfirmadorPendenciaAgente>();
         servicos.AddScoped<IExecutorFerramentasAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.ExecutorFerramentasAgente>();
         servicos.AddSingleton<DisjuntorModeloIa>();
         servicos.AddScoped<RespostaAgenteEco>();
