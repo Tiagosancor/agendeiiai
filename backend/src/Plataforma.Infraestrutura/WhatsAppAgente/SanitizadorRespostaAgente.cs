@@ -105,6 +105,54 @@ public static class SanitizadorRespostaAgente
         return Sanitizar(texto, host, telefonePermitido, 4000) ?? linkPermitido;
     }
 
+    /// <summary>
+    /// Fragmento de cadastro livre (nome de serviço, de profissional, do negócio) que vai DENTRO de um texto montado pelo servidor:
+    /// passa pela mesma barreira sozinho (URL e telefone saem), para que o texto final possa ser montado depois sem que o filtro
+    /// de telefone toque o token do link de gestão. Vazio = nada sobrou.
+    /// </summary>
+    public static string SanitizarFragmento(string? fragmento, string hostPermitido, string? telefonePermitido, int maximo = 100) =>
+        Sanitizar(fragmento, hostPermitido, telefonePermitido, maximo)?.Replace('\n', ' ').Trim() ?? string.Empty;
+
+    private static readonly Regex PromessaDeAgendamento = new(
+        @"\b(?:agendad[oa]s?|agendei|marcad[oa]s?|marquei|confirmad[oa]s?|confirmei|reservad[oa]s?|reservei)\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    /// <summary>Aviso fixo anexado quando o modelo diz que agendou/confirmou sem que isso tenha acontecido (guarda de promessa falsa).</summary>
+    public const string AvisoPromessaFalsa =
+        "Atenção: ainda não há agendamento feito por aqui. Ele só vale depois do resumo e da sua resposta SIM.";
+
+    /// <summary>
+    /// O texto afirma que algo está agendado/marcado/confirmado/reservado? Heurística de palavras (sem acento também). Quem decide se
+    /// a afirmação é falsa é o chamador (houve confirmação recente? preparo nesta rodada?).
+    /// </summary>
+    public static bool AfirmaAgendamento(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+            return false;
+
+        try
+        {
+            return PromessaDeAgendamento.IsMatch(SemAcento(texto));
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return true;
+        }
+    }
+
+    private static string SemAcento(string texto)
+    {
+        var decomposto = texto.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(decomposto.Length);
+        foreach (var c in decomposto)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+
+        return sb.ToString();
+    }
+
     private static bool PermitirLink(string valor, string hostPermitido)
     {
         // Pontuação colada ao fim da frase ("...agendar: https://x.com/.") não faz parte do endereço.
