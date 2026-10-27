@@ -49,11 +49,11 @@ public sealed class OrquestradorAgente : IRespostaAgente
         _logger = logger;
     }
 
-    public async Task<string?> ResponderAsync(ContextoRespostaAgente contexto, CancellationToken cancellationToken = default)
+    public async Task<RespostaAgente> ResponderAsync(ContextoRespostaAgente contexto, CancellationToken cancellationToken = default)
     {
         var negocio = await _dbContext.Negocios.AsNoTracking().FirstOrDefaultAsync(n => n.Id == contexto.NegocioId, cancellationToken);
         if (negocio is null)
-            return null;
+            return new RespostaAgente(null);
 
         var telefoneInstancia = await _dbContext.InstanciasWhatsApp.AsNoTracking()
             .Where(i => i.Id == contexto.InstanciaId).Select(i => i.Telefone).FirstOrDefaultAsync(cancellationToken);
@@ -63,20 +63,43 @@ public sealed class OrquestradorAgente : IRespostaAgente
         // O nome do negócio é cadastro livre: o texto fixo também passa pelo sanitizador (link externo no nome não chega ao cliente).
         var fallback = SanitizadorRespostaAgente.SanitizarTextoFixo(TextoFallback(negocio.NomeExibido, link), link, telefoneInstancia);
 
-        string? bruto;
+        ResultadoModelo? resultado;
         try
         {
-            bruto = await ConversarAsync(contexto, negocio.NomeExibido, negocio.Fuso, link, cancellationToken);
+            resultado = await ConversarAsync(contexto, negocio.NomeExibido, negocio.Fuso, link, cancellationToken);
         }
         catch (Exception excecao) when (excecao is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
             // Qualquer falha inesperada: o cliente não fica sem resposta. Só tipo e IDs no log.
             _logger.LogWarning("Agente: falha ao conversar (conversa {ConversaId}, negócio {NegocioId}): {Tipo}.",
                 contexto.ConversaId, contexto.NegocioId, excecao.GetType().Name);
-            return fallback;
+            return new RespostaAgente(fallback);
         }
 
-        return SanitizadorRespostaAgente.Sanitizar(bruto, hostPermitido, telefoneInstancia, _opcoes.MaxCaracteresResposta) ?? fallback;
+        // Preparou um agendamento nesta rodada: o texto do modelo é DESCARTADO; o servidor envia o resumo.
+        if (resultado?.PendenciaId is { } pendenciaId)
+            return new RespostaAgente(null, pendenciaId);
+
+        var texto = SanitizadorRespostaAgente.Sanitizar(resultado?.Texto, hostPermitido, telefoneInstancia, _opcoes.MaxCaracteresResposta);
+        if (texto is null)
+            return new RespostaAgente(fallback);
+
+        // Guarda de promessa falsa: o modelo não agenda nem confirma; se disse que sim sem confirmação recente, o aviso fixo corrige.
+        if (_opcoes.AgendamentoAtivoPara(contexto.NegocioId) && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
+            && !await ConfirmouRecentementeAsync(contexto.ConversaId, cancellationToken))
+            texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
+
+        return new RespostaAgente(texto);
+    }
+
+    /// <summary>Janela em que uma confirmação real justifica o modelo falar em "agendado".</summary>
+    public static readonly TimeSpan JanelaConfirmacaoRecente = TimeSpan.FromMinutes(15);
+
+    private Task<bool> ConfirmouRecentementeAsync(Guid conversaId, CancellationToken cancellationToken)
+    {
+        var desde = DateTimeOffset.UtcNow - JanelaConfirmacaoRecente;
+        return _dbContext.PendenciasAgendamentoWhatsApp.AsNoTracking().AnyAsync(
+            p => p.ConversaId == conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde, cancellationToken);
     }
 
     /// <summary>Texto fixo (nosso, não do modelo) para qualquer falha: leva o cliente ao link público.</summary>
@@ -90,32 +113,36 @@ public sealed class OrquestradorAgente : IRespostaAgente
     /// DO ZERO com o histórico original: o <c>thoughtSignature</c> pertence ao modelo que o gerou e os turnos de ferramenta dele
     /// (com as assinaturas) não passam para a reserva. Ferramentas são só leitura, então executá-las de novo é seguro.
     /// </summary>
-    private async Task<string?> ConversarAsync(
+    private async Task<ResultadoModelo?> ConversarAsync(
         ContextoRespostaAgente contexto, string nomeNegocio, string fuso, string link, CancellationToken cancellationToken)
     {
         var relogio = Stopwatch.StartNew();
         var orcamento = TimeSpan.FromSeconds(_opcoes.TempoMaximoProcessamentoSegundos);
         var agoraLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(fuso));
 
-        var prompt = ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link);
-        var historico = await MontarHistoricoAsync(contexto.ConversaId, contexto.LimiteHistorico, cancellationToken);
+        // Agendamento ligado (Gemini + piloto + modo): prompt v2 e a ferramenta de preparar. Desligado: prompt v1 e as 3 de leitura, como na Fase 2.
+        var agendamentoLigado = _opcoes.AgendamentoAtivoPara(contexto.NegocioId);
+        var prompt = agendamentoLigado
+            ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link)
+            : ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link);
+        var historico = await MontarHistoricoAsync(contexto.ConversaId, contexto.LimiteHistorico, agendamentoLigado, cancellationToken);
         if (historico.Count == 0)
             return null;
 
-        var ferramentas = _executor.Ferramentas
+        var ferramentas = _executor.FerramentasPara(contexto.NegocioId)
             .Select(f => new AiFerramenta(f.Nome, f.Descricao, f.Esquema)).ToList();
         var contextoConversa = new ContextoConversaAgente(contexto.NegocioId, contexto.InstanciaId, contexto.ConversaId);
 
         var reserva = _opcoes.Gemini.TemModeloReserva ? _opcoes.Gemini.ModeloReserva!.Trim() : null;
         if (reserva is null)
-            return (await RodarModeloAsync(contexto, null, historico, prompt, ferramentas, contextoConversa, relogio, orcamento, cancellationToken)).Texto;
+            return await RodarModeloAsync(contexto, null, historico, prompt, ferramentas, contextoConversa, relogio, orcamento, cancellationToken);
 
         if (!_disjuntor.Aberto(contexto.NegocioId, DateTimeOffset.UtcNow))
         {
             var principal = await RodarModeloAsync(contexto, null, historico, prompt, ferramentas, contextoConversa, relogio,
                 orcamento * FracaoDoOrcamentoDoPrincipal, cancellationToken);
             if (!principal.FalhaDeCapacidade)
-                return principal.Texto;
+                return principal;
 
             _disjuntor.Abrir(contexto.NegocioId, DateTimeOffset.UtcNow);
             if (relogio.Elapsed >= orcamento)
@@ -136,10 +163,10 @@ public sealed class OrquestradorAgente : IRespostaAgente
             _logger.LogInformation("Agente: disjuntor do modelo principal aberto; direto ao de reserva {Reserva} (conversa {ConversaId}).", reserva, contexto.ConversaId);
         }
 
-        return (await RodarModeloAsync(contexto, reserva, historico, prompt, ferramentas, contextoConversa, relogio, orcamento, cancellationToken)).Texto;
+        return await RodarModeloAsync(contexto, reserva, historico, prompt, ferramentas, contextoConversa, relogio, orcamento, cancellationToken);
     }
 
-    private sealed record ResultadoModelo(string? Texto, bool FalhaDeCapacidade);
+    private sealed record ResultadoModelo(string? Texto, bool FalhaDeCapacidade, Guid? PendenciaId = null);
 
     /// <summary>
     /// Laço de ferramentas de UM modelo (<paramref name="modelo"/> nulo = o principal), até <paramref name="fim"/> (tempo decorrido
@@ -151,6 +178,9 @@ public sealed class OrquestradorAgente : IRespostaAgente
     {
         var mensagens = historico;
         var modeloRegistrado = modelo ?? _opcoes.Gemini.Model;
+        // Ferramenta de escrita: no máximo UMA execução por rodada deste modelo (a volta seguinte e o laço não repetem o preparo).
+        var preparosExecutados = 0;
+        Guid? pendenciaPreparada = null;
         for (var iteracao = 1; iteracao <= _opcoes.MaxIteracoesFerramentas; iteracao++)
         {
             var restante = fim - relogio.Elapsed;
@@ -219,11 +249,20 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 {
                     conteudo = Ferramentas.RespostaFerramenta.Erro(Ferramentas.ErrosFerramenta.LimiteChamadas);
                 }
+                else if (EhFerramentaDeEscrita(chamada.Nome) && preparosExecutados >= 1)
+                {
+                    conteudo = Ferramentas.RespostaFerramenta.Erro(Ferramentas.ErrosFerramenta.LimiteChamadas);
+                }
                 else
                 {
+                    if (EhFerramentaDeEscrita(chamada.Nome))
+                        preparosExecutados++;
+
                     try
                     {
-                        conteudo = await _executor.ExecutarAsync(contextoConversa, chamada.Nome, chamada.Argumentos, limite.Token);
+                        var executada = await _executor.ExecutarComSinalAsync(contextoConversa, chamada.Nome, chamada.Argumentos, limite.Token);
+                        conteudo = executada.Conteudo;
+                        pendenciaPreparada ??= executada.PendenciaPreparadaId;
                     }
                     catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                     {
@@ -242,18 +281,42 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 resultados.Add(new AiMensagem(PapelIa.Ferramenta, Resultado: new AiResultadoFerramenta(chamada.Nome, conteudo)));
                 auditoria.Add(new MensagemWhatsApp(
                     contexto.NegocioId, contexto.InstanciaId, contexto.ConversaId, null, PapelMensagemWhatsApp.Ferramenta,
-                    Truncar(chamada.Argumentos.ValueKind == JsonValueKind.Undefined ? "{}" : chamada.Argumentos.GetRawText(), MaximoConteudoFerramentaAuditoria),
+                    Truncar(ArgumentosParaAuditoria(chamada), MaximoConteudoFerramentaAuditoria),
                     NomeSeguro(chamada.Nome, ferramentas)));
             }
 
             _dbContext.MensagensWhatsApp.AddRange(auditoria);
             await _dbContext.SaveChangesAsync(cancellationToken);
 
+            // Preparou o agendamento: a rodada TERMINA aqui, sem nova volta ao modelo. O servidor envia o resumo.
+            if (pendenciaPreparada is not null)
+                return new ResultadoModelo(null, false, pendenciaPreparada);
+
             // Resultado de ferramenta só vive dentro desta rodada: não é reenviado em rodadas futuras.
             mensagens = [.. mensagens, new AiMensagem(PapelIa.Modelo, resposta.Texto, resposta.Chamadas), .. resultados];
         }
 
         return new ResultadoModelo(null, false);
+    }
+
+    private bool EhFerramentaDeEscrita(string? nome) =>
+        nome is not null && _executor.Ferramentas.Any(f => f is IFerramentaDeEscritaAgente && string.Equals(f.Nome, nome, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Argumentos que ficam salvos para auditoria. Da ferramenta de escrita sai o <c>nome_cliente</c>: o nome digitado pelo cliente novo
+    /// não deve sobreviver ao fim da pendência (ele já está, como mensagem, no histórico da própria conversa).
+    /// </summary>
+    private string ArgumentosParaAuditoria(AiChamadaFerramenta chamada)
+    {
+        if (chamada.Argumentos.ValueKind == JsonValueKind.Undefined)
+            return "{}";
+
+        if (!EhFerramentaDeEscrita(chamada.Nome) || chamada.Argumentos.ValueKind != JsonValueKind.Object)
+            return chamada.Argumentos.GetRawText();
+
+        var campos = chamada.Argumentos.EnumerateObject()
+            .Select(p => p.Name == "nome_cliente" ? $"\"nome_cliente\":\"[omitido]\"" : $"{JsonSerializer.Serialize(p.Name)}:{p.Value.GetRawText()}");
+        return "{" + string.Join(',', campos) + "}";
     }
 
     private async Task RegistrarUsoAsync(ContextoRespostaAgente contexto, string modelo, int entrada, int saida, bool sucesso, CancellationToken cancellationToken)
@@ -266,11 +329,17 @@ public sealed class OrquestradorAgente : IRespostaAgente
     /// Últimas mensagens de usuário/assistente DESTA conversa, truncadas e limitadas em quantidade e em caracteres; turnos
     /// seguidos do mesmo papel viram um só e o histórico sempre começa por uma fala do cliente.
     /// </summary>
-    private async Task<List<AiMensagem>> MontarHistoricoAsync(Guid conversaId, DateTimeOffset? limiteSuperior, CancellationToken cancellationToken)
+    private async Task<List<AiMensagem>> MontarHistoricoAsync(
+        Guid conversaId, DateTimeOffset? limiteSuperior, bool incluirMarcadoresDeAgendamento, CancellationToken cancellationToken)
     {
+        // Com o agendamento ligado, o resumo e os desfechos que o SERVIDOR enviou entram como turnos do modelo (a confirmação já
+        // está sem o link de gestão: o token nunca é persistido nem vai à IA). O aviso de limite continua de fora.
+        var marcadores = MarcadoresAgente.DoHistorico;
         var recentes = await _dbContext.MensagensWhatsApp.AsNoTracking()
             .Where(m => m.ConversaId == conversaId
-                && (m.Papel == PapelMensagemWhatsApp.Usuario || m.Papel == PapelMensagemWhatsApp.Assistente)
+                && (m.Papel == PapelMensagemWhatsApp.Usuario || m.Papel == PapelMensagemWhatsApp.Assistente
+                    || (incluirMarcadoresDeAgendamento && m.Papel == PapelMensagemWhatsApp.Sistema
+                        && m.NomeFerramenta != null && marcadores.Contains(m.NomeFerramenta)))
                 && (limiteSuperior == null || m.CriadoEm <= limiteSuperior))
             .OrderByDescending(m => m.CriadoEm)
             .Take(_opcoes.MaxMensagensHistorico)

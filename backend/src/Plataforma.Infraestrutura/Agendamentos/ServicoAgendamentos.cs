@@ -35,7 +35,7 @@ namespace Plataforma.Infraestrutura.Agendamentos;
 /// </summary>
 public sealed partial class ServicoAgendamentos : IServicoAgendamentos
 {
-    private static readonly TimeSpan DuracaoDaReserva = TimeSpan.FromMinutes(10);
+    internal static readonly TimeSpan DuracaoDaReserva = TimeSpan.FromMinutes(10);
 
     private const int TamanhoMaximoMotivo = 500;
 

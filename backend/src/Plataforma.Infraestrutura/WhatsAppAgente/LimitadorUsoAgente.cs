@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Plataforma.Dominio.Agendamentos;
+using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.WhatsAppAgente;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
@@ -13,6 +15,15 @@ public enum MotivoLimiteAgente
     TelefonePorDia = 2,
     NegocioPorDia = 3,
     CotaMensal = 4,
+}
+
+public enum MotivoLimiteEscrita
+{
+    Nenhum = 0,
+    PreparosPorDia = 1,
+    FuturosPorTelefone = 2,
+    ConfirmacoesPorDia = 3,
+    ReservasAtivasNegocio = 4,
 }
 
 /// <summary>
@@ -69,6 +80,51 @@ public sealed class LimitadorUsoAgente
             return MotivoLimiteAgente.CotaMensal;
 
         return MotivoLimiteAgente.Nenhum;
+    }
+
+    /// <summary>
+    /// Limites de ESCRITA (Fase 3), chamados pela ferramenta de preparar agendamento ANTES de reservar: preparos por telefone no dia,
+    /// agendamentos futuros de origem WhatsApp do telefone, confirmações por telefone no dia e reservas ativas do agente no negócio.
+    /// Contados no Postgres sob o filtro global (só o negócio do contexto). São "macios" sob concorrência extrema; o rígido
+    /// (uma pendência por conversa) é o índice único parcial. Dia = dia UTC, como os demais limites.
+    /// </summary>
+    public async Task<MotivoLimiteEscrita> VerificarEscritaAsync(
+        Guid conversaId, TelefoneE164 telefone, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        var limites = _opcoes.Agendamento;
+        var inicioDoDia = new DateTimeOffset(agora.UtcDateTime.Date, TimeSpan.Zero);
+
+        // Uma conversa = um telefone numa instância (uma instância por negócio): contar por conversa é contar por telefone.
+        var daConversa = _dbContext.PendenciasAgendamentoWhatsApp.AsNoTracking().Where(p => p.ConversaId == conversaId);
+
+        if (await daConversa.CountAsync(p => p.CriadoEm >= inicioDoDia, cancellationToken) >= limites.LimitePreparosPorTelefonePorDia)
+            return MotivoLimiteEscrita.PreparosPorDia;
+
+        if (await daConversa.CountAsync(
+                p => p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= inicioDoDia, cancellationToken)
+            >= limites.LimiteConfirmacoesPorTelefonePorDia)
+            return MotivoLimiteEscrita.ConfirmacoesPorDia;
+
+        // A reserva desta própria conversa será substituída pelo preparo novo, então não conta.
+        if (await _dbContext.PendenciasAgendamentoWhatsApp.AsNoTracking().CountAsync(
+                p => p.ConversaId != conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando && p.ExpiraEm > agora,
+                cancellationToken) >= limites.LimiteReservasAtivasPorNegocio)
+            return MotivoLimiteEscrita.ReservasAtivasNegocio;
+
+        var clienteIds = new List<Guid>();
+        foreach (var forma in telefone.FormasEquivalentes())
+        {
+            clienteIds.AddRange(await _dbContext.Clientes.AsNoTracking()
+                .Where(c => c.Telefone == forma).Select(c => c.Id).ToListAsync(cancellationToken));
+        }
+
+        if (clienteIds.Count > 0
+            && await _dbContext.Agendamentos.AsNoTracking().CountAsync(
+                a => a.Origem == OrigemAgendamento.WhatsApp && a.Status == StatusAgendamento.Agendado && a.Inicio > agora
+                    && a.ClienteId != null && clienteIds.Contains(a.ClienteId.Value), cancellationToken) >= limites.LimiteFuturosPorTelefone)
+            return MotivoLimiteEscrita.FuturosPorTelefone;
+
+        return MotivoLimiteEscrita.Nenhum;
     }
 
     /// <summary>

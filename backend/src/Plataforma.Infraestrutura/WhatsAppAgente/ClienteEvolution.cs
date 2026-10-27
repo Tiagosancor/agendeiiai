@@ -146,7 +146,7 @@ public sealed class ClienteEvolution : IClienteEvolution
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning("Evolution API não respondeu em {Segundos} s ({Operacao}).", _opcoes.TimeoutSegundos, operacao);
-            throw new FalhaEvolutionException("A Evolution não respondeu a tempo.");
+            throw new FalhaEvolutionException("A Evolution não respondeu a tempo.", ambigua: true);
         }
         catch (HttpRequestException excecao)
         {

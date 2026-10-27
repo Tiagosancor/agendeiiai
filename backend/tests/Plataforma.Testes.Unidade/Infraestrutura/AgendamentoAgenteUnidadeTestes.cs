@@ -267,3 +267,86 @@ public sealed class MinimizadorComDatasEHorasTestes
     public void Datas_e_horas_do_pedido_de_agendamento_sao_preservadas(string texto) =>
         MinimizadorDadosPessoais.Minimizar(texto).Should().Be(texto);
 }
+
+public sealed class FerramentaDeEscritaNoExecutorTestes
+{
+    private static readonly Guid Negocio = Guid.NewGuid();
+    private static readonly Plataforma.Aplicacao.WhatsAppAgente.ContextoConversaAgente Contexto = new(Negocio, Guid.NewGuid(), Guid.NewGuid());
+
+    private sealed class Contexto_(Guid id) : Plataforma.Aplicacao.Abstracoes.IContextoNegocio
+    {
+        public Guid? NegocioId => id;
+
+        public bool TemNegocio => true;
+
+        public void Definir(Guid novo) => throw new NotSupportedException();
+    }
+
+    private sealed class Escrita : Plataforma.Aplicacao.WhatsAppAgente.IFerramentaDeEscritaAgente
+    {
+        public string Nome => "preparar_agendamento";
+
+        public string Descricao => "x";
+
+        public JsonElement Esquema => default;
+
+        public Task<JsonElement> ExecutarAsync(Plataforma.Aplicacao.WhatsAppAgente.ContextoConversaAgente contexto, JsonElement argumentos, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("nao deveria chamar");
+
+        public Task<Plataforma.Aplicacao.WhatsAppAgente.ResultadoFerramentaAgente> ExecutarComSinalAsync(
+            Plataforma.Aplicacao.WhatsAppAgente.ContextoConversaAgente contexto, JsonElement argumentos, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Plataforma.Aplicacao.WhatsAppAgente.ResultadoFerramentaAgente(JsonDocument.Parse("{\"ok\":true}").RootElement.Clone(), Guid.NewGuid()));
+    }
+
+    private static Microsoft.Extensions.Options.IOptions<Plataforma.Infraestrutura.Opcoes.OpcoesIa> Opcoes(
+        Plataforma.Infraestrutura.Opcoes.ProvedorIa provedor, Plataforma.Infraestrutura.Opcoes.ModoAgendamentoAgente modo) =>
+        Microsoft.Extensions.Options.Options.Create(new Plataforma.Infraestrutura.Opcoes.OpcoesIa { Provider = provedor, Agendamento = { Modo = modo } });
+
+    [Fact]
+    public async Task Sem_o_modo_ligado_a_ferramenta_de_escrita_nao_e_oferecida_nem_executa()
+    {
+        foreach (var opcoes in new[]
+                 {
+                     null,
+                     Opcoes(Plataforma.Infraestrutura.Opcoes.ProvedorIa.Gemini, Plataforma.Infraestrutura.Opcoes.ModoAgendamentoAgente.Desligado),
+                     Opcoes(Plataforma.Infraestrutura.Opcoes.ProvedorIa.Gemini, Plataforma.Infraestrutura.Opcoes.ModoAgendamentoAgente.Piloto),
+                     Opcoes(Plataforma.Infraestrutura.Opcoes.ProvedorIa.Eco, Plataforma.Infraestrutura.Opcoes.ModoAgendamentoAgente.Todos),
+                 })
+        {
+            var executor = new ExecutorFerramentasAgente(
+                [new Escrita()], new Contexto_(Negocio), Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutorFerramentasAgente>.Instance, opcoes);
+
+            executor.FerramentasPara(Negocio).Should().BeEmpty();
+            var resultado = await executor.ExecutarComSinalAsync(Contexto, "preparar_agendamento", JsonDocument.Parse("{}").RootElement);
+            resultado.Conteudo.GetProperty("erro").GetString().Should().Be("ferramenta_desconhecida");
+            resultado.PendenciaPreparadaId.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public async Task Com_Gemini_e_modo_todos_a_ferramenta_e_oferecida_e_devolve_o_sinal_da_pendencia()
+    {
+        var executor = new ExecutorFerramentasAgente(
+            [new Escrita()], new Contexto_(Negocio), Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutorFerramentasAgente>.Instance,
+            Opcoes(Plataforma.Infraestrutura.Opcoes.ProvedorIa.Gemini, Plataforma.Infraestrutura.Opcoes.ModoAgendamentoAgente.Todos));
+
+        executor.FerramentasPara(Negocio).Should().ContainSingle();
+        var resultado = await executor.ExecutarComSinalAsync(Contexto, "preparar_agendamento", JsonDocument.Parse("{}").RootElement);
+        resultado.PendenciaPreparadaId.Should().NotBeNull();
+        // O sinal nunca faz parte do que o modelo vê.
+        resultado.Conteudo.GetRawText().Should().NotContain(resultado.PendenciaPreparadaId.ToString()!);
+    }
+
+    [Fact]
+    public void Esquema_da_ferramenta_nao_tem_negocio_telefone_cliente_nem_forcar_e_proibe_campos_extras()
+    {
+        var ferramenta = new FerramentaPrepararAgendamento(null!, null!, null!, null!, null!, null!, null!, null!,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<FerramentaPrepararAgendamento>.Instance);
+
+        var bruto = ferramenta.Esquema.GetRawText();
+        bruto.Should().NotContain("negocio").And.NotContain("telefone").And.NotContain("conversa").And.NotContain("forcar").And.NotContain("cliente_id");
+        ferramenta.Esquema.GetProperty("additionalProperties").GetBoolean().Should().BeFalse();
+        ferramenta.Esquema.GetProperty("required").EnumerateArray().Select(e => e.GetString())
+            .Should().BeEquivalentTo("servico_id", "profissional_id", "data", "hora");
+    }
+}

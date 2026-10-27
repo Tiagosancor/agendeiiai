@@ -24,10 +24,28 @@ public interface IFerramentaAgente
     Task<JsonElement> ExecutarAsync(ContextoConversaAgente contexto, JsonElement argumentos, CancellationToken cancellationToken = default);
 }
 
+/// <summary>Resultado de uma ferramenta mais o sinal para o servidor. O sinal nunca vai ao modelo.</summary>
+public sealed record ResultadoFerramentaAgente(JsonElement Conteudo, Guid? PendenciaPreparadaId = null);
+
+/// <summary>
+/// Ferramenta que ESCREVE (Fase 3: só prepara um agendamento, nunca o confirma). Só é oferecida ao modelo e só executa quando o
+/// agendamento pelo agente está ligado para o negócio. Preparar com sucesso devolve a pendência: a rodada termina e o servidor
+/// envia o resumo.
+/// </summary>
+public interface IFerramentaDeEscritaAgente : IFerramentaAgente
+{
+    Task<ResultadoFerramentaAgente> ExecutarComSinalAsync(ContextoConversaAgente contexto, JsonElement argumentos, CancellationToken cancellationToken = default);
+}
+
 /// <summary>Executa uma ferramenta pelo nome, validando contexto e argumentos. Nunca lança por entrada do modelo.</summary>
 public interface IExecutorFerramentasAgente
 {
     IReadOnlyList<IFerramentaAgente> Ferramentas { get; }
+
+    /// <summary>O catálogo oferecido ao modelo neste negócio: as de leitura sempre; as de escrita só com o agendamento ligado.</summary>
+    IReadOnlyList<IFerramentaAgente> FerramentasPara(Guid negocioId);
+
+    Task<ResultadoFerramentaAgente> ExecutarComSinalAsync(ContextoConversaAgente contexto, string nome, JsonElement argumentos, CancellationToken cancellationToken = default);
 
     Task<JsonElement> ExecutarAsync(ContextoConversaAgente contexto, string nome, JsonElement argumentos, CancellationToken cancellationToken = default);
 }

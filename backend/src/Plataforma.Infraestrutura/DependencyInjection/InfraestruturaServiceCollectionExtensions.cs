@@ -316,6 +316,9 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaListarServicos>();
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaListarProfissionais>();
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaConsultarHorarios>();
+        // Fase 3: a ferramenta de escrita é registrada sempre, mas só é oferecida/executada com Ai__Agendamento__Modo ligado.
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaPrepararAgendamento>();
+        servicos.AddScoped<GerenciadorPendenciasAgente>();
         servicos.AddScoped<IExecutorFerramentasAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.ExecutorFerramentasAgente>();
         servicos.AddSingleton<DisjuntorModeloIa>();
         servicos.AddScoped<RespostaAgenteEco>();
