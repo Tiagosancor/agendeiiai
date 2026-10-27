@@ -750,6 +750,83 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Nome_invalido_com_cliente_existente_confirma_e_o_cadastro_nao_muda()
+    {
+        var c = await _ambiente.SemearAsync();
+        var existente = await Fabrica.NoBancoAsync(async db =>
+        {
+            var cli = Cliente.Criar(c.NegocioId, "Maria Antiga", TelefoneE164.Criar(Telefone));
+            db.Clientes.Add(cli);
+            await db.SaveChangesAsync();
+            return cli.Id;
+        });
+        var pendente = await PreparadaAsync(c, Telefone, "Maria 2", H(10, 0));
+
+        var r = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, "<b>x</b>", Guid.NewGuid());
+
+        r.Sucesso.Should().BeTrue();
+        (await AgendamentoAsync(pendente.AgendamentoId)).ClienteId.Should().Be(existente);
+        (await ClientesAsync(c.NegocioId)).Should().ContainSingle().Which.Nome.Should().Be("Maria Antiga");
+    }
+
+    [Fact]
+    public async Task Nome_invalido_na_repeticao_ja_confirmada_devolve_o_resultado_idempotente()
+    {
+        var c = await _ambiente.SemearAsync();
+        var pendente = await PreparadaAsync(c, Telefone, "Maria", H(10, 0));
+        (await ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, Guid.NewGuid())).ConfirmadaAgora.Should().BeTrue();
+
+        var repetida = await ConfirmarAsync(c, pendente.PendenciaId, Telefone, "www.golpe.com", Guid.NewGuid());
+
+        repetida.Sucesso.Should().BeTrue();
+        repetida.ConfirmadaAgora.Should().BeFalse();
+        repetida.AgendamentoId.Should().Be(pendente.AgendamentoId);
+        (await ClientesAsync(c.NegocioId)).Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Espera_pela_trava_do_cliente_que_atravessa_o_prazo_nao_confirma_e_libera_a_reserva()
+    {
+        var c = await _ambiente.SemearAsync();
+        var cliente = await Fabrica.NoBancoAsync(async db =>
+        {
+            var cli = Cliente.Criar(c.NegocioId, "Maria Antiga", TelefoneE164.Criar(Telefone));
+            db.Clientes.Add(cli);
+            await db.SaveChangesAsync();
+            return cli.Id;
+        });
+        var pendente = await PreparadaAsync(c, Telefone, null, H(10, 0));
+        await Fabrica.NoBancoAsync(async db =>
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE pendencias_agendamento_whatsapp SET expira_em = now() + interval '3 seconds' WHERE id = {pendente.PendenciaId}");
+            return 0;
+        });
+
+        // Outra transação segura a linha do CLIENTE até passar do prazo (as demais checagens já tinham passado).
+        using var escopoTrava = Fabrica.Services.CreateScope();
+        var dbTrava = escopoTrava.ServiceProvider.GetRequiredService<PlataformaDbContext>();
+        await using (var trava = await dbTrava.Database.BeginTransactionAsync())
+        {
+            await dbTrava.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM clientes WHERE id = {cliente} FOR UPDATE");
+
+            var tarefa = ConfirmarAsync(c, pendente.PendenciaId, Telefone, null, Guid.NewGuid());
+            await Task.Delay(TimeSpan.FromSeconds(4.5));
+            tarefa.IsCompleted.Should().BeFalse("está esperando a trava do cliente");
+            await trava.CommitAsync();
+
+            var r = await tarefa;
+            r.Sucesso.Should().BeFalse();
+            r.Motivo.Should().Be(MotivoRecusaConfirmacaoAgente.Expirada);
+        }
+
+        var agendamento = await AgendamentoAsync(pendente.AgendamentoId);
+        agendamento.Status.Should().Be(StatusAgendamento.Expirado);
+        agendamento.ClienteId.Should().BeNull();
+        (await PendenciaAsync(pendente.PendenciaId)).Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Expirada);
+    }
+
+    [Fact]
     public async Task Reserva_e_confirmacao_publicas_continuam_com_origem_link_publico()
     {
         var c = await _ambiente.SemearAsync();

@@ -69,9 +69,8 @@ public sealed partial class ServicoAgendamentos
         if (!TelefoneE164.TentarCriar(dados.TelefoneConversa, out var telefone) || telefone is null)
             return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.NaoEncontrada);
 
-        // Nome informado agora: a regra de domínio vale aqui também, não só na ferramenta (nada é gravado se for inválido).
-        if (!string.IsNullOrWhiteSpace(dados.NomeInformado) && !NomeClienteWhatsApp.EhValido(dados.NomeInformado))
-            return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.NomeInvalido);
+        // O nome só vale para cliente NOVO: é validado em IdentificarOuCriarClienteDoAgenteAsync, quando de fato for criar o
+        // cadastro (cliente existente e repetição já confirmada ignoram o nome do pedido, mesmo inválido).
 
         // Assinatura suspensa: nada é gravado e o agente fica em silêncio (a reserva expira sozinha). Lida fora da transação.
         if (await _assinaturas.ObterAsync(negocioId, cancellationToken) is { PermiteOperar: false })
@@ -187,11 +186,22 @@ public sealed partial class ServicoAgendamentos
                     return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.Encerrada);
                 }
 
+                // A trava do cliente pode ter esperado outra transação e atravessado o prazo: novo instante, e o prazo, a reserva e o
+                // horário são reconferidos antes de vincular e confirmar (vencido: expira a pendência e libera a reserva).
+                var agoraFinal = DateTimeOffset.UtcNow;
+                if (pendencia.Vencida(agoraFinal) || agendamento.ReservadoAte < agoraFinal || agendamento.Inicio <= agoraFinal)
+                {
+                    pendencia.Expirar(agoraFinal);
+                    agendamento.Expirar();
+                    await SalvarEEncerrarAsync(transacao, cancellationToken);
+                    return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.Expirada);
+                }
+
                 var clienteId = clienteEscolhido.Id;
                 agendamento.VincularCliente(clienteId);
-                agendamento.RegistrarConsentimentoWhatsApp(momento, VersaoTermos.Atual);
+                agendamento.RegistrarConsentimentoWhatsApp(agoraFinal, VersaoTermos.Atual);
                 agendamento.ConfirmarReserva();
-                pendencia.Confirmar(momento, dados.MensagemConfirmacaoId, VersaoTermos.Atual, operacaoId);
+                pendencia.Confirmar(agoraFinal, dados.MensagemConfirmacaoId, VersaoTermos.Atual, operacaoId);
                 conversa.VincularCliente(clienteId);
 
                 if (usaOutbox)
