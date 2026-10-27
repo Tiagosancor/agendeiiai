@@ -12,5 +12,11 @@ public static class MarcadoresAgente
     public const string NaoConfirmado = "agendamento_nao_confirmado";
     public const string PrazoPassou = "agendamento_prazo_passou";
 
+    /// <summary>
+    /// Nota de contexto das ferramentas de consulta (<see cref="NotaContextoAgente"/>): vai ao histórico do modelo como turno em texto,
+    /// fora da contagem de mensagens, e NUNCA ao cliente. Não está em <see cref="DoHistorico"/>: tem tratamento próprio.
+    /// </summary>
+    public const string ContextoConsulta = "contexto_consulta";
+
     public static readonly string[] DoHistorico = [Resumo, Confirmado, NaoConfirmado, PrazoPassou];
 }

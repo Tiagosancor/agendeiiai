@@ -32,6 +32,9 @@ public sealed class OrquestradorAgente : IRespostaAgente
     private readonly LimitadorUsoAgente _limitador;
     private readonly DisjuntorModeloIa _disjuntor;
 
+    /// <summary>Consultas de ferramenta da rodada (do último modelo que rodou); viram a nota de contexto. O orquestrador é por escopo/rodada.</summary>
+    private readonly List<ConsultaDaRodada> _consultasDaRodada = [];
+
     /// <summary>Fatia do orçamento de tempo que o modelo principal pode gastar quando há reserva (o resto é da reserva).</summary>
     private const double FracaoDoOrcamentoDoPrincipal = 0.6;
 
@@ -73,8 +76,11 @@ public sealed class OrquestradorAgente : IRespostaAgente
             // Qualquer falha inesperada: o cliente não fica sem resposta. Só tipo e IDs no log.
             _logger.LogWarning("Agente: falha ao conversar (conversa {ConversaId}, negócio {NegocioId}): {Tipo}.",
                 contexto.ConversaId, contexto.NegocioId, excecao.GetType().Name);
+            await GravarNotaContextoAsync(contexto, cancellationToken);
             return new RespostaAgente(fallback);
         }
+
+        await GravarNotaContextoAsync(contexto, cancellationToken);
 
         // Preparou um agendamento nesta rodada: o texto do modelo é DESCARTADO; o servidor envia o resumo.
         if (resultado?.PendenciaId is { } pendenciaId)
@@ -90,6 +96,33 @@ public sealed class OrquestradorAgente : IRespostaAgente
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
 
         return new RespostaAgente(texto);
+    }
+
+    /// <summary>
+    /// Grava a nota de contexto (mensagem <c>Sistema</c>, só histórico do modelo) com o que as ferramentas de consulta devolveram nesta
+    /// rodada. Falha ao gravar nunca derruba a resposta: a nota é só uma ajuda de memória.
+    /// </summary>
+    private async Task GravarNotaContextoAsync(ContextoRespostaAgente contexto, CancellationToken cancellationToken)
+    {
+        if (_consultasDaRodada.Count == 0)
+            return;
+
+        try
+        {
+            var nota = NotaContextoAgente.Montar(_consultasDaRodada);
+            if (nota is null)
+                return;
+
+            _dbContext.MensagensWhatsApp.Add(new MensagemWhatsApp(
+                contexto.NegocioId, contexto.InstanciaId, contexto.ConversaId, null, PapelMensagemWhatsApp.Sistema, nota,
+                MarcadoresAgente.ContextoConsulta));
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception excecao) when (excecao is not OperationCanceledException)
+        {
+            _logger.LogWarning("Agente: não foi possível gravar a nota de contexto (conversa {ConversaId}): {Tipo}.",
+                contexto.ConversaId, excecao.GetType().Name);
+        }
     }
 
     /// <summary>Janela em que uma confirmação real justifica o modelo falar em "agendado".</summary>
@@ -177,6 +210,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
         ContextoConversaAgente contextoConversa, Stopwatch relogio, TimeSpan fim, CancellationToken cancellationToken)
     {
         var mensagens = historico;
+        _consultasDaRodada.Clear();
         var modeloRegistrado = modelo ?? _opcoes.Gemini.Model;
         // Ferramenta de escrita: no máximo UMA execução por rodada deste modelo (a volta seguinte e o laço não repetem o preparo).
         var preparosExecutados = 0;
@@ -285,6 +319,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
                     {
                         var executada = await _executor.ExecutarComSinalAsync(contextoConversa, chamada.Nome, chamada.Argumentos, limite.Token);
                         conteudo = executada.Conteudo;
+                        _consultasDaRodada.Add(new ConsultaDaRodada(chamada.Nome ?? string.Empty, chamada.Argumentos, conteudo));
                         pendenciaPreparada ??= executada.PendenciaPreparadaId;
                     }
                     catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -400,19 +435,52 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 && (limiteSuperior == null || m.CriadoEm <= limiteSuperior))
             .OrderByDescending(m => m.CriadoEm)
             .Take(_opcoes.MaxMensagensHistorico)
-            .Select(m => new { m.Papel, m.Conteudo })
+            .Select(m => new ItemHistorico(m.Papel, m.Conteudo, m.CriadoEm, false))
             .ToListAsync(cancellationToken);
+
+        // Notas de contexto das ferramentas: só as mais recentes, fora da contagem de mensagens, e nunca mais velhas que a mais antiga
+        // mensagem mantida (senão ficariam soltas no começo). Entram no orçamento de caracteres do histórico.
+        var notas = await _dbContext.MensagensWhatsApp.AsNoTracking()
+            .Where(m => m.ConversaId == conversaId && m.Papel == PapelMensagemWhatsApp.Sistema
+                && m.NomeFerramenta == MarcadoresAgente.ContextoConsulta
+                && (limiteSuperior == null || m.CriadoEm <= limiteSuperior))
+            .OrderByDescending(m => m.CriadoEm)
+            .Take(NotaContextoAgente.MaximoNotasNoHistorico)
+            .Select(m => new ItemHistorico(m.Papel, m.Conteudo, m.CriadoEm, true))
+            .ToListAsync(cancellationToken);
+        if (recentes.Count > 0 && recentes.Count >= _opcoes.MaxMensagensHistorico)
+            notas = notas.Where(n => n.CriadoEm >= recentes[^1].CriadoEm).ToList();
+        if (recentes.Count == 0)
+            notas.Clear();
+
+        var todas = recentes.Concat(notas).OrderByDescending(m => m.CriadoEm).ToList();
 
         var escolhidas = new List<(PapelIa Papel, string Texto)>();
         var total = 0;
-        foreach (var mensagem in recentes)
+        var totalNotas = 0;
+        foreach (var mensagem in todas)
         {
-            var texto = LimparEntrada(mensagem.Conteudo, _opcoes.MaxCaracteresMensagem);
-            if (texto.Length == 0)
-                continue;
+            // A nota é texto do servidor (dado do cadastro já higienizado): não passa pelo minimizador de dado pessoal, que confundiria
+            // trechos de GUID com número de documento/telefone. Tem teto próprio e entra no teto geral abaixo.
+            string texto;
+            if (mensagem.EhNota)
+            {
+                texto = LimparNota(mensagem.Conteudo);
+                if (texto.Length == 0 || totalNotas + texto.Length > NotaContextoAgente.MaximoCaracteresNotasNoHistorico)
+                    continue;
+            }
+            else
+            {
+                texto = LimparEntrada(mensagem.Conteudo, _opcoes.MaxCaracteresMensagem);
+                if (texto.Length == 0)
+                    continue;
+            }
 
             // Cada mensagem depois da primeira custa 1 caractere de separador (quebra de linha ao juntar turnos).
             var disponivel = _opcoes.MaxCaracteresHistorico - total - (escolhidas.Count > 0 ? 1 : 0);
+            if (mensagem.EhNota && texto.Length > disponivel)
+                continue;
+
             if (texto.Length > disponivel)
             {
                 // A mais recente (primeira) nunca estoura o teto: é truncada ao orçamento. As mais antigas que não cabem ficam de fora.
@@ -425,6 +493,8 @@ public sealed class OrquestradorAgente : IRespostaAgente
             }
 
             total += texto.Length + (escolhidas.Count > 0 ? 1 : 0);
+            if (mensagem.EhNota)
+                totalNotas += texto.Length;
 
             escolhidas.Add((mensagem.Papel == PapelMensagemWhatsApp.Usuario ? PapelIa.Usuario : PapelIa.Modelo, texto));
         }
@@ -444,6 +514,18 @@ public sealed class OrquestradorAgente : IRespostaAgente
         }
 
         return resultado;
+    }
+
+    private sealed record ItemHistorico(PapelMensagemWhatsApp Papel, string Conteudo, DateTimeOffset CriadoEm, bool EhNota);
+
+    /// <summary>Nota gravada pelo servidor: só tira controle (menos quebra de linha) e limita o tamanho.</summary>
+    private static string LimparNota(string? texto)
+    {
+        if (string.IsNullOrEmpty(texto))
+            return string.Empty;
+
+        var limpo = new string(texto.Select(c => c == '\n' ? c : char.IsControl(c) ? ' ' : c).ToArray()).Trim();
+        return limpo.Length > NotaContextoAgente.MaximoCaracteresNota ? limpo[..NotaContextoAgente.MaximoCaracteresNota] : limpo;
     }
 
     /// <summary>
