@@ -55,6 +55,16 @@ public sealed class OpcoesIa
     /// <summary>Lista de <c>Guid</c> separada por vírgula. Vazio = todos os negócios (piloto: preencha).</summary>
     public string? NegociosHabilitados { get; set; }
 
+    /// <summary>Fase 3: agendamento pelo agente. Desligado por padrão (comportamento idêntico ao da Fase 2).</summary>
+    public OpcoesAgendamentoAgente Agendamento { get; set; } = new();
+
+    /// <summary>Intervalo, em dias, do aviso fixo de atendimento automatizado por conversa (só sai com o agendamento ligado).</summary>
+    public int AvisoAutomatizadoDias { get; set; } = 90;
+
+    /// <summary>Agendamento pelo agente ligado para o negócio: Gemini + piloto da Fase 2 + modo/piloto da Fase 3.</summary>
+    public bool AgendamentoAtivoPara(Guid negocioId) =>
+        Provider == ProvedorIa.Gemini && NegocioHabilitado(negocioId) && Agendamento.Habilitado(negocioId);
+
     public bool NegocioHabilitado(Guid negocioId)
     {
         if (string.IsNullOrWhiteSpace(NegociosHabilitados))
@@ -64,6 +74,46 @@ public sealed class OpcoesIa
             .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(item => Guid.TryParse(item, out var id) && id == negocioId);
     }
+}
+
+public enum ModoAgendamentoAgente
+{
+    Desligado = 0,
+    Piloto = 1,
+    Todos = 2,
+}
+
+/// <summary>Agente de WhatsApp, Fase 3 — seção <c>Ai:Agendamento</c> (<c>Ai__Agendamento__Modo</c>, ...).</summary>
+public sealed class OpcoesAgendamentoAgente
+{
+    public ModoAgendamentoAgente Modo { get; set; } = ModoAgendamentoAgente.Desligado;
+
+    /// <summary>GUIDs separados por vírgula. Em <c>Piloto</c>, vazio = NENHUM negócio (fail-closed).</summary>
+    public string? Negocios { get; set; }
+
+    public int LimitePreparosPorTelefonePorDia { get; set; } = 5;
+
+    public int LimiteFuturosPorTelefone { get; set; } = 3;
+
+    public int LimiteConfirmacoesPorTelefonePorDia { get; set; } = 3;
+
+    public int LimiteReservasAtivasPorNegocio { get; set; } = 20;
+
+    /// <summary>Só vale com <c>Ai__Provider=Gemini</c> (a checagem do provedor é de quem chama).</summary>
+    public bool Habilitado(Guid negocioId) => Modo switch
+    {
+        ModoAgendamentoAgente.Todos => true,
+        ModoAgendamentoAgente.Piloto => ListaDeNegocios(Negocios).Contains(negocioId),
+        _ => false,
+    };
+
+    internal static IReadOnlyCollection<Guid> ListaDeNegocios(string? texto) =>
+        string.IsNullOrWhiteSpace(texto)
+            ? []
+            : texto.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(item => Guid.TryParse(item, out var id) ? id : Guid.Empty)
+                .Where(id => id != Guid.Empty)
+                .ToList();
 }
 
 public sealed class OpcoesGemini
@@ -126,6 +176,17 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
         Faixa(erros, nameof(o.LimiteMensagensPorTelefonePorDia), o.LimiteMensagensPorTelefonePorDia, 1, 10_000);
         Faixa(erros, nameof(o.LimiteChamadasPorNegocioPorDia), o.LimiteChamadasPorNegocioPorDia, 1, 1_000_000);
         Faixa(erros, nameof(o.DiasMaximosConsulta), o.DiasMaximosConsulta, 1, 365);
+        Faixa(erros, nameof(o.AvisoAutomatizadoDias), o.AvisoAutomatizadoDias, 1, 365);
+        if (!Enum.IsDefined(o.Agendamento.Modo))
+            erros.Add("Ai__Agendamento__Modo deve ser Desligado, Piloto ou Todos.");
+        Faixa(erros, "Agendamento.LimitePreparosPorTelefonePorDia", o.Agendamento.LimitePreparosPorTelefonePorDia, 1, 100);
+        Faixa(erros, "Agendamento.LimiteFuturosPorTelefone", o.Agendamento.LimiteFuturosPorTelefone, 1, 50);
+        Faixa(erros, "Agendamento.LimiteConfirmacoesPorTelefonePorDia", o.Agendamento.LimiteConfirmacoesPorTelefonePorDia, 1, 50);
+        Faixa(erros, "Agendamento.LimiteReservasAtivasPorNegocio", o.Agendamento.LimiteReservasAtivasPorNegocio, 1, 1000);
+        if (!string.IsNullOrWhiteSpace(o.Agendamento.Negocios)
+            && o.Agendamento.Negocios.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(item => !Guid.TryParse(item, out _)))
+            erros.Add("Ai__Agendamento__Negocios deve ser uma lista de GUIDs separada por vírgula.");
         if (o.CotaMensalTokensPorNegocio < 1)
             erros.Add("Ai__CotaMensalTokensPorNegocio deve ser positiva.");
 

@@ -88,6 +88,13 @@ services:
       Ai__MaxCaracteresHistorico: ${AI_MAX_CARACTERES_HISTORICO:-8000}
       Ai__MaxTokensSaida: ${AI_MAX_TOKENS_SAIDA:-512}
       Ai__MaxCaracteresResposta: ${AI_MAX_CARACTERES_RESPOSTA:-1000}
+      Ai__Agendamento__Modo: ${AI_AGENDAMENTO_MODO:-Desligado}
+      Ai__Agendamento__Negocios: ${AI_AGENDAMENTO_NEGOCIOS:-}
+      Ai__Agendamento__LimitePreparosPorTelefonePorDia: ${AI_AGENDAMENTO_LIMITE_PREPAROS_DIA:-5}
+      Ai__Agendamento__LimiteFuturosPorTelefone: ${AI_AGENDAMENTO_LIMITE_FUTUROS:-3}
+      Ai__Agendamento__LimiteConfirmacoesPorTelefonePorDia: ${AI_AGENDAMENTO_LIMITE_CONFIRMACOES_DIA:-3}
+      Ai__Agendamento__LimiteReservasAtivasPorNegocio: ${AI_AGENDAMENTO_LIMITE_RESERVAS_NEGOCIO:-20}
+      Ai__AvisoAutomatizadoDias: ${AI_AVISO_AUTOMATIZADO_DIAS:-90}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}

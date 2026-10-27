@@ -17,6 +17,15 @@ public static class ErrosFerramenta
     public const string FerramentaDesconhecida = "ferramenta_desconhecida";
     public const string ErroInterno = "erro_interno";
 
+    // Fase 3 (preparar_agendamento).
+    public const string HoraInvalida = "hora_invalida";
+    public const string HorarioIndisponivel = "horario_indisponivel";
+    public const string NomeNecessario = "nome_necessario";
+    public const string NomeInvalido = "nome_invalido";
+    public const string LimiteAgendamentos = "limite_agendamentos";
+    public const string AgendamentoIndisponivel = "agendamento_indisponivel";
+    public const string ResumoJaEnviado = "resumo_ja_enviado";
+
     public static string Mensagem(string codigo) => codigo switch
     {
         ArgumentosInvalidos => "Argumentos inválidos para esta ferramenta.",
@@ -27,6 +36,13 @@ public static class ErrosFerramenta
         DataForaDoPeriodo => "Data fora do período que pode ser consultada.",
         LimiteChamadas => "Limite de chamadas de ferramenta atingido nesta resposta.",
         FerramentaDesconhecida => "Ferramenta inexistente.",
+        HoraInvalida => "Hora inválida. Use o formato HH:mm (24 horas).",
+        HorarioIndisponivel => "Esse horário não está livre. Ofereça ao cliente um dos horários alternativos, se houver.",
+        NomeNecessario => "Peça ao cliente o nome completo e chame a ferramenta de novo com nome_cliente.",
+        NomeInvalido => "Esse nome não pode ser usado. Peça ao cliente o nome completo, só com letras.",
+        LimiteAgendamentos => "Limite de agendamentos pelo WhatsApp atingido. Envie ao cliente o link para agendar.",
+        AgendamentoIndisponivel => "Não é possível agendar por aqui agora. Envie ao cliente o link para agendar.",
+        ResumoJaEnviado => "O resumo desse agendamento já foi enviado. Peça ao cliente que responda SIM para confirmar.",
         _ => "Não foi possível consultar agora.",
     };
 }
@@ -42,6 +58,10 @@ public static class RespostaFerramenta
     public static JsonElement De<T>(T valor) => JsonSerializer.SerializeToElement(valor, Opcoes);
 
     public static JsonElement Erro(string codigo) => De(new { erro = codigo, mensagem = ErrosFerramenta.Mensagem(codigo) });
+
+    /// <summary>Erro com a lista de horários alternativos (<c>HH:mm</c>, até 5, mesmo dia e profissional).</summary>
+    public static JsonElement ErroComAlternativas(string codigo, IReadOnlyList<string> alternativas) =>
+        De(new { erro = codigo, mensagem = ErrosFerramenta.Mensagem(codigo), alternativas });
 
     public static JsonElement Esquema(string json)
     {

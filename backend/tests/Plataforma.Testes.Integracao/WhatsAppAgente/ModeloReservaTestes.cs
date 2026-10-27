@@ -201,6 +201,15 @@ public sealed class ModeloReservaTestes : IAsyncLifetime
     {
         public IReadOnlyList<Plataforma.Aplicacao.WhatsAppAgente.IFerramentaAgente> Ferramentas => [];
 
+        public IReadOnlyList<Plataforma.Aplicacao.WhatsAppAgente.IFerramentaAgente> FerramentasPara(Guid negocioId) => [];
+
+        public async Task<Plataforma.Aplicacao.WhatsAppAgente.ResultadoFerramentaAgente> ExecutarComSinalAsync(
+            Plataforma.Aplicacao.WhatsAppAgente.ContextoConversaAgente contexto, string nome, JsonElement argumentos, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return default!;
+        }
+
         public async Task<JsonElement> ExecutarAsync(
             Plataforma.Aplicacao.WhatsAppAgente.ContextoConversaAgente contexto, string nome, JsonElement argumentos, CancellationToken cancellationToken = default)
         {

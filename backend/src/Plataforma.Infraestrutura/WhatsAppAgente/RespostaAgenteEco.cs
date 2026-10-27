@@ -8,6 +8,6 @@ namespace Plataforma.Infraestrutura.WhatsAppAgente;
 /// </summary>
 public sealed class RespostaAgenteEco : IRespostaAgente
 {
-    public Task<string?> ResponderAsync(ContextoRespostaAgente contexto, CancellationToken cancellationToken = default) =>
-        Task.FromResult<string?>($"Recebi: {contexto.TextoRecebido}");
+    public Task<RespostaAgente> ResponderAsync(ContextoRespostaAgente contexto, CancellationToken cancellationToken = default) =>
+        Task.FromResult(new RespostaAgente($"Recebi: {contexto.TextoRecebido}"));
 }

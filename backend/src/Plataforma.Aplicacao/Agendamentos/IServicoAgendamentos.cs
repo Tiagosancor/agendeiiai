@@ -207,10 +207,13 @@ public sealed record ConfirmarReservaPublica(
     Guid AgendamentoId, string NomeCliente, string TelefoneCliente, string? EmailCliente,
     string? Observacoes, string? CodigoCupom, string IpCliente);
 
-/// <summary>Versão atual dos termos aceitos no assistente público (seção 8.4) — subir manualmente quando o texto dos termos mudar.</summary>
+/// <summary>
+/// Versão atual dos termos aceitos no assistente público e no agendamento pelo WhatsApp (seção 8.4) — subir manualmente quando o texto
+/// dos termos mudar. 2.0: a política de privacidade do negócio passa a citar a IA e o agendamento pelo WhatsApp.
+/// </summary>
 public static class VersaoTermos
 {
-    public const string Atual = "1.0";
+    public const string Atual = "2.0";
 }
 
 public sealed record ResultadoPreVisualizacaoCupom(bool Sucesso, decimal Desconto = 0m, string? MensagemErro = null);
