@@ -25,7 +25,7 @@ public enum EstadoInstanciaEvolution
 
 public sealed class FalhaEvolutionException : Exception
 {
-    /// <summary>Resultado desconhecido (timeout): a Evolution pode ter enviado. Falha com resposta (4xx/5xx) ou rede fora do ar não é ambígua.</summary>
+    /// <summary>Resultado desconhecido: timeout ou falha de transporte em que não se prova que a requisição não chegou (conexão encerrada/resetada, resposta truncada). Definitiva: 4xx/5xx recebidos ou falha comprovadamente anterior ao envio (conexão recusada, DNS, TLS).</summary>
     public bool Ambigua { get; }
 
     public FalhaEvolutionException(string mensagem, Exception? interna = null, bool ambigua = false) : base(mensagem, interna)

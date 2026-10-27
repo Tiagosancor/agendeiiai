@@ -23,6 +23,9 @@ public enum TipoPlanoConfirmacao
 
     /// <summary>A confirmação gravou mas a mensagem ao cliente nunca saiu (rodada interrompida): só falta anunciar.</summary>
     AnunciarConfirmada = 4,
+
+    /// <summary>A confirmação já foi anunciada (entregue ou de resultado ambíguo): só falta dar o lote como tratado, sem chamar a IA.</summary>
+    JaAnunciada = 5,
 }
 
 public sealed record PlanoConfirmacao(TipoPlanoConfirmacao Tipo, Guid PendenciaId, Guid UltimaMensagemId);
@@ -122,7 +125,7 @@ public sealed class ConfirmadorPendenciaAgente
                 var jaAnunciada = await _dbContext.MensagensWhatsApp.AsNoTracking().AnyAsync(
                     m => m.ConversaId == conversa.Id && m.Papel == PapelMensagemWhatsApp.Sistema
                         && m.NomeFerramenta == MarcadoresAgente.Confirmado && m.CriadoEm >= concluida, cancellationToken);
-                return jaAnunciada ? null : new PlanoConfirmacao(TipoPlanoConfirmacao.AnunciarConfirmada, pendencia.Id, ultimaMensagemId);
+                return new PlanoConfirmacao(jaAnunciada ? TipoPlanoConfirmacao.JaAnunciada : TipoPlanoConfirmacao.AnunciarConfirmada, pendencia.Id, ultimaMensagemId);
             }
 
             case StatusPendenciaAgendamentoWhatsApp.Expirada:
@@ -173,6 +176,9 @@ public sealed class ConfirmadorPendenciaAgente
                     return null;
                 _logger.LogInformation("Agente: agendamento recusado pelo cliente (conversa {ConversaId}, pendência {PendenciaId}).", conversa.Id, plano.PendenciaId);
                 return Fixa(TextosAgendamentoAgente.AgendamentoNaoConfirmado, MarcadoresAgente.NaoConfirmado);
+
+            case TipoPlanoConfirmacao.JaAnunciada:
+                return null;
 
             case TipoPlanoConfirmacao.PrazoPassou:
                 return Fixa(TextosAgendamentoAgente.PrazoPassou, MarcadoresAgente.PrazoPassou);

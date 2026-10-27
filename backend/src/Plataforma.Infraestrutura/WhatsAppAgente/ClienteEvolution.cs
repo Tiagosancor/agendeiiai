@@ -110,6 +110,11 @@ public sealed class ClienteEvolution : IClienteEvolution
         {
             return null;
         }
+        catch (Exception excecao) when (excecao is HttpRequestException or IOException)
+        {
+            // A Evolution já aceitou o envio (HTTP 2xx); a leitura da resposta caiu: não dá para afirmar que a mensagem não saiu.
+            throw new FalhaEvolutionException("A conexão com a Evolution caiu ao ler a resposta do envio.", excecao, ambigua: true);
+        }
     }
 
     /// <summary>Falha de rede, timeout e 5xx viram <see cref="FalhaEvolutionException"/>; 4xx volta para quem chamou decidir.</summary>
@@ -151,9 +156,16 @@ public sealed class ClienteEvolution : IClienteEvolution
         catch (HttpRequestException excecao)
         {
             _logger.LogWarning("Evolution API fora do ar ({Operacao}): {Erro}.", operacao, excecao.Message);
-            throw new FalhaEvolutionException("A Evolution está fora do ar.", excecao);
+            // Só é definitiva se comprovadamente anterior ao envio (recusa de conexão, DNS, TLS); conexão encerrada/resetada,
+            // resposta truncada ou erro de leitura podem ter ocorrido depois de a Evolution aceitar a mensagem.
+            throw new FalhaEvolutionException("A Evolution está fora do ar.", excecao, ambigua: !FalhaAnteriorAoEnvio(excecao));
         }
     }
+
+    /// <summary>Falha de transporte que prova que a requisição não chegou ao provedor (nenhum byte foi entregue).</summary>
+    internal static bool FalhaAnteriorAoEnvio(HttpRequestException excecao) =>
+        excecao.HttpRequestError is HttpRequestError.NameResolutionError or HttpRequestError.ConnectionError
+            or HttpRequestError.SecureConnectionError;
 
     /// <summary>QR code em <c>qrcode.base64</c> (create/connect, doc) ou <c>base64</c> (algumas versões do connect) — aceita os dois.</summary>
     private static async Task<string?> LerQrCodeAsync(HttpResponseMessage resposta, CancellationToken cancellationToken)
