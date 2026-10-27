@@ -99,7 +99,13 @@ public sealed class ConfirmadorPendenciaAgente
                 if (pendencia.ResumoEnviadoEm is not { } resumoEm || lote.Any(m => m.CriadoEm <= resumoEm))
                     return null;
 
-                return ClassificadorConfirmacaoAgente.ClassificarLote(lote.Select(m => (string?)m.Conteudo).ToList()) switch
+                // Conservador: classifica TODO o intervalo depois do resumo, não só o lote pendente. Uma contestação já processada
+                // ("troca para 15h", respondida pela IA sem substituir a pendência) invalida um "sim" posterior.
+                var desdeOResumo = await MensagensDesdeOResumoAsync(conversa.Id, resumoEm, ultima, cancellationToken);
+                if (desdeOResumo is null)
+                    return null;
+
+                return ClassificadorConfirmacaoAgente.ClassificarLote(desdeOResumo) switch
                 {
                     RespostaDoCliente.Afirmativa => new PlanoConfirmacao(TipoPlanoConfirmacao.Confirmar, pendencia.Id, ultimaMensagemId),
                     RespostaDoCliente.Negativa => new PlanoConfirmacao(TipoPlanoConfirmacao.Recusar, pendencia.Id, ultimaMensagemId),
@@ -124,7 +130,8 @@ public sealed class ConfirmadorPendenciaAgente
                 // O job já expirou a pendência e o cliente responde "sim" tarde: um aviso só ("o prazo terminou"), nunca um agendamento.
                 if (pendencia.ResumoEnviadoEm is not { } resumoEm || resumoEm < agora - JanelaDoAvisoDePrazo || lote.Any(m => m.CriadoEm <= resumoEm))
                     return null;
-                if (ClassificadorConfirmacaoAgente.ClassificarLote(lote.Select(m => (string?)m.Conteudo).ToList()) != RespostaDoCliente.Afirmativa)
+                var desdeOResumo = await MensagensDesdeOResumoAsync(conversa.Id, resumoEm, ultima, cancellationToken);
+                if (desdeOResumo is null || ClassificadorConfirmacaoAgente.ClassificarLote(desdeOResumo) != RespostaDoCliente.Afirmativa)
                     return null;
 
                 var jaAvisou = await _dbContext.MensagensWhatsApp.AsNoTracking().AnyAsync(
@@ -136,6 +143,16 @@ public sealed class ConfirmadorPendenciaAgente
             default:
                 return null;
         }
+    }
+
+    /// <summary>Todas as mensagens do cliente depois do resumo e até <paramref name="ultima"/>; nulo se passam do máximo (não confirma).</summary>
+    private async Task<IReadOnlyCollection<string?>?> MensagensDesdeOResumoAsync(Guid conversaId, DateTimeOffset resumoEm, DateTimeOffset ultima, CancellationToken cancellationToken)
+    {
+        var textos = await _dbContext.MensagensWhatsApp.AsNoTracking()
+            .Where(m => m.ConversaId == conversaId && m.Papel == PapelMensagemWhatsApp.Usuario && m.CriadoEm > resumoEm && m.CriadoEm <= ultima)
+            .OrderBy(m => m.CriadoEm).Take(MaximoMensagensNoLote + 1)
+            .Select(m => m.Conteudo).ToListAsync(cancellationToken);
+        return textos.Count == 0 || textos.Count > MaximoMensagensNoLote ? null : textos.Select(t => (string?)t).ToList();
     }
 
     /// <summary>Faz o que o plano manda e devolve a mensagem fixa a enviar (nulo = silêncio).</summary>

@@ -216,6 +216,27 @@ public sealed class ConfirmacaoNoAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Sim_depois_de_contestacao_ja_processada_em_outra_rodada_nao_confirma()
+    {
+        var c = await _ambiente.SemearAsync();
+        await PreparadoAsync(c);
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("Quer trocar para as 15h? Me diga e eu refaço o resumo.");
+
+        // A contestação é respondida pela IA (sem substituir a pendência) e o lote fica processado.
+        await _ambiente.EnviarAsync(c, "troca para 15h");
+        var antes = _ambiente.Provedor.Chamadas;
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("Antes de agendar, preciso que você confirme o novo horário.");
+
+        // O "sim" seguinte, em rodada própria, não pode confirmar as 10h ignorando a contestação.
+        await _ambiente.EnviarAsync(c, "sim");
+
+        (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Reservado);
+        (await _ambiente.PendenciasAsync()).Single().Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Aguardando);
+        _ambiente.Provedor.Chamadas.Should().Be(antes + 1, "o 'sim' após contestação vai para a IA, nunca confirma");
+        ConfirmacaoEntregue().Should().BeNull();
+    }
+
+    [Fact]
     public async Task Sim_que_chegou_antes_do_resumo_nao_confirma()
     {
         var c = await _ambiente.SemearAsync();
