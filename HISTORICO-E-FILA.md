@@ -502,6 +502,33 @@ na `main` (commits `322ecd1` e `c47f85c`, merge `6efb0f3`; CI Backend/Frontend/V
   Após o redeploy o WhatsApp **continuou conectado** sem QR e o aviso aparentemente parou. **Não resolvido de forma comprovada** (era intermitente): reabrir se
   voltar; testar com um número novo e dedicado ao negócio antes do piloto. Não se sabe qual das duas mudanças (v2.3.7 ou a variável) ajudou.
 
+### Agente de WhatsApp — Fase 3 (agendamento pelo agente), fatias 1 a 3 — 2026-10-26/27
+
+Plano e modelo de ameaças de escrita em `.agents/handoffs/agente-whatsapp-fase3/plano.md` (local). Decisões do dono: P0 identificar pelo número do WhatsApp **sem código**
+(exceção à seção 8.1, a registrar como 8.1.7 na especificação); nome do cliente nunca vai à IA; confirmação em duas etapas com resumo montado pelo servidor e "sim"
+avaliado pelo servidor antes de chamar a IA; cancelar/remarcar/listar ficam na Fase 4; limites de 1 pendência por conversa, 5 preparos/telefone/dia, 3 agendamentos
+futuros, 3 confirmações/dia e 20 reservas ativas por negócio; aviso de atendimento automatizado a cada 90 dias por conversa. **Tudo desligado por padrão
+(`Ai__Agendamento__Modo=Desligado`).**
+- **Fatia 1 — PR #36 (merge `cb70898`, commit `d076e81`):** enums `OrigemAgendamento.WhatsApp`/`OrigemCliente.WhatsApp` (nada os grava nesta fatia); `JidDoTelefone` descarta
+  `@g.us`, `@broadcast` e `@newsletter` antes de olhar `senderPn`; `TelefoneE164.FormasEquivalentes()` (9º dígito). CI completa verde.
+- **Fatia 2 — PR #38 (merge `09de0cf`):** `PendenciaAgendamentoWhatsApp`, migration `AgenteWhatsAppAgendamento` (**aplicada no Neon pelo dono em 2026-10-26**), `CriarReservaAgenteAsync`/
+  `ConfirmarReservaAgenteAsync`, expiração das pendências no `JobExpirarReservas`, travas `FOR UPDATE` escopadas por `negocio_id`, validação do nome no domínio. Passou por 5 revisões do
+  Codex (retry/`ConfirmadaAgora` por id aleatório, cancelamento mantém telefone, instante lido depois da trava, anonimização × confirmação, escopo por negócio, nome só para cliente novo).
+  Regra de parada aprovada pelo dono: depois da última rodada, revisão só reaberta por achado Crítico. Ordem global de locks: pendência → agendamento → cliente.
+- **Fatia 3 — PR #39 (merge `9345c87`):** `Ai__Agendamento__*`, ferramenta `preparar_agendamento` (uma vez por rodada), resumo e confirmação pelo servidor (`ConfirmadorPendenciaAgente`),
+  guarda de promessa falsa, prompt v2 só com o modo ligado, aviso automatizado, `VersaoTermos.Atual` 2.0 (vale também para o assistente web). Bug real achado pelo teste de concorrência e
+  corrigido (`ChangeTracker.Clear()` após reserva sem sucesso). Codex reprovou a revisão com 3 importantes; o **achado 1 foi corrigido** (o "sim" só confirma se nada do cliente desde o
+  resumo foi contestação, `aca2198`). Os achados 2 e 3 do Codex foram resolvidos no **PR #41 (merge `cb8952a`)**: (a) o lote do "sim" só é marcado como processado depois do envio da confirmação, com
+  recuperação para envio não realizado e `JaAnunciada` para a queda entre o envio e a marcação; (b) só recusa de conexão, DNS e TLS são falha definitiva — conexão encerrada, resposta
+  truncada e timeout são **ambíguos** (não liberam a reserva nem reenviam). Risco aceito: com falha definitiva repetida da Evolution a confirmação é retentada a cada repescagem do recuperador.
+- **Política do negócio v2.0 — PR #37 (merge `31827db`):** `/privacidade` do negócio menciona o assistente com IA, o envio ao Google (Gemini), o "SIM" como aceite e mostra "Versão 2.0".
+  O e2e novo (`politica-negocio-ia.spec.ts`) nunca rodou contra a stack deste código; conferir a página na produção.
+- **Gemini com faturamento (2026-10-27):** o dono comprou R$ 200 em créditos e ligou o faturamento. Medição pós-faturamento: todos os modelos testados 200/200/200; `3.1-flash-lite` ~1,2 s,
+  `3.5-flash-lite` ~1,1 s, `flash-lite-latest` ~1,1 s, `3.5-flash` ~2,7 s (antes, na cota gratuita: 503 em 4 de 6 e 15–26 s na reserva). Configuração atual mantida; nada a mudar no código.
+- **Não verificado:** comportamento do agendamento com Gemini real (roteiros novos em `avaliacao-manual.md` da fase), envio real pela Evolution, latência e custo por agendamento.
+- **Pré-requisitos de ativação com clientes reais:** roteiros da Fase 2 e da Fase 3 completos com Gemini real; número dedicado ao piloto (ver `docs/ativacao-agente-fase3.md`, local) com a sessão da
+  Evolution comprovadamente estável; aviso automatizado conferido; conferir a política v2.0 no ar. Faturamento do Gemini: **feito**.
+
 ### Política de privacidade do produto — PR #28 (frontend)
 
 Texto do dono publicado em `/privacidade` do domínio raiz, sem a faixa de rascunho (`PaginaLegal` ganhou a prop
@@ -517,6 +544,10 @@ produto só será comercializado com tudo implementado. A política **do negóci
 | Deploy do Railway do merge 6efb0f3 falhou no build (infra) | Dono | Redeploy do mesmo commit |
 | Validar o modelo de reserva com o Gemini real e ligar o faturamento do Gemini | Dono | Reserva testada (funciona, mas lenta); subir `Ai__TempoMaximoProcessamentoSegundos` (60–75), testar reserva mais rápida e ligar o faturamento antes de clientes reais |
 | "Aguardando mensagem" no celular de destino | Dono | Observando após v2.3.7 + `DATABASE_SAVE_DATA_INSTANCE=true`; testar com número novo dedicado |
+| Fase 3: ativar o piloto (`Ai__Agendamento__Modo=Piloto` + GUID) e rodar os roteiros com Gemini real | Dono/Claude Code | Código completo e desligado (PRs #36, #38, #39, #41); guia em `docs/ativacao-agente-fase3.md` (local) |
+| Conferir `/privacidade` de um negócio em produção (v2.0) e rodar o e2e novo contra stack construída do código | Dono/Claude Code | PR #37 mergeado; e2e nunca rodou contra esta versão |
+| Item 8.1.7 na especificação: agendamento pelo WhatsApp dispensa código | Dono | Decisão P0 aprovada em 2026-10-26; `prompt-do-projeto.md` é local |
+| Sugestões de cobertura do Codex em código já mergeado: corpo grande sem Content-Length (PR #31) e expiração do disjuntor (PR #32) | Claude Code | Baixa prioridade |
 | Confirmar que o `ERR` de chave duplicada em `eventos_webhook_whatsapp` sumiu (PR #34) | Dono | Olhar o log do Railway por alguns dias |
 | Política de privacidade **do negócio** (subdomínio) mencionar a IA | Dono (texto) / Codex | Necessário antes do piloto com clientes reais |
 | Apagar conversas (`mensagens_whatsapp`) ao anonimizar cliente | Claude Code | LGPD; `Cliente.Anonimizar` não apaga; Fases 4/5 |
