@@ -64,7 +64,7 @@ public sealed class ExpiradorPendenciasAgenteDoNegocio
         }
 
         await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM pendencias_agendamento_whatsapp WHERE id = {id} FOR UPDATE", cancellationToken);
+            $"SELECT 1 FROM pendencias_agendamento_whatsapp WHERE id = {id} AND negocio_id = {_contextoNegocio.NegocioId!.Value} FOR UPDATE", cancellationToken);
         await _dbContext.Entry(pendencia).ReloadAsync(cancellationToken);
 
         if (!pendencia.Aguardando || pendencia.ExpiraEm > agora)
@@ -77,7 +77,7 @@ public sealed class ExpiradorPendenciasAgenteDoNegocio
         if (agendamento is not null)
         {
             await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM agendamentos WHERE id = {agendamento.Id} FOR UPDATE", cancellationToken);
+                $"SELECT 1 FROM agendamentos WHERE id = {agendamento.Id} AND negocio_id = {_contextoNegocio.NegocioId!.Value} FOR UPDATE", cancellationToken);
             await _dbContext.Entry(agendamento).ReloadAsync(cancellationToken);
 
             // Só a reserva que o agente fez e ninguém tomou: nunca um agendamento já confirmado ou de outro cliente.

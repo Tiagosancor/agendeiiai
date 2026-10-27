@@ -130,8 +130,10 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
         {
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
 
+            // SQL direto não recebe o filtro global: o negócio (do JWT) entra no WHERE, senão travaríamos cliente de outro tenant.
+            var negocioId = _contextoNegocio.NegocioId!.Value;
             await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-                $"SELECT 1 FROM clientes WHERE id = {clienteId} FOR UPDATE", cancellationToken);
+                $"SELECT 1 FROM clientes WHERE id = {clienteId} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
 
             var cliente = await _dbContext.Clientes.FindAsync([clienteId], cancellationToken);
             if (cliente is null)

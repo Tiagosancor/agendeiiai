@@ -647,6 +647,39 @@ public sealed class AgendamentoPeloAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Excluir_cliente_de_outro_negocio_nao_espera_a_trava_dele_e_devolve_nao_encontrado()
+    {
+        var a = await _ambiente.SemearAsync();
+        var b = await _ambiente.SemearAsync();
+        var clienteB = await Fabrica.NoBancoAsync(async db =>
+        {
+            var cli = Cliente.Criar(b.NegocioId, "Cliente do B", TelefoneE164.Criar(Telefone));
+            db.Clientes.Add(cli);
+            await db.SaveChangesAsync();
+            return cli.Id;
+        });
+
+        // Uma transação do negócio B segura a linha do cliente de B.
+        using var escopoTrava = Fabrica.Services.CreateScope();
+        var dbTrava = escopoTrava.ServiceProvider.GetRequiredService<PlataformaDbContext>();
+        await using var trava = await dbTrava.Database.BeginTransactionAsync();
+        await dbTrava.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM clientes WHERE id = {clienteB} FOR UPDATE");
+
+        // O negócio A tenta excluir o mesmo id: não é dele, então não pode nem esperar a trava de B.
+        var cronometro = System.Diagnostics.Stopwatch.StartNew();
+        using var escopo = Escopo(a.NegocioId);
+        var tarefa = escopo.ServiceProvider.GetRequiredService<IGerenciadorClientes>().ExcluirAsync(clienteB);
+        var terminou = await Task.WhenAny(tarefa, Task.Delay(TimeSpan.FromSeconds(3))) == tarefa;
+
+        terminou.Should().BeTrue("a exclusão de A não pode esperar a trava do cliente de B");
+        cronometro.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(3));
+        (await tarefa).Should().BeFalse("o cliente não pertence ao negócio de A");
+
+        await trava.RollbackAsync();
+        (await ClientesAsync(b.NegocioId)).Single().Excluido.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Anonimizacao_que_passa_entre_a_identificacao_e_o_vinculo_nao_deixa_o_agendamento_no_cadastro_anonimizado()
     {
         var c = await _ambiente.SemearAsync();

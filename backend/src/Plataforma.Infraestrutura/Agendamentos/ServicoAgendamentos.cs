@@ -1248,8 +1248,9 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
     /// <summary>Exige transação aberta. A linha fica travada até o fim dela; a releitura descarta a cópia rastreada, que pode ser antiga.</summary>
     private async Task TravarLinhaERelerAsync(Agendamento agendamento, CancellationToken cancellationToken)
     {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
         await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM agendamentos WHERE id = {agendamento.Id} FOR UPDATE", cancellationToken);
+            $"SELECT 1 FROM agendamentos WHERE id = {agendamento.Id} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
         await _dbContext.Entry(agendamento).ReloadAsync(cancellationToken);
     }
 

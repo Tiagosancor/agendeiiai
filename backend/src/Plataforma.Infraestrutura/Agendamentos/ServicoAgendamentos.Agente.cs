@@ -113,7 +113,7 @@ public sealed partial class ServicoAgendamentos
 
                 // Trava a pendência e relê: duas rodadas ou dois "sim" decidem sobre o estado atual, em fila.
                 await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-                    $"SELECT 1 FROM pendencias_agendamento_whatsapp WHERE id = {pendencia.Id} FOR UPDATE", cancellationToken);
+                    $"SELECT 1 FROM pendencias_agendamento_whatsapp WHERE id = {pendencia.Id} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
                 await _dbContext.Entry(pendencia).ReloadAsync(cancellationToken);
 
                 if (pendencia.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada)
@@ -302,8 +302,9 @@ public sealed partial class ServicoAgendamentos
     /// </summary>
     private async Task<bool> TravarClienteAindaValidoAsync(Cliente cliente, TelefoneE164 telefone, CancellationToken cancellationToken)
     {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
         await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM clientes WHERE id = {cliente.Id} FOR UPDATE", cancellationToken);
+            $"SELECT 1 FROM clientes WHERE id = {cliente.Id} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
         await _dbContext.Entry(cliente).ReloadAsync(cancellationToken);
 
         return !cliente.Excluido && cliente.Telefone is { } atual && telefone.FormasEquivalentes().Contains(atual);
