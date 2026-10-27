@@ -148,13 +148,13 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     public static Agendamento CriarReserva(
         Guid negocioId, Guid profissionalId, Guid? clienteId, DateTimeOffset inicio,
         IReadOnlyCollection<ItemServicoAgendamento> servicos, DateTimeOffset agora, TimeSpan duracaoDaReserva,
-        Guid? id = null)
+        Guid? id = null, OrigemAgendamento origem = OrigemAgendamento.LinkPublico)
     {
         var agendamento = new Agendamento(
             negocioId, profissionalId, clienteId, inicio, CalcularFim(inicio, servicos), StatusAgendamento.Reservado, id)
         {
             ReservadoAte = agora + duracaoDaReserva,
-            Origem = OrigemAgendamento.LinkPublico,
+            Origem = origem,
         };
 
         agendamento.DefinirServicos(servicos);
@@ -417,6 +417,17 @@ public class Agendamento : EntidadeBase, IEntidadeDoNegocio
     {
         ConsentimentoData = agora;
         ConsentimentoIp = ip;
+        ConsentimentoVersaoTermos = versaoTermos;
+    }
+
+    /// <summary>
+    /// Consentimento dado pelo "sim" no WhatsApp (Fase 3): data e versão dos termos, sem IP (não existe no canal). A evidência
+    /// das mensagens fica na <c>PendenciaAgendamentoWhatsApp</c>.
+    /// </summary>
+    public void RegistrarConsentimentoWhatsApp(DateTimeOffset momento, string versaoTermos)
+    {
+        ConsentimentoData = momento;
+        ConsentimentoIp = null;
         ConsentimentoVersaoTermos = versaoTermos;
     }
 

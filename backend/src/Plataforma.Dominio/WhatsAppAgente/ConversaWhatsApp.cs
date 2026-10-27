@@ -32,6 +32,9 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Instante da última mensagem de usuário já tratada pelo agente (respondida ou descartada por limite).</summary>
     public DateTimeOffset? ProcessadaAte { get; private set; }
 
+    /// <summary>Quando o aviso de atendimento automatizado foi enviado pela última vez (Fase 3; controla o reenvio a cada N dias).</summary>
+    public DateTimeOffset? AvisoAutomatizadoEm { get; private set; }
+
     protected ConversaWhatsApp()
     {
     }
@@ -52,6 +55,14 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
         if (em > UltimaMensagemEm)
             UltimaMensagemEm = em;
     }
+
+    /// <summary>Atalho para o cliente identificado na confirmação. A busca do cliente é sempre pelo telefone, nunca por este campo.</summary>
+    public void VincularCliente(Guid clienteId) => ClienteId = clienteId;
+
+    /// <summary>Usado na anonimização do cliente (LGPD): a conversa deixa de apontar para ele.</summary>
+    public void DesvincularCliente() => ClienteId = null;
+
+    public void RegistrarAvisoAutomatizado(DateTimeOffset em) => AvisoAutomatizadoEm = em;
 
     public bool AgenteResponde => Status == StatusConversaWhatsApp.Agente;
 }

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Agendamentos;
+using Plataforma.Aplicacao.Assinaturas;
 using Plataforma.Aplicacao.Auditoria;
 using Plataforma.Aplicacao.Fidelidade;
 using Plataforma.Aplicacao.Notificacoes;
@@ -32,7 +33,7 @@ namespace Plataforma.Infraestrutura.Agendamentos;
 /// (expediente, almoço, bloqueios) e do ciclo de vida da reserva temporária, tudo numa
 /// única transação (seção 8.2.3).
 /// </summary>
-public sealed class ServicoAgendamentos : IServicoAgendamentos
+public sealed partial class ServicoAgendamentos : IServicoAgendamentos
 {
     private static readonly TimeSpan DuracaoDaReserva = TimeSpan.FromMinutes(10);
 
@@ -52,13 +53,16 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     private readonly ILogger<ServicoAgendamentos> _logger;
     private readonly IServicoIdempotencia _idempotencia;
     private readonly OutboxNotificacoes _outbox;
+    private readonly IConsultaSituacaoAssinatura _assinaturas;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
         IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, TravaQuinzenas travaQuinzenas,
-        IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger, IServicoIdempotencia idempotencia, OutboxNotificacoes outbox)
+        IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger, IServicoIdempotencia idempotencia, OutboxNotificacoes outbox,
+        IConsultaSituacaoAssinatura assinaturas)
     {
+        _assinaturas = assinaturas;
         _outbox = outbox;
         _idempotencia = idempotencia;
         _usuarioAtual = usuarioAtual;
@@ -370,7 +374,7 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
                     dados.ClienteId ?? throw new InvalidOperationException("Um agendamento confirmado de imediato precisa de um cliente."),
                     dados.Inicio, itens, dados.Observacoes, opcoes?.Origem ?? OrigemAgendamento.Painel, agendamentoId)
                 : Agendamento.CriarReserva(
-                    negocioId, dados.ProfissionalId, dados.ClienteId, dados.Inicio, itens, agora, DuracaoDaReserva, agendamentoId);
+                    negocioId, dados.ProfissionalId, dados.ClienteId, dados.Inicio, itens, agora, DuracaoDaReserva, agendamentoId, opcoes?.Origem ?? OrigemAgendamento.LinkPublico);
 
             if (opcoes?.IniciarAtendimento == true)
                 agendamento.IniciarAtendimento();
@@ -654,7 +658,9 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         var linkCancelar = ConstrutorUrlPublica.Construir(_opcoesMarca, negocio.Slug.Valor, $"/agendamentos/{tokenAgendamento}");
 
         await _notificador.EnviarConfirmacaoAgendamentoAsync(new DadosNotificacaoAgendamento(
-            cliente.Nome, cliente.Email, cliente.Telefone, agendamento.Inicio, agendamento.Fim,
+            cliente.Nome, cliente.Email,
+            // Agendamento do agente de WhatsApp: a confirmação sai na própria conversa, nunca pelo WhatsApp da plataforma.
+            agendamento.Origem == OrigemAgendamento.WhatsApp ? null : cliente.Telefone, agendamento.Inicio, agendamento.Fim,
             agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, linkCancelar, linkCancelar), cancellationToken);
 
         await NotificarProfissionalAsync(agendamento, cliente.Nome, EventoAgendamentoProfissional.Novo, cancellationToken);
@@ -840,7 +846,9 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
         var linkPagina = ConstrutorUrlPublica.Construir(_opcoesMarca, negocio.Slug.Valor, "/");
 
         await _notificador.EnviarCancelamentoClienteAsync(new DadosNotificacaoAgendamento(
-            cliente.Nome, cliente.Email, cliente.Telefone, agendamento.Inicio, agendamento.Fim,
+            cliente.Nome, cliente.Email,
+            // Cancelamento avisa pelos canais do cadastro, também para agendamento do agente de WhatsApp (a exceção é só da confirmação).
+            cliente.Telefone, agendamento.Inicio, agendamento.Fim,
             agendamento.Servicos.Select(s => s.Nome).ToList(), agendamento.Total, linkPagina, linkPagina), cancellationToken);
 
         return true;
@@ -1240,8 +1248,9 @@ public sealed class ServicoAgendamentos : IServicoAgendamentos
     /// <summary>Exige transação aberta. A linha fica travada até o fim dela; a releitura descarta a cópia rastreada, que pode ser antiga.</summary>
     private async Task TravarLinhaERelerAsync(Agendamento agendamento, CancellationToken cancellationToken)
     {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
         await _dbContext.Database.ExecuteSqlInterpolatedAsync(
-            $"SELECT 1 FROM agendamentos WHERE id = {agendamento.Id} FOR UPDATE", cancellationToken);
+            $"SELECT 1 FROM agendamentos WHERE id = {agendamento.Id} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
         await _dbContext.Entry(agendamento).ReloadAsync(cancellationToken);
     }
 

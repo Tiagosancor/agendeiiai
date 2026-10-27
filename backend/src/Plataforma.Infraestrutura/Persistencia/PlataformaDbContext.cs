@@ -139,6 +139,8 @@ public class PlataformaDbContext : DbContext
 
     public DbSet<Plataforma.Dominio.WhatsAppAgente.MensagemWhatsApp> MensagensWhatsApp => Set<Plataforma.Dominio.WhatsAppAgente.MensagemWhatsApp>();
 
+    public DbSet<Plataforma.Dominio.WhatsAppAgente.PendenciaAgendamentoWhatsApp> PendenciasAgendamentoWhatsApp => Set<Plataforma.Dominio.WhatsAppAgente.PendenciaAgendamentoWhatsApp>();
+
     public DbSet<Plataforma.Dominio.WhatsAppAgente.UsoIa> UsosIa => Set<Plataforma.Dominio.WhatsAppAgente.UsoIa>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

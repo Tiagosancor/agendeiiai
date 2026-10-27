@@ -199,6 +199,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IServicoAgendamentos, ServicoAgendamentos>();
         servicos.AddScoped<IGestaoPublicaAgendamento, GestaoPublicaAgendamento>();
         servicos.AddScoped<JobExpirarReservas>();
+        servicos.AddScoped<ExpiradorPendenciasAgenteDoNegocio>();
 
         // Página pública, assistente e código de confirmação (Sprint 3 — seção 8.1/6).
         servicos.AddSingleton<IServicoTokenPublico, ServicoTokenPublico>();
