@@ -29,32 +29,71 @@ export default async function PaginaPrivacidade() {
       <BotaoTema className="fixed right-4 top-4" />
       <h1 className="text-xl font-semibold text-gray-900 dark:text-neutral-50">Política de privacidade</h1>
       <p>
-        Esta página descreve como {nome} trata os dados pessoais coletados no agendamento online, em
-        conformidade com a Lei Geral de Proteção de Dados (LGPD).
+        Esta página descreve como {nome} trata os dados pessoais coletados no agendamento online e no
+        atendimento pelo WhatsApp, em conformidade com a Lei Geral de Proteção de Dados (LGPD).
       </p>
 
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">O que coletamos</h2>
       <p>
-        Nome, telefone e, opcionalmente, e-mail — informados por você ao agendar. O telefone é usado
-        como identificador do seu cadastro. Guardamos também o histórico dos agendamentos feitos.
+        Nome, telefone e, opcionalmente, e-mail, informados por você ao agendar. No atendimento pelo
+        WhatsApp, o seu número é o que usamos para identificar você, e guardamos as mensagens da
+        conversa. Guardamos também o histórico dos agendamentos feitos.
       </p>
 
-      <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Código de confirmação</h2>
+      <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Atendimento pelo WhatsApp com assistente virtual</h2>
       <p>
-        Para confirmar que o telefone informado é seu, enviamos um código de 6 dígitos por WhatsApp e
-        e-mail. O código nunca é armazenado em texto puro, só um hash — e expira em poucos minutos.
+        O atendimento de {nome} pelo WhatsApp é feito por um <strong>assistente virtual com inteligência
+        artificial</strong>. Ele responde sobre serviços, profissionais e horários, e pode preparar um
+        agendamento para você. Você sempre sabe que está falando com um assistente, e pode pedir para
+        falar com uma pessoa pelos canais informados na página inicial.
+      </p>
+
+      <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Como a inteligência artificial usa as suas mensagens</h2>
+      <p>
+        Para gerar as respostas, o texto que você digita na conversa é enviado a um provedor de
+        inteligência artificial de terceiros, o Google (modelo Gemini), que pode processar os dados
+        fora do Brasil. Não enviamos a ele o seu cadastro (nome, telefone ou e-mail guardados). Mas o
+        que você escrever na conversa chega ao provedor. Por isso, <strong>não envie dados
+        sensíveis</strong>, como CPF, dados de cartão, senhas ou informações de saúde. Procuramos ocultar
+        automaticamente números de telefone, e-mails e documentos digitados, mas esse filtro não é perfeito.
+      </p>
+
+      <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Como o agendamento é confirmado</h2>
+      <p>
+        O assistente nunca confirma um agendamento sozinho. Ele reserva o horário por 10 minutos, o
+        sistema envia um resumo com serviço, profissional, dia e hora, e <strong>o agendamento só vale
+        depois que você responde &quot;SIM&quot;</strong>. Essa resposta é o seu aceite do agendamento e
+        desta política, e registramos a data e a versão do texto aceito. Não pedimos código de
+        confirmação no WhatsApp, porque a mensagem vem do seu próprio número. No agendamento pelo site,
+        continuamos enviando um código de 6 dígitos para confirmar o telefone.
+      </p>
+
+      <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Decisões automatizadas</h2>
+      <p>
+        O assistente não decide por você nem recusa atendimento por conta própria: ele só mostra
+        horários disponíveis e prepara o que você pedir. Se quiser revisão de qualquer situação por
+        uma pessoa, entre em contato com {nome}.
+      </p>
+
+      <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Por quanto tempo guardamos</h2>
+      <p>
+        Os dados de agendamento são guardados pelo tempo necessário ao atendimento e ao histórico de
+        {" "}{nome}. As reservas que você não confirma expiram sozinhas em 10 minutos.
       </p>
 
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Seus direitos</h2>
       <p>
         Você pode pedir a exportação ou a exclusão dos seus dados a qualquer momento, entrando em
-        contato com {nome}. A exclusão anonimiza seu cadastro (nome, telefone e e-mail deixam de
-        identificar você) — o histórico de atendimentos já realizados é mantido de forma anônima, para
-        fins contábeis e de auditoria.
+        contato com {nome}. A exclusão anonimiza o seu cadastro (nome, telefone e e-mail deixam de
+        identificar você), e o histórico de atendimentos já realizados é mantido de forma anônima, para
+        fins contábeis e de auditoria. Você também pode pedir informações sobre com quem compartilhamos
+        os dados e revogar o seu consentimento.
       </p>
 
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Contato</h2>
       <p>Para exercer esses direitos, entre em contato diretamente com {nome} pelos canais informados na página inicial.</p>
+
+      <p className="text-xs text-gray-500 dark:text-neutral-400">Versão 2.0 desta política.</p>
     </main>
   );
 }
