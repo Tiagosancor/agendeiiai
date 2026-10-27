@@ -194,4 +194,43 @@ public sealed class ContextoFerramentasAgenteTestes : IAsyncLifetime
             .Single(p => p.GetProperty("nome").GetString() == "Ana").GetProperty("servicos");
         servicos.EnumerateArray().Single(s => s.GetProperty("id").GetGuid() == c.Corte).GetProperty("preco").GetString().Should().Be("R$ 70,00");
     }
+    // ---------------------------------------------------------------- C/D: voltas esgotadas
+
+    [Fact]
+    public async Task Voltas_esgotadas_fazem_uma_chamada_final_sem_ferramentas_que_gera_o_texto()
+    {
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (req, _) => req.Ferramentas.Count == 0
+            ? Texto("Posso ajudar com corte e barba. Qual serviço você quer?")
+            : Chama(("listar_servicos", "{}"));
+
+        await _ambiente.EnviarAsync(c, "Juliana");
+
+        _ambiente.Provedor.Chamadas.Should().Be(6);
+        var final = _ambiente.Provedor.Requisicoes[^1];
+        final.Ferramentas.Should().BeEmpty();
+        final.PromptSistema.Should().Contain(OrquestradorAgente.InstrucaoRespostaFinal);
+        _ambiente.UltimaEntrega().Should().Contain("Qual serviço você quer?").And.NotContain("Não consegui consultar");
+        (await _ambiente.UsosAsync()).Should().HaveCount(6).And.OnlyContain(u => u.Sucesso);
+    }
+
+    [Theory]
+    [InlineData("vazia")]
+    [InlineData("falha")]
+    [InlineData("ferramenta")]
+    public async Task Chamada_final_que_falha_ou_vem_vazia_cai_no_fallback_com_o_link(string comoFalha)
+    {
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (req, _) =>
+        {
+            if (req.Ferramentas.Count > 0 || comoFalha == "ferramenta")
+                return Chama(("listar_servicos", "{}"));
+            return comoFalha == "falha" ? throw new FalhaProvedorIaException("http", 503) : Texto("   ");
+        };
+
+        await _ambiente.EnviarAsync(c, "Juliana");
+
+        _ambiente.Provedor.Chamadas.Should().Be(6);
+        _ambiente.UltimaEntrega().Should().Contain("Não consegui consultar as informações agora").And.Contain(c.Slug);
+    }
 }
