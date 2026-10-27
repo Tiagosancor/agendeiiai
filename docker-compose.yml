@@ -86,7 +86,7 @@ services:
       Ai__MaxChamadasFerramentaPorIteracao: ${AI_MAX_CHAMADAS_FERRAMENTA_ITERACAO:-3}
       Ai__MaxCaracteresMensagem: ${AI_MAX_CARACTERES_MENSAGEM:-1000}
       Ai__MaxCaracteresHistorico: ${AI_MAX_CARACTERES_HISTORICO:-8000}
-      Ai__MaxTokensSaida: ${AI_MAX_TOKENS_SAIDA:-512}
+      Ai__MaxTokensSaida: ${AI_MAX_TOKENS_SAIDA:-1536}
       Ai__MaxCaracteresResposta: ${AI_MAX_CARACTERES_RESPOSTA:-1000}
       Ai__Agendamento__Modo: ${AI_AGENDAMENTO_MODO:-Desligado}
       Ai__Agendamento__Negocios: ${AI_AGENDAMENTO_NEGOCIOS:-}

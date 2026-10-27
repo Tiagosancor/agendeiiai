@@ -206,27 +206,50 @@ public sealed class OrquestradorAgente : IRespostaAgente
             using var limite = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             limite.CancelAfter(restante);
 
-            AiResponse resposta;
-            var inicio = relogio.Elapsed;
-            try
-            {
-                resposta = await _provedor.GenerateAsync(new AiRequest(prompt, mensagens, ferramentas, _opcoes.MaxTokensSaida, modelo), limite.Token);
-            }
-            catch (Exception excecao) when (excecao is FalhaProvedorIaException || (excecao is OperationCanceledException && !cancellationToken.IsCancellationRequested))
-            {
-                // A tentativa falha também é gravada (sucesso = false) e conta nos limites de chamadas por dia, como sempre.
-                await RegistrarUsoAsync(contexto, modeloRegistrado, 0, 0, sucesso: false, cancellationToken);
-                _logger.LogWarning("Agente: provedor de IA falhou (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}): {Tipo}{Status}.",
-                    contexto.ConversaId, iteracao, modeloRegistrado, (excecao as FalhaProvedorIaException)?.Tipo ?? "timeout",
-                    (excecao as FalhaProvedorIaException)?.StatusHttp is int s ? $" HTTP {s}" : string.Empty);
-                // Timeout (nosso prazo) e falha de capacidade passam para a reserva; 400/401/403 e resposta inválida, não.
-                var capacidade = excecao is not FalhaProvedorIaException falha || falha.FalhaDeCapacidade;
-                return new ResultadoModelo(null, capacidade && modelo is null);
-            }
+            var tentativa = await ChamarModeloAsync(contexto, modelo, modeloRegistrado, iteracao, mensagens, prompt, ferramentas,
+                _opcoes.MaxTokensSaida, relogio, limite.Token, cancellationToken);
+            if (tentativa.Falha is not null)
+                return tentativa.Falha;
+            var resposta = tentativa.Resposta!;
 
-            await RegistrarUsoAsync(contexto, resposta.Modelo, resposta.TokensEntrada, resposta.TokensSaida, sucesso: true, cancellationToken);
-            _logger.LogInformation("Agente: chamada ao modelo (conversa {ConversaId}, iteração {Iteracao}, tokens {Entrada}/{Saida}, {Ms} ms, ferramentas {Ferramentas}).",
-                contexto.ConversaId, iteracao, resposta.TokensEntrada, resposta.TokensSaida, (long)(relogio.Elapsed - inicio).TotalMilliseconds, resposta.Chamadas.Count);
+            // Cortada por falta de espaço (os tokens de raciocínio contam no limite): nunca vai ao cliente. Uma nova tentativa da MESMA
+            // iteração com o limite dobrado; se cortar de novo, vira o fallback (não é falha de capacidade: sem modelo de reserva).
+            // Com chamada de ferramenta junto, a chamada vale e o texto é só histórico da rodada.
+            if (resposta.Chamadas.Count == 0 && resposta.MotivoFim == MotivoFimMaxTokens)
+            {
+                var limiteDobrado = Math.Min(_opcoes.MaxTokensSaida * 2, TetoMaxTokensSaida);
+                _logger.LogWarning(
+                    "Agente: resposta cortada por limite de tokens (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}, tokens de saída {Saida}, motivo {Motivo}, limite {Limite}).",
+                    contexto.ConversaId, iteracao, modeloRegistrado, resposta.TokensSaida, resposta.MotivoFim, _opcoes.MaxTokensSaida);
+
+                var restanteRetry = fim - relogio.Elapsed;
+                if (limiteDobrado <= _opcoes.MaxTokensSaida || restanteRetry <= TimeSpan.Zero)
+                    return new ResultadoModelo(null, false);
+
+                var motivoCusto = await _limitador.VerificarCustoAsync(DateTimeOffset.UtcNow, cancellationToken);
+                if (motivoCusto != MotivoLimiteAgente.Nenhum)
+                {
+                    _logger.LogWarning("Agente: limite {Motivo} atingido antes da nova tentativa (conversa {ConversaId}, iteração {Iteracao}).",
+                        motivoCusto, contexto.ConversaId, iteracao);
+                    return new ResultadoModelo(null, false);
+                }
+
+                using var limiteRetry = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                limiteRetry.CancelAfter(restanteRetry);
+                var segunda = await ChamarModeloAsync(contexto, modelo, modeloRegistrado, iteracao, mensagens, prompt, ferramentas,
+                    limiteDobrado, relogio, limiteRetry.Token, cancellationToken);
+                if (segunda.Falha is not null)
+                    return segunda.Falha;
+                resposta = segunda.Resposta!;
+
+                if (resposta.Chamadas.Count == 0 && resposta.MotivoFim == MotivoFimMaxTokens)
+                {
+                    _logger.LogWarning(
+                        "Agente: resposta cortada de novo após a nova tentativa (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}, tokens de saída {Saida}, limite {Limite}); fallback.",
+                        contexto.ConversaId, iteracao, modeloRegistrado, resposta.TokensSaida, limiteDobrado);
+                    return new ResultadoModelo(null, false);
+                }
+            }
 
             if (resposta.Chamadas.Count == 0)
                 return new ResultadoModelo(resposta.Texto, false);
@@ -297,6 +320,40 @@ public sealed class OrquestradorAgente : IRespostaAgente
         }
 
         return new ResultadoModelo(null, false);
+    }
+
+    private const string MotivoFimMaxTokens = "MAX_TOKENS";
+    private const int TetoMaxTokensSaida = 8192;
+
+    private sealed record TentativaModelo(AiResponse? Resposta, ResultadoModelo? Falha);
+
+    /// <summary>Uma chamada ao provedor com registro de uso e log; falha do provedor/prazo volta como <see cref="ResultadoModelo"/>.</summary>
+    private async Task<TentativaModelo> ChamarModeloAsync(
+        ContextoRespostaAgente contexto, string? modelo, string modeloRegistrado, int iteracao, List<AiMensagem> mensagens, string prompt,
+        List<AiFerramenta> ferramentas, int maxTokensSaida, Stopwatch relogio, CancellationToken token, CancellationToken cancellationToken)
+    {
+        AiResponse resposta;
+        var inicio = relogio.Elapsed;
+        try
+        {
+            resposta = await _provedor.GenerateAsync(new AiRequest(prompt, mensagens, ferramentas, maxTokensSaida, modelo), token);
+        }
+        catch (Exception excecao) when (excecao is FalhaProvedorIaException || (excecao is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+        {
+            // A tentativa falha também é gravada (sucesso = false) e conta nos limites de chamadas por dia, como sempre.
+            await RegistrarUsoAsync(contexto, modeloRegistrado, 0, 0, sucesso: false, cancellationToken);
+            _logger.LogWarning("Agente: provedor de IA falhou (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}): {Tipo}{Status}.",
+                contexto.ConversaId, iteracao, modeloRegistrado, (excecao as FalhaProvedorIaException)?.Tipo ?? "timeout",
+                (excecao as FalhaProvedorIaException)?.StatusHttp is int s ? $" HTTP {s}" : string.Empty);
+            // Timeout (nosso prazo) e falha de capacidade passam para a reserva; 400/401/403 e resposta inválida, não.
+            var capacidade = excecao is not FalhaProvedorIaException falha || falha.FalhaDeCapacidade;
+            return new TentativaModelo(null, new ResultadoModelo(null, capacidade && modelo is null));
+        }
+
+        await RegistrarUsoAsync(contexto, resposta.Modelo, resposta.TokensEntrada, resposta.TokensSaida, sucesso: true, cancellationToken);
+        _logger.LogInformation("Agente: chamada ao modelo (conversa {ConversaId}, iteração {Iteracao}, tokens {Entrada}/{Saida}, {Ms} ms, ferramentas {Ferramentas}).",
+            contexto.ConversaId, iteracao, resposta.TokensEntrada, resposta.TokensSaida, (long)(relogio.Elapsed - inicio).TotalMilliseconds, resposta.Chamadas.Count);
+        return new TentativaModelo(resposta, null);
     }
 
     private bool EhFerramentaDeEscrita(string? nome) =>

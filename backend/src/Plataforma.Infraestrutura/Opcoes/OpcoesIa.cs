@@ -33,7 +33,7 @@ public sealed class OpcoesIa
 
     public int MaxCaracteresHistorico { get; set; } = 8000;
 
-    public int MaxTokensSaida { get; set; } = 512;
+    public int MaxTokensSaida { get; set; } = 1536;
 
     public int MaxCaracteresResposta { get; set; } = 1000;
 

@@ -141,6 +141,62 @@ public sealed class AgenteConsultaTestes : IAsyncLifetime
         itens.Select(i => i.GetProperty("profissional").GetString()).Distinct().Should().BeSubsetOf(["Ana", "Beto"]);
     }
 
+    // ---------------------------------------------------------------- resposta cortada por limite de tokens
+
+    private static AiResponse Cortada(string? texto) => new(texto, [], 100, 1536, "modelo-falso", "MAX_TOKENS");
+
+    [Fact]
+    public async Task Resposta_cortada_por_MAX_TOKENS_refaz_a_iteracao_com_o_limite_dobrado_e_envia_a_completa()
+    {
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (_, n) => n == 1 ? Cortada("Para o dia 27/10 às 13:30, o profissional") : ProvedorIaRoteirizado.Texto("Resposta completa.");
+
+        await _ambiente.EnviarAsync(c, "tem horário?");
+
+        _ambiente.Provedor.Chamadas.Should().Be(2);
+        _ambiente.Provedor.Requisicoes[0].MaxTokensSaida.Should().Be(1536);
+        _ambiente.Provedor.Requisicoes[1].MaxTokensSaida.Should().Be(3072);
+        _ambiente.UltimaEntrega().Should().Be("Resposta completa.");
+        (await _ambiente.UsosAsync()).Count.Should().Be(2, "a nova tentativa também conta em usos_ia");
+    }
+
+    [Fact]
+    public async Task Resposta_cortada_duas_vezes_vira_fallback_sem_texto_cortado()
+    {
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (_, _) => Cortada("Para o dia 27/10 às 13:30, o profissional");
+
+        await _ambiente.EnviarAsync(c, "tem horário?");
+
+        _ambiente.Provedor.Chamadas.Should().Be(2);
+        var entrega = _ambiente.UltimaEntrega();
+        entrega.Should().Contain("Não consegui consultar").And.NotContain("o profissional");
+    }
+
+    [Fact]
+    public async Task Resposta_vazia_por_MAX_TOKENS_tambem_tenta_de_novo()
+    {
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (_, n) => n == 1 ? Cortada(null) : ProvedorIaRoteirizado.Texto("Agora deu.");
+
+        await _ambiente.EnviarAsync(c, "oi");
+
+        _ambiente.Provedor.Chamadas.Should().Be(2);
+        _ambiente.UltimaEntrega().Should().Be("Agora deu.");
+    }
+
+    [Fact]
+    public async Task Resposta_normal_STOP_continua_com_uma_so_chamada()
+    {
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (_, _) => ProvedorIaRoteirizado.Texto("Tudo certo.");
+
+        await _ambiente.EnviarAsync(c, "oi");
+
+        _ambiente.Provedor.Chamadas.Should().Be(1);
+        _ambiente.UltimaEntrega().Should().Be("Tudo certo.");
+    }
+
     // ---------------------------------------------------------------- isolamento entre negócios (A2)
 
     [Fact]
@@ -274,7 +330,7 @@ public sealed class AgenteConsultaTestes : IAsyncLifetime
         ultima.Papel.Should().Be(PapelIa.Usuario);
         ultima.Texto!.Split('\n').Last().Length.Should().BeLessThanOrEqualTo(1000);
         ultima.Texto.Should().NotContain("\u0007").And.NotContain("\u0000");
-        requisicao.MaxTokensSaida.Should().Be(512);
+        requisicao.MaxTokensSaida.Should().Be(1536);
     }
 
     // ---------------------------------------------------------------- limites (A4)
