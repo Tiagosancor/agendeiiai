@@ -479,8 +479,9 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 && (limiteSuperior == null || m.CriadoEm <= limiteSuperior))
             .OrderByDescending(m => m.CriadoEm)
             .Take(_opcoes.MaxMensagensHistorico)
-            .Select(m => new ItemHistorico(m.Papel, m.Conteudo, m.CriadoEm, false))
+            .Select(m => new { m.Papel, m.Conteudo, m.CriadoEm })
             .ToListAsync(cancellationToken);
+        var itens = recentes.Select(m => new ItemHistorico(m.Papel, m.Conteudo, m.CriadoEm, false)).ToList();
 
         // Notas de contexto das ferramentas: só as mais recentes, fora da contagem de mensagens, e nunca mais velhas que a mais antiga
         // mensagem mantida (senão ficariam soltas no começo). Entram no orçamento de caracteres do histórico.
@@ -492,12 +493,12 @@ public sealed class OrquestradorAgente : IRespostaAgente
             .Take(NotaContextoAgente.MaximoNotasNoHistorico)
             .Select(m => new ItemHistorico(m.Papel, m.Conteudo, m.CriadoEm, true))
             .ToListAsync(cancellationToken);
-        if (recentes.Count > 0 && recentes.Count >= _opcoes.MaxMensagensHistorico)
-            notas = notas.Where(n => n.CriadoEm >= recentes[^1].CriadoEm).ToList();
-        if (recentes.Count == 0)
+        if (itens.Count > 0 && itens.Count >= _opcoes.MaxMensagensHistorico)
+            notas = notas.Where(n => n.CriadoEm >= itens[^1].CriadoEm).ToList();
+        if (itens.Count == 0)
             notas.Clear();
 
-        var todas = recentes.Concat(notas).OrderByDescending(m => m.CriadoEm).ToList();
+        var todas = itens.Concat(notas).OrderByDescending(m => m.CriadoEm).ToList();
 
         var escolhidas = new List<(PapelIa Papel, string Texto)>();
         var total = 0;

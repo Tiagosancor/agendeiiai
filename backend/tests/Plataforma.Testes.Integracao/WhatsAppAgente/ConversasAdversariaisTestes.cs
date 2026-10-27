@@ -204,16 +204,17 @@ public sealed class ConversasAdversariaisTestes : IAsyncLifetime
     // 8 -------------------------------------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task C08_Modelo_que_pede_ferramenta_para_sempre_faz_exatamente_5_chamadas_e_cai_no_fallback_com_o_link()
+    public async Task C08_Modelo_que_pede_ferramenta_para_sempre_faz_5_voltas_mais_a_final_sem_ferramentas_e_cai_no_fallback_com_o_link()
     {
         var c = await _ambiente.SemearAsync();
         _ambiente.Provedor.Roteiro = (_, _) => ProvedorIaRoteirizado.Chama(("listar_servicos", "{}"));
 
         await _ambiente.EnviarAsync(c, "oi");
 
-        _ambiente.Provedor.Chamadas.Should().Be(5);
+        _ambiente.Provedor.Chamadas.Should().Be(6, "5 voltas + a chamada final sem ferramentas, que também só pede ferramenta");
+        _ambiente.Provedor.Requisicoes[^1].Ferramentas.Should().BeEmpty();
         _ambiente.UltimaEntrega().Should().Contain($"{c.Slug}.{DominioDeTeste.Valor}").And.Contain("assistente virtual");
-        (await _ambiente.UsosAsync()).Should().HaveCount(5);
+        (await _ambiente.UsosAsync()).Should().HaveCount(6);
     }
 
     // 9 -------------------------------------------------------------------------------------------------------------------
