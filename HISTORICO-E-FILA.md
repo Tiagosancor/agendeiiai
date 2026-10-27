@@ -518,11 +518,16 @@ futuros, 3 confirmações/dia e 20 reservas ativas por negócio; aviso de atendi
 - **Fatia 3 — PR #39 (merge `9345c87`):** `Ai__Agendamento__*`, ferramenta `preparar_agendamento` (uma vez por rodada), resumo e confirmação pelo servidor (`ConfirmadorPendenciaAgente`),
   guarda de promessa falsa, prompt v2 só com o modo ligado, aviso automatizado, `VersaoTermos.Atual` 2.0 (vale também para o assistente web). Bug real achado pelo teste de concorrência e
   corrigido (`ChangeTracker.Clear()` após reserva sem sucesso). Codex reprovou a revisão com 3 importantes; o **achado 1 foi corrigido** (o "sim" só confirma se nada do cliente desde o
-  resumo foi contestação, `aca2198`). **Pendências do Codex, a resolver ANTES de ativar o modo:** (a) queda do processo depois de gravar a confirmação e antes de enviar a mensagem deixa o
-  agendamento sem aviso nem link de gestão ao cliente; (b) falha de transporte no envio do resumo é tratada como "não entregue" e libera a reserva (deveria ser ambígua).
-- **Não verificado:** comportamento com Gemini real (roteiros novos em `avaliacao-manual.md` da fase), envio real pela Evolution, latência e custo por agendamento.
-- **Pré-requisitos de ativação com clientes reais:** roteiros da Fase 2 e da Fase 3 completos com Gemini real; faturamento do Gemini; política do negócio v2.0 publicada (PR #37, aberto);
-  número dedicado ao piloto; aviso automatizado conferido; as pendências (a) e (b) acima.
+  resumo foi contestação, `aca2198`). Os achados 2 e 3 do Codex foram resolvidos no **PR #41 (merge `cb8952a`)**: (a) o lote do "sim" só é marcado como processado depois do envio da confirmação, com
+  recuperação para envio não realizado e `JaAnunciada` para a queda entre o envio e a marcação; (b) só recusa de conexão, DNS e TLS são falha definitiva — conexão encerrada, resposta
+  truncada e timeout são **ambíguos** (não liberam a reserva nem reenviam). Risco aceito: com falha definitiva repetida da Evolution a confirmação é retentada a cada repescagem do recuperador.
+- **Política do negócio v2.0 — PR #37 (merge `31827db`):** `/privacidade` do negócio menciona o assistente com IA, o envio ao Google (Gemini), o "SIM" como aceite e mostra "Versão 2.0".
+  O e2e novo (`politica-negocio-ia.spec.ts`) nunca rodou contra a stack deste código; conferir a página na produção.
+- **Gemini com faturamento (2026-10-27):** o dono comprou R$ 200 em créditos e ligou o faturamento. Medição pós-faturamento: todos os modelos testados 200/200/200; `3.1-flash-lite` ~1,2 s,
+  `3.5-flash-lite` ~1,1 s, `flash-lite-latest` ~1,1 s, `3.5-flash` ~2,7 s (antes, na cota gratuita: 503 em 4 de 6 e 15–26 s na reserva). Configuração atual mantida; nada a mudar no código.
+- **Não verificado:** comportamento do agendamento com Gemini real (roteiros novos em `avaliacao-manual.md` da fase), envio real pela Evolution, latência e custo por agendamento.
+- **Pré-requisitos de ativação com clientes reais:** roteiros da Fase 2 e da Fase 3 completos com Gemini real; número dedicado ao piloto (ver `docs/ativacao-agente-fase3.md`, local) com a sessão da
+  Evolution comprovadamente estável; aviso automatizado conferido; conferir a política v2.0 no ar. Faturamento do Gemini: **feito**.
 
 ### Política de privacidade do produto — PR #28 (frontend)
 
@@ -539,8 +544,8 @@ produto só será comercializado com tudo implementado. A política **do negóci
 | Deploy do Railway do merge 6efb0f3 falhou no build (infra) | Dono | Redeploy do mesmo commit |
 | Validar o modelo de reserva com o Gemini real e ligar o faturamento do Gemini | Dono | Reserva testada (funciona, mas lenta); subir `Ai__TempoMaximoProcessamentoSegundos` (60–75), testar reserva mais rápida e ligar o faturamento antes de clientes reais |
 | "Aguardando mensagem" no celular de destino | Dono | Observando após v2.3.7 + `DATABASE_SAVE_DATA_INSTANCE=true`; testar com número novo dedicado |
-| Fase 3: confirmação gravada sem aviso ao cliente se o processo cair antes do envio; falha de transporte tratada como "não entregue" | Claude Code | Achados 2 e 3 do Codex (PR #39); resolver antes de ativar `Ai__Agendamento__Modo` |
-| Política do negócio v2.0 (PR #37, aberto): merge e e2e contra stack construída do código | Dono/Claude Code | Texto aprovado; `VersaoTermos` 2.0 já no ar com o PR #39 |
+| Fase 3: ativar o piloto (`Ai__Agendamento__Modo=Piloto` + GUID) e rodar os roteiros com Gemini real | Dono/Claude Code | Código completo e desligado (PRs #36, #38, #39, #41); guia em `docs/ativacao-agente-fase3.md` (local) |
+| Conferir `/privacidade` de um negócio em produção (v2.0) e rodar o e2e novo contra stack construída do código | Dono/Claude Code | PR #37 mergeado; e2e nunca rodou contra esta versão |
 | Item 8.1.7 na especificação: agendamento pelo WhatsApp dispensa código | Dono | Decisão P0 aprovada em 2026-10-26; `prompt-do-projeto.md` é local |
 | Sugestões de cobertura do Codex em código já mergeado: corpo grande sem Content-Length (PR #31) e expiração do disjuntor (PR #32) | Claude Code | Baixa prioridade |
 | Confirmar que o `ERR` de chave duplicada em `eventos_webhook_whatsapp` sumiu (PR #34) | Dono | Olhar o log do Railway por alguns dias |
