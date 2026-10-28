@@ -17,11 +17,13 @@ public sealed class ExecutorFerramentasAgente : IExecutorFerramentasAgente
     private readonly IContextoNegocio _contextoNegocio;
     private readonly ILogger<ExecutorFerramentasAgente> _logger;
     private readonly OpcoesIa? _opcoes;
+    private readonly PoliticaAgenteIa? _politica;
 
     public ExecutorFerramentasAgente(
         IEnumerable<IFerramentaAgente> ferramentas, IContextoNegocio contextoNegocio, ILogger<ExecutorFerramentasAgente> logger,
-        IOptions<OpcoesIa>? opcoes = null)
+        IOptions<OpcoesIa>? opcoes = null, PoliticaAgenteIa? politica = null)
     {
+        _politica = politica;
         _opcoes = opcoes?.Value;
         Ferramentas = ferramentas.ToList();
         _porNome = Ferramentas.ToDictionary(f => f.Nome, StringComparer.Ordinal);
@@ -31,8 +33,14 @@ public sealed class ExecutorFerramentasAgente : IExecutorFerramentasAgente
 
     public IReadOnlyList<IFerramentaAgente> Ferramentas { get; }
 
-    /// <summary>Sem as opções (testes antigos) a escrita fica desligada.</summary>
-    private bool EscritaLigada(Guid negocioId) => _opcoes?.AgendamentoAtivoPara(negocioId) == true;
+    /// <summary>
+    /// Com a política (produção): vale a situação já lida pelo orquestrador nesta rodada (global E contratado); sem leitura, fica
+    /// fechado. Sem a política (testes antigos) vale só a parte global; sem as opções, a escrita fica desligada.
+    /// </summary>
+    private bool EscritaLigada(Guid negocioId) =>
+        _politica is not null
+            ? _politica.Memorizada(negocioId)?.AgendamentoLiberado == true
+            : _opcoes?.AgendamentoAtivoPara(negocioId) == true;
 
     public IReadOnlyList<IFerramentaAgente> FerramentasPara(Guid negocioId) =>
         EscritaLigada(negocioId) ? Ferramentas : Ferramentas.Where(f => f is not IFerramentaDeEscritaAgente).ToList();

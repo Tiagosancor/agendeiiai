@@ -340,7 +340,7 @@ public sealed class FerramentaDeEscritaNoExecutorTestes
     [Fact]
     public void Esquema_da_ferramenta_nao_tem_negocio_telefone_cliente_nem_forcar_e_proibe_campos_extras()
     {
-        var ferramenta = new FerramentaPrepararAgendamento(null!, null!, null!, null!, null!, null!, null!, null!,
+        var ferramenta = new FerramentaPrepararAgendamento(null!, null!, null!, null!, null!, null!, null!, null!, null!,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<FerramentaPrepararAgendamento>.Instance);
 
         var bruto = ferramenta.Esquema.GetRawText();

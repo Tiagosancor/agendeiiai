@@ -271,6 +271,7 @@ public static class InfraestruturaServiceCollectionExtensions
 
         // Tela de assinatura do negócio e administração da plataforma (seção 7).
         servicos.AddScoped<IServicoAssinaturaNegocio, ServicoAssinaturaNegocio>();
+        servicos.AddScoped<ServicoContratacaoAgenteIa>();
         servicos.AddScoped<IAdministracaoPlataforma, AdministracaoPlataforma>();
         servicos.AddOptions<OpcoesCaptcha>().Bind(configuracao.GetSection(OpcoesCaptcha.Secao));
         servicos.AddHttpClient<IVerificadorCaptcha, VerificadorCaptchaTurnstile>();
@@ -329,6 +330,7 @@ public static class InfraestruturaServiceCollectionExtensions
             sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<OpcoesIa>>().Value.Provider == ProvedorIa.Gemini
                 ? sp.GetRequiredService<OrquestradorAgente>()
                 : sp.GetRequiredService<RespostaAgenteEco>());
+        servicos.AddScoped<PoliticaAgenteIa>();
         servicos.AddScoped<LimitadorUsoAgente>();
         servicos.AddScoped<RecuperadorRespostasAgente>();
         servicos.AddScoped<IProcessadorRodadaAgente, ProcessadorRodadaAgente>();

@@ -70,7 +70,13 @@ public sealed class OpcoesIa
     /// <summary>Dias que <c>rodadas_agente</c> é mantida; o job diário apaga o que for mais velho (7–365).</summary>
     public int RetencaoRodadasDias { get; set; } = 90;
 
-    /// <summary>Agendamento pelo agente ligado para o negócio: Gemini + piloto da Fase 2 + modo/piloto da Fase 3.</summary>
+    /// <summary>Mensagem fixa "atendimento automático indisponível" (negócio sem o serviço de IA contratado, agente ligado na tela).</summary>
+    public OpcoesIndisponivelAgente Indisponivel { get; set; } = new();
+
+    /// <summary>
+    /// Parte GLOBAL da conta (disjuntor): Gemini + piloto da Fase 2 + modo/piloto da Fase 3. NÃO inclui a contratação do negócio —
+    /// quem decide se o agente roda para um negócio é a <c>PoliticaAgenteIa</c> (global E contratado).
+    /// </summary>
     public bool AgendamentoAtivoPara(Guid negocioId) =>
         Provider == ProvedorIa.Gemini && NegocioHabilitado(negocioId) && Agendamento.Habilitado(negocioId);
 
@@ -83,6 +89,16 @@ public sealed class OpcoesIa
             .Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Any(item => Guid.TryParse(item, out var id) && id == negocioId);
     }
+}
+
+/// <summary>Seção <c>Ai:Indisponivel</c> (<c>Ai__Indisponivel__IntervaloHoras</c>, <c>Ai__Indisponivel__LimitePorNegocioPorDia</c>).</summary>
+public sealed class OpcoesIndisponivelAgente
+{
+    /// <summary>No máximo uma mensagem fixa por conversa neste intervalo (1–168 h).</summary>
+    public int IntervaloHoras { get; set; } = 24;
+
+    /// <summary>Teto de mensagens fixas por negócio por dia UTC; acima disso, silêncio (1–10.000).</summary>
+    public int LimitePorNegocioPorDia { get; set; } = 200;
 }
 
 public enum ModoAgendamentoAgente
@@ -197,6 +213,8 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
                 .Any(item => !Guid.TryParse(item, out _)))
             erros.Add("Ai__Agendamento__Negocios deve ser uma lista de GUIDs separada por vírgula.");
         Faixa(erros, nameof(o.RetencaoRodadasDias), o.RetencaoRodadasDias, 7, 365);
+        Faixa(erros, "Indisponivel.IntervaloHoras", o.Indisponivel.IntervaloHoras, 1, 168);
+        Faixa(erros, "Indisponivel.LimitePorNegocioPorDia", o.Indisponivel.LimitePorNegocioPorDia, 1, 10_000);
         if (o.CotaMensalTokensPorNegocio < 1)
             erros.Add("Ai__CotaMensalTokensPorNegocio deve ser positiva.");
 

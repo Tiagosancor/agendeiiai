@@ -7,6 +7,10 @@ namespace Plataforma.Infraestrutura.WhatsAppAgente;
 public static class MarcadoresAgente
 {
     public const string LimiteAviso = "limite_aviso";
+
+    /// <summary>Mensagem fixa "atendimento automático indisponível" (negócio sem o serviço de IA contratado). Não vai ao histórico da IA.</summary>
+    public const string IndisponivelAviso = "indisponivel_aviso";
+
     public const string Resumo = "agendamento_resumo";
     public const string Confirmado = "agendamento_confirmado";
     public const string NaoConfirmado = "agendamento_nao_confirmado";

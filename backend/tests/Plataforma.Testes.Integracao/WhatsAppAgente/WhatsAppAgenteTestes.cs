@@ -292,6 +292,12 @@ public sealed class WhatsAppAgenteTestes : IAsyncLifetime
         (await clienteA.GetAsync("/painel/whatsapp/status")).StatusCode.Should().Be(HttpStatusCode.NotFound);
         (await clienteA.PutAsJsonAsync("/painel/whatsapp/agente", new { ativo = true })).StatusCode.Should().Be(HttpStatusCode.NotFound);
 
+        // Serviço premium: ligar o agente exige o serviço contratado (o 409 tem teste próprio em ServicoPremiumPainelTestes).
+        await DbSemFiltro(async db =>
+        {
+            (await db.Negocios.SingleAsync(n => n.Id == negocioA)).LigarAgenteIa(OrigemAgenteIa.Manual, "teste", DateTimeOffset.UtcNow);
+            return await db.SaveChangesAsync();
+        });
         await clienteA.PostAsync("/painel/whatsapp/conectar", null);
         (await clienteA.PutAsJsonAsync("/painel/whatsapp/agente", new { ativo = true })).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
@@ -337,11 +343,13 @@ public sealed class WhatsAppAgenteTestes : IAsyncLifetime
         return await cliente.PostAsync($"/webhooks/whatsapp/{segredo}", new StringContent(corpo, Encoding.UTF8, "application/json"));
     }
 
-    private async Task<(Guid NegocioId, string Nome)> SemearInstanciaAsync(bool agenteAtivo)
+    private async Task<(Guid NegocioId, string Nome)> SemearInstanciaAsync(bool agenteAtivo, bool contratado = true)
     {
         using var escopo = _fabrica.Services.CreateScope();
         var db = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
         var negocio = Negocio.Criar(Slug.Criar("wa-" + Guid.NewGuid().ToString("N")[..12]), "Negócio WhatsApp", TipoNegocio.Barbearia);
+        if (contratado)
+            negocio.LigarAgenteIa(OrigemAgenteIa.Manual, "teste", DateTimeOffset.UtcNow);
         db.Negocios.Add(negocio);
 
         var instancia = new InstanciaWhatsApp(negocio.Id, $"neg-{negocio.Id:N}");

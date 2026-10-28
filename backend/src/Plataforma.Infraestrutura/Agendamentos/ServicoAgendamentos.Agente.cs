@@ -26,6 +26,10 @@ public sealed partial class ServicoAgendamentos
         if (await _assinaturas.ObterAsync(negocioId, cancellationToken) is { PermiteOperar: false })
             return ResultadoAgendamento.ComErro("O agendamento online não está disponível agora.");
 
+        // Serviço de IA desligado no meio da rodada: relido do banco (sem memória) para o desligamento valer na hora. Nada é gravado.
+        if (!await WhatsAppAgente.PoliticaAgenteIa.LerContratadoAsync(_dbContext, negocioId, cancellationToken))
+            return ResultadoAgendamento.ComErro("O agendamento online não está disponível agora.");
+
         // Tudo filtrado pelo tenant da conversa: id de outro negócio é "não encontrado".
         var profissional = await _dbContext.Profissionais.AsNoTracking().FirstOrDefaultAsync(p => p.Id == dados.ProfissionalId, cancellationToken);
         if (profissional is not { Ativo: true, Excluido: false })
@@ -75,6 +79,10 @@ public sealed partial class ServicoAgendamentos
         // Assinatura suspensa: nada é gravado e o agente fica em silêncio (a reserva expira sozinha). Lida fora da transação.
         if (await _assinaturas.ObterAsync(negocioId, cancellationToken) is { PermiteOperar: false })
             return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.AssinaturaSuspensa);
+
+        // Serviço de IA desligado depois do resumo: o "sim" não confirma (a pendência expira pelo job e libera o horário).
+        if (!await WhatsAppAgente.PoliticaAgenteIa.LerContratadoAsync(_dbContext, negocioId, cancellationToken))
+            return ResultadoConfirmacaoAgente.Recusada(MotivoRecusaConfirmacaoAgente.ServicoNaoContratado);
 
         var usaOutbox = _outbox.Usa(FamiliaNotificacao.Operacional);
         var estrategia = _dbContext.Database.CreateExecutionStrategy();

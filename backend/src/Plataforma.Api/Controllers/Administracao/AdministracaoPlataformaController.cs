@@ -45,8 +45,9 @@ public sealed class AdministracaoPlataformaController : ControllerBase
     private string Autor => $"plataforma:{User.FindFirst(ClaimTypes.Email)?.Value ?? User.FindFirst("email")?.Value}";
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<NegocioNaPlataforma>>> Listar([FromQuery] EstadoAssinatura? estado, CancellationToken cancellationToken) =>
-        Ok(await _administracao.ListarNegociosAsync(estado, cancellationToken));
+    public async Task<ActionResult<IReadOnlyList<NegocioNaPlataforma>>> Listar(
+        [FromQuery] EstadoAssinatura? estado, [FromQuery] bool? agenteIa, CancellationToken cancellationToken) =>
+        Ok(await _administracao.ListarNegociosAsync(estado, agenteIa, cancellationToken));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<DetalheNegocioNaPlataforma>> Obter(Guid id, CancellationToken cancellationToken)
@@ -80,6 +81,31 @@ public sealed class AdministracaoPlataformaController : ControllerBase
     [HttpPost("{id:guid}/reativar")]
     public Task<IActionResult> Reativar(Guid id, CancellationToken cancellationToken) =>
         ExecutarAsync(() => _administracao.ReativarAsync(Autor, id, cancellationToken));
+
+    public sealed record DefinirAgenteIaRequisicao(bool? Contratado, string? Motivo);
+
+    /// <summary>Liga/desliga o serviço de IA do WhatsApp do negócio (origem Manual). Mesmo estado de novo = 200 sem nova auditoria.</summary>
+    [HttpPut("{id:guid}/agente-ia")]
+    public async Task<ActionResult<ServicoAgenteIaNegocio>> DefinirAgenteIa(
+        Guid id, DefinirAgenteIaRequisicao requisicao, CancellationToken cancellationToken)
+    {
+        if (requisicao.Contratado is null)
+            return BadRequest(new ProblemDetails { Title = "Informe se o serviço fica contratado." });
+        if (requisicao.Motivo is { Length: > MotivoMaximoAgenteIa })
+            return BadRequest(new ProblemDetails { Title = $"O motivo pode ter no máximo {MotivoMaximoAgenteIa} caracteres." });
+
+        var servico = await _administracao.DefinirAgenteIaAsync(Autor, id, requisicao.Contratado.Value, requisicao.Motivo, cancellationToken);
+        return servico is null ? NotFound() : Ok(servico);
+    }
+
+    public const int MotivoMaximoAgenteIa = 500;
+
+    [HttpGet("{id:guid}/agente-ia/historico")]
+    public async Task<ActionResult<IReadOnlyList<HistoricoAgenteIa>>> HistoricoAgenteIa(Guid id, CancellationToken cancellationToken)
+    {
+        var historico = await _administracao.ListarHistoricoAgenteIaAsync(id, cancellationToken);
+        return historico is null ? NotFound() : Ok(historico);
+    }
 
     private async Task<IActionResult> ExecutarAsync(Func<Task<bool>> acao)
     {

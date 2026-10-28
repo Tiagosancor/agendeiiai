@@ -216,6 +216,8 @@ public sealed class ConfirmadorPendenciaAgente
         switch (resultado.Motivo)
         {
             case MotivoRecusaConfirmacaoAgente.AssinaturaSuspensa:
+            case MotivoRecusaConfirmacaoAgente.ServicoNaoContratado:
+                // Silêncio: nada gravado; a pendência expira pelo job. (O gate do processador já cobre o caso comum; isto é a corrida.)
                 return null;
 
             case MotivoRecusaConfirmacaoAgente.Expirada:

@@ -97,18 +97,31 @@ public sealed class GerenciadorInstanciaWhatsApp : IGerenciadorInstanciaWhatsApp
             // Evolution fora do ar: devolve o último estado gravado em vez de derrubar a tela.
         }
 
-        return new StatusWhatsApp(instancia.Status.ToString(), instancia.AgenteAtivo, instancia.Telefone);
+        var contratado = await PoliticaAgenteIa.LerContratadoAsync(_dbContext, instancia.NegocioId, cancellationToken);
+        return new StatusWhatsApp(instancia.Status.ToString(), instancia.AgenteAtivo, instancia.Telefone, contratado);
     }
 
-    public async Task<bool> DefinirAgenteAsync(bool ativo, CancellationToken cancellationToken = default)
+    public async Task<ResultadoDefinirAgente> DefinirAgenteAsync(bool ativo, CancellationToken cancellationToken = default)
     {
         var instancia = await _dbContext.InstanciasWhatsApp.FirstOrDefaultAsync(cancellationToken);
         if (instancia is null)
-            return false;
+            return ResultadoDefinirAgente.SemInstancia;
+
+        // Sem o serviço contratado, "agente ativo" na tela seria mentira (nada responderia): ligar é recusado; desligar sempre vale.
+        if (ativo && !await PoliticaAgenteIa.LerContratadoAsync(_dbContext, instancia.NegocioId, cancellationToken))
+            return ResultadoDefinirAgente.NaoContratado;
 
         instancia.DefinirAgente(ativo);
         await _dbContext.SaveChangesAsync(cancellationToken);
-        return true;
+        return ResultadoDefinirAgente.Ok;
+    }
+
+    public async Task<ServicoAgenteIaPainel> ObterServicoIaAsync(CancellationToken cancellationToken = default)
+    {
+        var negocioId = _contextoNegocio.NegocioId ?? throw new InvalidOperationException("Negócio não resolvido.");
+        var negocio = await _dbContext.Negocios.AsNoTracking().Where(n => n.Id == negocioId)
+            .Select(n => new { n.AgenteIaContratado, n.AgenteIaOrigem }).FirstOrDefaultAsync(cancellationToken);
+        return new ServicoAgenteIaPainel(negocio?.AgenteIaContratado == true, negocio?.AgenteIaContratado == true ? negocio.AgenteIaOrigem?.ToString() : null);
     }
 
     /// <summary>Webhook por instância. Sem URL pública ou segredo, a instância nasce sem webhook (o que não adianta para o agente — o painel avisa).</summary>

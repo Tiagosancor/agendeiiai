@@ -48,6 +48,22 @@ public sealed class WhatsAppAgenteController : ControllerBase
         if (dados.Ativo is null)
             return BadRequest(new { mensagem = "Informe se o agente fica ativo." });
 
-        return await _gerenciador.DefinirAgenteAsync(dados.Ativo.Value, cancellationToken) ? NoContent() : NotFound();
+        return await _gerenciador.DefinirAgenteAsync(dados.Ativo.Value, cancellationToken) switch
+        {
+            ResultadoDefinirAgente.Ok => NoContent(),
+            ResultadoDefinirAgente.NaoContratado => Conflict(new ProblemDetails
+            {
+                Title = "O serviço de atendimento automático não está contratado para este negócio.",
+                Extensions = { ["codigo"] = CodigoAgenteIaNaoContratado },
+            }),
+            _ => NotFound(),
+        };
     }
+
+    public const string CodigoAgenteIaNaoContratado = "agente_ia_nao_contratado";
+
+    /// <summary>Situação do serviço de IA do negócio (contratado e origem). Responde 200 mesmo sem instância conectada.</summary>
+    [HttpGet("servico-ia")]
+    public async Task<ActionResult<ServicoAgenteIaPainel>> ServicoIa(CancellationToken cancellationToken) =>
+        Ok(await _gerenciador.ObterServicoIaAsync(cancellationToken));
 }
