@@ -32,7 +32,7 @@ public static class NotaContextoAgente
     {
         var servicos = new Dictionary<Guid, string>();
         var profissionais = new Dictionary<Guid, (string Nome, List<string> Servicos)>();
-        var horarios = new List<string>();
+        var horarios = new List<ConsultaHorarios>();
 
         foreach (var consulta in consultas)
         {
@@ -72,7 +72,7 @@ public static class NotaContextoAgente
                     break;
 
                 case "consultar_horarios" when resultado.ValueKind == JsonValueKind.Object:
-                    var linha = LinhaHorarios(consulta.Argumentos, resultado);
+                    var linha = LerHorarios(consulta.Argumentos, resultado);
                     if (linha is not null)
                         horarios.Add(linha);
                     break;
@@ -85,7 +85,11 @@ public static class NotaContextoAgente
         var restante = MaximoCaracteresNota - Rotulo.Length - 1;
 
         foreach (var h in horarios.Take(MaximoLinhasHorarios))
-            Adicionar(linhas, h, ref restante);
+        {
+            var texto = FormatarHorarios(h, restante - 1);
+            if (texto is not null)
+                Adicionar(linhas, texto, ref restante);
+        }
 
         if (profissionais.Count > 0)
         {
@@ -106,7 +110,12 @@ public static class NotaContextoAgente
         return Rotulo + "\n" + string.Join("\n", ordenadas);
     }
 
-    private static string? LinhaHorarios(JsonElement argumentos, JsonElement resultado)
+    /// <summary>Marcador de corte dos horários (os ids de profissional e serviço nunca são cortados).</summary>
+    public const string MarcadorHorariosOmitidos = " (…mais horários omitidos)";
+
+    private sealed record ConsultaHorarios(DateOnly Dia, Guid? ServicoId, List<(Guid Id, string Nome, List<string> Horas)> Profissionais, bool Truncado);
+
+    private static ConsultaHorarios? LerHorarios(JsonElement argumentos, JsonElement resultado)
     {
         if (!resultado.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.String
             || !DateOnly.TryParseExact(data.GetString(), "yyyy-MM-dd", out var dia))
@@ -136,16 +145,66 @@ public static class NotaContextoAgente
         }
 
         var truncado = resultado.TryGetProperty("truncado", out var t) && t.ValueKind == JsonValueKind.True;
-        var sb = new StringBuilder();
-        sb.Append("Horários livres em ").Append(dia.ToString("yyyy-MM-dd"));
-        if (servicoId is not null)
-            sb.Append(" (servico_id=").Append(servicoId).Append(')');
-        sb.Append(": ");
-        if (porProfissional.Count == 0)
-            return sb.Append("nenhum").ToString();
+        return new ConsultaHorarios(dia, servicoId, porProfissional, truncado);
+    }
 
-        sb.Append(string.Join("; ", porProfissional.Select(p => $"{p.Nome} (profissional_id={p.Id}): {string.Join(' ', p.Horas)}")));
-        if (truncado)
+    /// <summary>
+    /// Monta a linha de horários dentro do orçamento. O cabeçalho (data e id do serviço) e o par nome+id COMPLETO de cada profissional
+    /// são o mínimo inegociável; os horários entram depois, em rodízio (um de cada profissional por volta), enquanto couberem, e o corte
+    /// é marcado. Se nem o mínimo couber (muitos profissionais com nomes longos: ~85 caracteres cada, ou seja, uns 9 numa nota), devolve
+    /// <c>null</c> — comportamento seguro: a linha some em vez de ficar com um id cortado.
+    /// </summary>
+    private static string? FormatarHorarios(ConsultaHorarios c, int orcamento)
+    {
+        var cabecalho = new StringBuilder("Horários livres em ").Append(c.Dia.ToString("yyyy-MM-dd"));
+        if (c.ServicoId is not null)
+            cabecalho.Append(" (servico_id=").Append(c.ServicoId).Append(')');
+        cabecalho.Append(": ");
+
+        if (c.Profissionais.Count == 0)
+            return cabecalho.Append("nenhum").Length <= orcamento ? cabecalho.ToString() : null;
+
+        var bases = c.Profissionais.Select(p => $"{p.Nome} (profissional_id={p.Id})").ToList();
+        var minimo = cabecalho.Length + bases.Sum(b => b.Length) + 2 * (bases.Count - 1);
+        if (minimo > orcamento)
+            return null;
+
+        // Custo de cada horário: " HH:mm" (6), e o primeiro de um profissional ainda paga o ": " no lugar do espaço (7).
+        var total = minimo + c.Profissionais.Sum(p => 2 + p.Horas.Count * 6 - 1) + (c.Truncado ? " (há mais)".Length : 0);
+        var quantos = new int[bases.Count];
+        var omitiu = false;
+        if (total <= orcamento)
+        {
+            for (var i = 0; i < quantos.Length; i++)
+                quantos[i] = c.Profissionais[i].Horas.Count;
+        }
+        else
+        {
+            var livre = orcamento - minimo - MarcadorHorariosOmitidos.Length;
+            var progrediu = true;
+            while (progrediu)
+            {
+                progrediu = false;
+                for (var i = 0; i < quantos.Length; i++)
+                {
+                    if (quantos[i] >= c.Profissionais[i].Horas.Count)
+                        continue;
+                    var custo = quantos[i] == 0 ? 7 : 6;
+                    if (custo > livre)
+                        continue;
+                    quantos[i]++;
+                    livre -= custo;
+                    progrediu = true;
+                }
+            }
+            omitiu = true;
+        }
+
+        var partes = bases.Select((b, i) => quantos[i] == 0 ? b : $"{b}: {string.Join(' ', c.Profissionais[i].Horas.Take(quantos[i]))}");
+        var sb = cabecalho.Append(string.Join("; ", partes));
+        if (omitiu)
+            sb.Append(MarcadorHorariosOmitidos);
+        else if (c.Truncado)
             sb.Append(" (há mais)");
         return sb.ToString();
     }

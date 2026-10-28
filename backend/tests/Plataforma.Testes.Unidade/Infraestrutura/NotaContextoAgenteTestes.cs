@@ -68,4 +68,37 @@ public sealed class NotaContextoAgenteTestes
         foreach (var guid in System.Text.RegularExpressions.Regex.Matches(nota, "[0-9a-f]{8}-[0-9a-f-]+").Select(m => m.Value))
             guid.Length.Should().Be(36);
     }
+
+    private static (List<Guid> Ids, JsonElement Resultado) HorariosDeVarios(int profissionais, int horarios)
+    {
+        var ids = Enumerable.Range(0, profissionais).Select(_ => Guid.NewGuid()).ToList();
+        var itens = Enumerable.Range(0, horarios).Select(i =>
+            $$"""{"hora":"{{9 + i / 4:00}}:{{i % 4 * 15:00}}","profissional_id":"{{ids[i % profissionais]}}","profissional":"Profissional de nome bem comprido numero {{i % profissionais}} xxxxxxxxxxxx"}""");
+        return (ids, J($$"""{"data":"2030-01-07","horarios":[{{string.Join(',', itens)}}],"truncado":false}"""));
+    }
+
+    [Fact]
+    public void Trinta_horarios_de_varios_profissionais_preservam_todos_os_ids_e_parte_dos_horarios_de_cada_um()
+    {
+        var (ids, resultado) = HorariosDeVarios(7, 30);
+        var nota = NotaContextoAgente.Montar([new("consultar_horarios", J($$"""{"servico_id":"{{Corte}}","data":"2030-01-07"}"""), resultado)])!;
+
+        nota.Length.Should().BeLessThanOrEqualTo(NotaContextoAgente.MaximoCaracteresNota);
+        nota.Should().Contain($"servico_id={Corte}").And.EndWith(NotaContextoAgente.MarcadorHorariosOmitidos);
+        foreach (var id in ids)
+        {
+            nota.Should().Contain($"profissional_id={id})");
+            var parte = nota.Split("; ").Single(x => x.Contains(id.ToString()));
+            System.Text.RegularExpressions.Regex.Matches(parte, @"\d\d:\d\d").Count.Should().BeGreaterThan(0, "cada profissional recebe uma parte");
+        }
+    }
+
+    [Fact]
+    public void Profissionais_demais_com_nomes_longos_descartam_a_linha_de_horarios_sem_cortar_id()
+    {
+        var (_, resultado) = HorariosDeVarios(14, 30);
+        var nota = NotaContextoAgente.Montar([new("consultar_horarios", J("{}"), resultado)]);
+
+        nota.Should().BeNull("nem os ids couberam: a linha some em vez de ficar com um id cortado");
+    }
 }
