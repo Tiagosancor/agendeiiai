@@ -10,7 +10,7 @@ namespace Plataforma.Infraestrutura.WhatsAppAgente;
 /// <summary>
 /// Apagar mensagens do agente sem quebrar auditoria nem limites (G11): as mensagens somem; a linha da conversa fica, com o telefone
 /// trocado (<c>usos_ia</c> e <c>rodadas_agente</c> têm FK cascade para ela e são a base da cota e do diagnóstico, só números).
-/// Ids de mensagem nas pendências não têm FK e ficam órfãos; o nome que o cliente informou na pendência é limpo.
+/// Ids de mensagem nas pendências não têm FK e ficam órfãos; as pendências não são tocadas (ordem de locks).
 /// </summary>
 public sealed class ServicoLgpdConversasWhatsApp : IServicoLgpdConversasWhatsApp
 {
@@ -98,7 +98,7 @@ public sealed class ServicoLgpdConversasWhatsApp : IServicoLgpdConversasWhatsApp
             .ToListAsync(cancellationToken);
     }
 
-    /// <summary>Roda na transação do chamador: apaga mensagens, limpa o nome das pendências e anonimiza as linhas.</summary>
+    /// <summary>Roda na transação do chamador: apaga as mensagens e anonimiza as linhas.</summary>
     private async Task<int> AnonimizarAsync(Guid negocioId, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken)
     {
         if (ids.Count == 0)
@@ -108,9 +108,9 @@ public sealed class ServicoLgpdConversasWhatsApp : IServicoLgpdConversasWhatsApp
             .Where(m => m.NegocioId == negocioId && ids.Contains(m.ConversaId))
             .ExecuteDeleteAsync(cancellationToken);
 
-        await _dbContext.PendenciasAgendamentoWhatsApp
-            .Where(p => p.NegocioId == negocioId && ids.Contains(p.ConversaId))
-            .ExecuteUpdateAsync(s => s.SetProperty(p => p.NomeInformado, (string?)null), cancellationToken);
+        // Pendências NÃO são tocadas de propósito: a confirmação toma pendência → agendamento → cliente, e esta rotina roda com o cliente já
+        // travado; mexer numa pendência aqui inverteria a ordem global de locks (o teste de anonimização no meio da confirmação trava).
+        // O nome informado numa pendência já é zerado quando ela termina (PendenciaAgendamentoWhatsApp.Encerrar), no máximo 10 min depois.
 
         var conversas = await _dbContext.ConversasWhatsApp
             .Where(c => c.NegocioId == negocioId && ids.Contains(c.Id))
