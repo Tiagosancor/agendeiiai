@@ -72,7 +72,7 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
     /// coluna e mantém o índice único por instância+telefone), cliente e resumo. A linha FICA porque <c>usos_ia</c> e <c>rodadas_agente</c>
     /// dependem dela (cota e diagnóstico, só números). Volta a <see cref="StatusConversaWhatsApp.Agente"/> e perde o lease: uma rodada em
     /// andamento deixa de renovar, marcar e (conferindo antes) iniciar NOVOS envios, e toda gravação de mensagem na conversa é recusada
-    /// (<c>PlataformaDbContext</c>, sob FOR SHARE). LIMITE: um envio que já passou da última conferência e está no provedor não é cancelado — o
+    /// (<c>PlataformaDbContext</c>, sob FOR NO KEY UPDATE). LIMITE: um envio que já passou da última conferência e está no provedor não é cancelado — o
     /// texto já entregue não é recuperável; o que se garante é que nada novo é gravado nem marcado depois. O mesmo número escrevendo depois
     /// abre uma conversa nova.
     /// </summary>

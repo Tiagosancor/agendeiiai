@@ -258,7 +258,7 @@ public class PlataformaDbContext : DbContext
     }
 
     // ---- LGPD das conversas do agente (G11) -------------------------------------------------------------------------------------
-    // Protocolo comum a todo escritor de mensagem: antes de gravar, trava a linha da conversa com FOR SHARE (na MESMA transação da gravação)
+    // Protocolo comum a todo escritor de mensagem: antes de gravar, trava a linha da conversa com FOR NO KEY UPDATE (FOR SHARE daria deadlock de upgrade quando o mesmo SaveChanges atualiza a conversa) (na MESMA transação da gravação)
     // e confere que ela não foi anonimizada. A anonimização toma FOR UPDATE na mesma linha (ServicoLgpdConversasWhatsApp), então ou ela
     // espera a gravação terminar e apaga a mensagem junto, ou a gravação espera, vê o telefone "anonimizado:..." e é desfeita.
     // Ordem de locks: a conversa vem DEPOIS de pendência, agendamento e cliente (quem já os tem os mantém; ninguém pede cliente
@@ -276,7 +276,7 @@ public class PlataformaDbContext : DbContext
         var comando = Database.GetDbConnection().CreateCommand();
         comando.Transaction = Database.CurrentTransaction!.GetDbTransaction();
         comando.CommandText =
-            "SELECT telefone_cliente FROM conversas_whatsapp WHERE id = ANY(@ids) AND negocio_id = ANY(@negocios) FOR SHARE";
+            "SELECT telefone_cliente FROM conversas_whatsapp WHERE id = ANY(@ids) AND negocio_id = ANY(@negocios) FOR NO KEY UPDATE";
         comando.Parameters.Add(new Npgsql.NpgsqlParameter("ids", conversas.Select(c => c.Id).ToArray()));
         comando.Parameters.Add(new Npgsql.NpgsqlParameter("negocios", conversas.Select(c => c.NegocioId).Distinct().ToArray()));
         return comando;
