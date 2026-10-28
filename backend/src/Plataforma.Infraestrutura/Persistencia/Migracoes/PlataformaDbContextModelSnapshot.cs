@@ -3330,6 +3330,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .IsUnique()
                         .HasDatabaseName("ix_mensagens_whatsapp_instancia_id_id_externo");
 
+                    b.HasIndex("NegocioId", "CriadoEm")
+                        .HasDatabaseName("ix_mensagens_whatsapp_indisponivel_aviso")
+                        .HasFilter("nome_ferramenta = 'indisponivel_aviso'");
+
                     b.ToTable("mensagens_whatsapp", (string)null);
                 });
 

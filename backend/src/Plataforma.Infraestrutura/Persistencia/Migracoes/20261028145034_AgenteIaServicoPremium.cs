@@ -42,6 +42,12 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                 name: "ck_negocios_agente_ia_origem",
                 table: "negocios",
                 sql: "agente_ia_origem IS NULL OR agente_ia_origem IN ('Manual', 'Plano', 'Adicional')");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_mensagens_whatsapp_indisponivel_aviso",
+                table: "mensagens_whatsapp",
+                columns: new[] { "negocio_id", "criado_em" },
+                filter: "nome_ferramenta = 'indisponivel_aviso'");
         }
 
         /// <inheritdoc />
@@ -50,6 +56,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
             migrationBuilder.DropCheckConstraint(
                 name: "ck_negocios_agente_ia_origem",
                 table: "negocios");
+
+            migrationBuilder.DropIndex(
+                name: "ix_mensagens_whatsapp_indisponivel_aviso",
+                table: "mensagens_whatsapp");
 
             migrationBuilder.DropColumn(
                 name: "agente_ia_alterado_em",

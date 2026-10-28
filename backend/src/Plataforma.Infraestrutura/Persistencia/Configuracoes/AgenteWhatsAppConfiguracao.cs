@@ -66,6 +66,10 @@ public sealed class MensagemWhatsAppConfiguracao : IEntityTypeConfiguration<Mens
         // Segunda barreira de deduplicação (a primeira é o Redis). NULL (mensagem sem ID do provedor) não conflita.
         builder.HasIndex(m => new { m.InstanciaId, m.IdExterno }).IsUnique();
         builder.HasIndex(m => new { m.ConversaId, m.CriadoEm });
+
+        // Contagem diária da mensagem fixa "indisponível" por negócio (serviço premium do agente): índice parcial, só essas linhas.
+        builder.HasIndex(m => new { m.NegocioId, m.CriadoEm }).HasDatabaseName("ix_mensagens_whatsapp_indisponivel_aviso")
+            .HasFilter("nome_ferramenta = 'indisponivel_aviso'");
     }
 }
 

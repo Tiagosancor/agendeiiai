@@ -13,6 +13,7 @@ using Plataforma.Dominio.Usuarios;
 using Plataforma.Dominio.WhatsAppAgente;
 using Plataforma.Infraestrutura.Agendamentos;
 using Plataforma.Infraestrutura.Persistencia;
+using Plataforma.Infraestrutura.WhatsAppAgente;
 using Plataforma.Testes.Integracao.Infraestrutura;
 using Xunit;
 using static Plataforma.Testes.Integracao.WhatsAppAgente.HelpersAgendamentoAgente;
@@ -381,6 +382,65 @@ public sealed class ServicoPremiumAgenteTestes : IAsyncLifetime
         (await _ambiente.PendenciasAsync()).Single().Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Aguardando);
         (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Reservado);
         (await _ambiente.ClientesAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Confirmacao_ja_gravada_e_nao_anunciada_ainda_e_recuperada_com_o_servico_desligado_sem_criar_nada_novo()
+    {
+        var c = await _ambiente.SemearAsync();
+        (await _ambiente.PrepararAsync(c, Prepara(c, c.Ana, "10:00", "Maria Souza"))).Should().BeNull();
+        var chamadasIa = _ambiente.Provedor.Chamadas;
+
+        // O "sim" confirma e grava, mas a Evolution recusa o envio: o lote fica pendente para a recuperação.
+        _ambiente.Evolution.FalharEnvio = true;
+        await _ambiente.EnviarAsync(c, "Sim!");
+        var agendamento = (await _ambiente.AgendamentosAsync()).Single();
+        agendamento.Status.Should().Be(StatusAgendamento.Agendado);
+        _ambiente.Evolution.Envios.Should().NotContain(e => e.Texto.StartsWith("Agendamento confirmado"));
+
+        // O dono desliga o serviço antes da retomada.
+        await _ambiente.ContratarAgenteIaAsync(c.NegocioId, false);
+        _ambiente.Evolution.FalharEnvio = false;
+        await _ambiente.ProcessarConversaAsync();
+        await _ambiente.ProcessarConversaAsync();
+
+        _ambiente.Evolution.Envios.Count(e => e.Texto.StartsWith("Agendamento confirmado")).Should().Be(1, "o anúncio de fato já gravado é entregue uma vez");
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.Confirmado)).Should().ContainSingle();
+        (await AvisosAsync()).Should().BeEmpty("o lote foi recuperado, não consumido como indisponível");
+        (await _ambiente.AgendamentosAsync()).Should().ContainSingle().Which.Id.Should().Be(agendamento.Id);
+        (await _ambiente.ClientesAsync()).Should().ContainSingle();
+        _ambiente.Provedor.Chamadas.Should().Be(chamadasIa);
+    }
+
+    [Fact]
+    public async Task Com_o_servico_desligado_um_novo_sim_nunca_confirma_nem_cria_cliente()
+    {
+        var c = await _ambiente.SemearAsync();
+        (await _ambiente.PrepararAsync(c, Prepara(c, c.Ana, "10:00", "Maria Souza"))).Should().BeNull();
+        await _ambiente.ContratarAgenteIaAsync(c.NegocioId, false);
+
+        await _ambiente.EnviarAsync(c, "Sim!");
+        await _ambiente.ProcessarConversaAsync();
+
+        (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Reservado);
+        (await _ambiente.ClientesAsync()).Should().BeEmpty();
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.Confirmado)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Conversas_concorrentes_do_mesmo_negocio_nunca_passam_do_teto_diario()
+    {
+        await IniciarAsync(new() { ["Ai:Indisponivel:LimitePorNegocioPorDia"] = "3" });
+        var c = await _ambiente.SemearAsync(contratado: false);
+
+        var telefones = Enumerable.Range(1, 16).Select(i => "557198888" + (1000 + i)).ToArray();
+        var respostas = await Task.WhenAll(telefones.Select(tel => Task.Run(() => _ambiente.EnviarAsync(c, "oi", tel))));
+
+        respostas.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.OK);
+        (await AvisosAsync()).Should().HaveCount(3, "contagem e reserva são serializadas por negócio/dia");
+        _ambiente.Evolution.Envios.Should().HaveCount(3);
+        (await _ambiente.MensagensAsync()).Count(m => m.Papel == PapelMensagemWhatsApp.Usuario).Should().Be(16);
+        await NadaDaIaRodouAsync();
     }
 
     [Fact]

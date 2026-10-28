@@ -12,7 +12,7 @@ using Plataforma.Infraestrutura.Persistencia;
 namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 {
     [DbContext(typeof(PlataformaDbContext))]
-    [Migration("20261028102358_AgenteIaServicoPremium")]
+    [Migration("20261028145034_AgenteIaServicoPremium")]
     partial class AgenteIaServicoPremium
     {
         /// <inheritdoc />
@@ -3332,6 +3332,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.HasIndex("InstanciaId", "IdExterno")
                         .IsUnique()
                         .HasDatabaseName("ix_mensagens_whatsapp_instancia_id_id_externo");
+
+                    b.HasIndex("NegocioId", "CriadoEm")
+                        .HasDatabaseName("ix_mensagens_whatsapp_indisponivel_aviso")
+                        .HasFilter("nome_ferramenta = 'indisponivel_aviso'");
 
                     b.ToTable("mensagens_whatsapp", (string)null);
                 });
