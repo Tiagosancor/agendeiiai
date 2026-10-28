@@ -47,10 +47,10 @@ public class UsoIa : EntidadeBase, IEntidadeDoNegocio
         string? motivoFim, int latenciaMs, int iteracao, string? falhaTipo, int? statusHttp, Guid? rodadaId)
         : this(negocioId, conversaId, modelo, tokensEntrada, tokensSaida, sucesso)
     {
-        MotivoFim = RodadaAgente.CodigoSeguro(motivoFim, RodadaAgente.TamanhoMaximoCodigo);
+        MotivoFim = RodadaAgente.MotivoFimFechado(motivoFim);
         LatenciaMs = Math.Max(0, latenciaMs);
         Iteracao = Math.Max(0, iteracao);
-        FalhaTipo = RodadaAgente.CodigoSeguro(falhaTipo, RodadaAgente.TamanhoMaximoCodigo);
+        FalhaTipo = RodadaAgente.TipoFalhaFechado(falhaTipo);
         StatusHttp = statusHttp;
         RodadaId = rodadaId;
     }

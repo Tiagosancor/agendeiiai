@@ -1,7 +1,10 @@
+using System.Data.Common;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.WhatsAppAgente;
 using Plataforma.Aplicacao.WhatsAppAgente.Ia;
 using Plataforma.Dominio.WhatsAppAgente;
 using Plataforma.Infraestrutura.Persistencia;
@@ -314,6 +317,106 @@ public sealed class RodadasAgenteTestes : IAsyncLifetime
         var tudo = string.Join('\n', textos);
         foreach (var proibido in new[] { vazamento, "exemplo.com", "98888", "5571988887777", "Fulano", "Segredo", "Cliente", "oi ", AmbienteAgente.ChaveGemini })
             tudo.Should().NotContain(proibido);
+    }
+
+    [Fact]
+    public async Task Motivo_de_fim_e_tipo_de_falha_fora_da_lista_fechada_viram_DESCONHECIDO()
+    {
+        var c = await _ambiente.SemearAsync();
+        const string pessoal = "joao.silva@exemplo.com";
+        _ambiente.Provedor.Roteiro = (_, _) => new AiResponse("ok", [], 100, 20, "modelo-falso", pessoal + " 71988887777");
+        await _ambiente.EnviarAsync(c, "oi");
+
+        _ambiente.Provedor.Roteiro = (_, _) => throw new FalhaProvedorIaException(pessoal, 500);
+        await _ambiente.EnviarAsync(c, "oi de novo");
+
+        var rodadas = await RodadasAsync();
+        rodadas.Should().HaveCount(2);
+        rodadas[0].MotivoFim.Should().Be("DESCONHECIDO");
+        rodadas[1].FalhaProvedor.Should().Be("DESCONHECIDO:500");
+        var usos = await _ambiente.UsosAsync();
+        usos[0].MotivoFim.Should().Be("DESCONHECIDO");
+        usos[1].FalhaTipo.Should().Be("DESCONHECIDO");
+    }
+
+    /// <summary>Cancela (como um desligamento do processo) quando a mensagem do resumo vai ser gravada, antes de qualquer envio.</summary>
+    private sealed class CancelaNaGravacaoDoResumo : DbCommandInterceptor
+    {
+        public CancellationTokenSource? Fonte { get; set; }
+
+        public bool Disparou { get; private set; }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            Verificar(command);
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            Verificar(command);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        private void Verificar(DbCommand comando)
+        {
+            if (Fonte is null || !comando.CommandText.Contains("INSERT INTO mensagens_whatsapp", StringComparison.Ordinal))
+                return;
+
+            if (comando.Parameters.Cast<DbParameter>().Any(p => p.Value is string v && v == MarcadoresAgente.Resumo))
+            {
+                Disparou = true;
+                Fonte.Cancel();
+                throw new OperationCanceledException(Fonte.Token);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Diagnostico_nunca_persiste_entidades_funcionais_pendentes_da_rodada_cancelada()
+    {
+        var gancho = new CancelaNaGravacaoDoResumo();
+        await _ambiente.DisposeAsync();
+        _ambiente = new AmbienteAgente(_postgres);
+        await _ambiente.IniciarAsync(
+            new Dictionary<string, string?>
+            {
+                ["Ai:Agendamento:Modo"] = "Todos",
+                ["Ai:LimiteMensagensPorTelefonePorHora"] = "1000",
+                ["Ai:LimiteMensagensPorTelefonePorDia"] = "5000",
+            },
+            fila: typeof(FilaQuePerde),
+            ajustarServicos: servicos => servicos.ConfigureDbContext<PlataformaDbContext>(o => o.AddInterceptors(gancho)));
+        var c = await _ambiente.SemearAsync();
+        var argumentos = Prepara(c, c.Ana, "10:00", "Maria Souza");
+        _ambiente.Provedor.Roteiro = (_, n) => n == 1 ? Chama(("preparar_agendamento", argumentos)) : Texto("ok");
+
+        await _ambiente.EnviarAsync(c, "quero agendar");
+        var conversa = (await _ambiente.ConversasAsync()).Single();
+        using var fonte = new CancellationTokenSource();
+        gancho.Fonte = fonte;
+        using (var escopo = _ambiente.Fabrica.Services.CreateScope())
+        {
+            var processador = escopo.ServiceProvider.GetRequiredService<IProcessadorRodadaAgente>();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => processador.ProcessarAsync(conversa.Id, fonte.Token));
+        }
+
+        gancho.Disparou.Should().BeTrue("o teste precisa ter cancelado exatamente na gravação do resumo");
+        gancho.Fonte = null;
+
+        // Nada funcional foi gravado pelo diagnóstico: nem a mensagem do resumo, nem o "resumo enviado" da pendência, nem envio ao cliente.
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.Resumo)).Should().BeEmpty();
+        var pendencia = (await _ambiente.PendenciasAsync()).Should().ContainSingle().Subject;
+        pendencia.Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Aguardando);
+        pendencia.ResumoMensagemId.Should().BeNull();
+        pendencia.ResumoEnviadoEm.Should().BeNull();
+        _ambiente.Evolution.Envios.Should().BeEmpty();
+
+        // E o diagnóstico em si foi gravado (contexto próprio), com o negócio certo.
+        var rodada = (await RodadasAsync()).Should().ContainSingle().Subject;
+        rodada.NegocioId.Should().Be(c.NegocioId);
     }
 
     // ---------------------------------------------------------------- flag, falha ao gravar, compatibilidade

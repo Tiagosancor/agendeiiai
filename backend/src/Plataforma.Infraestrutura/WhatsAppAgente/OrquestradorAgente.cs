@@ -419,8 +419,18 @@ public sealed class OrquestradorAgente : IRespostaAgente
     private void RegistrarErroDeFerramenta(JsonElement conteudo)
     {
         if (conteudo.ValueKind == JsonValueKind.Object && conteudo.TryGetProperty("erro", out var erro) && erro.ValueKind == JsonValueKind.String)
-            _coleta.ErrosFerramenta.Add(erro.GetString() ?? string.Empty);
+            _coleta.ErrosFerramenta.Add(CodigoDeErroConhecido(erro.GetString()));
     }
+
+    private static readonly HashSet<string> CodigosDeErroConhecidos = typeof(Ferramentas.ErrosFerramenta)
+        .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+        .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+        .Select(f => (string)f.GetRawConstantValue()!)
+        .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>Só códigos do catálogo <see cref="Ferramentas.ErrosFerramenta"/> são guardados; o resto vira DESCONHECIDO.</summary>
+    private static string CodigoDeErroConhecido(string? codigo) =>
+        codigo is not null && CodigosDeErroConhecidos.Contains(codigo) ? codigo : RodadaAgente.Desconhecido;
 
     /// <summary>Instrução fixa da última chamada, sem ferramentas, quando as voltas acabaram sem texto.</summary>
     public const string InstrucaoRespostaFinal =

@@ -36,7 +36,7 @@ public sealed class RodadaAgenteUnidadeTestes
         rodada.DuracaoMs.Should().Be(0);
         (rodada.Chamadas, rodada.TokensEntrada, rodada.TokensSaida).Should().Be((0, 0, 0));
         rodada.Modelo.Should().Be("gemini3.1flash");
-        rodada.MotivoFim.Should().Be("STOPcomtexto");
+        rodada.MotivoFim.Should().Be("DESCONHECIDO", "fora da lista fechada");
         rodada.Ferramentas!.Length.Should().Be(RodadaAgente.TamanhoMaximoLista);
         rodada.Ferramentas.Should().StartWith("consultar_horarios,consultar_horarios");
         rodada.ErrosFerramenta.Should().Be("horarioindisponivel");
@@ -61,10 +61,51 @@ public sealed class RodadaAgenteUnidadeTestes
         var uso = new UsoIa(Guid.NewGuid(), Guid.NewGuid(), "m", 10, 5, false, "MAX TOKENS", -3, 2, "http", 503, rodadaId);
 
         (uso.MotivoFim, uso.LatenciaMs, uso.Iteracao, uso.FalhaTipo, uso.StatusHttp, uso.RodadaId)
-            .Should().Be(("MAXTOKENS", 0, 2, "http", 503, rodadaId));
+            .Should().Be(("DESCONHECIDO", 0, 2, "http", 503, rodadaId));
 
         var antigo = new UsoIa(Guid.NewGuid(), Guid.NewGuid(), "m", 1, 1, true);
         (antigo.MotivoFim, antigo.LatenciaMs, antigo.RodadaId).Should().Be((null, null, null));
+    }
+
+    [Theory]
+    [InlineData("stop", "STOP")]
+    [InlineData("MAX_TOKENS", "MAX_TOKENS")]
+    [InlineData("LACO_FERRAMENTAS", "LACO_FERRAMENTAS")]
+    [InlineData("joao.silva@exemplo.com", "DESCONHECIDO")]
+    [InlineData("5571988887777", "DESCONHECIDO")]
+    [InlineData("Maria Souza", "DESCONHECIDO")]
+    [InlineData(null, null)]
+    public void MotivoFim_so_aceita_valores_da_lista_fechada(string? entrada, string? esperado) =>
+        RodadaAgente.MotivoFimFechado(entrada).Should().Be(esperado);
+
+    [Theory]
+    [InlineData("http", "http")]
+    [InlineData("TIMEOUT", "timeout")]
+    [InlineData("joao@exemplo.com", "DESCONHECIDO")]
+    [InlineData("71 98888-7777", "DESCONHECIDO")]
+    [InlineData(null, null)]
+    public void TipoDeFalha_so_aceita_valores_da_lista_fechada(string? entrada, string? esperado) =>
+        RodadaAgente.TipoFalhaFechado(entrada).Should().Be(esperado);
+
+    [Theory]
+    [InlineData("http:503", "http:503")]
+    [InlineData("http:503,timeout", "http:503,timeout")]
+    [InlineData("http:joao", "http")]
+    [InlineData("5571988887777:500", "DESCONHECIDO:500")]
+    [InlineData("a@b.com,rede", "DESCONHECIDO,rede")]
+    public void FalhaDoProvedor_revalida_cada_item(string entrada, string esperado) =>
+        RodadaAgente.FalhaProvedorFechada(entrada).Should().Be(esperado);
+
+    [Fact]
+    public void Rodada_e_uso_nunca_guardam_dado_pessoal_nos_campos_de_telemetria()
+    {
+        const string pessoal = "joao.silva@exemplo.com 71988887777";
+        var rodada = new RodadaAgente(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow, 1, DesfechoRodadaAgente.Fallback, null, 1, 1, 1, "m",
+            pessoal, null, null, pessoal, "v2");
+        var uso = new UsoIa(Guid.NewGuid(), Guid.NewGuid(), "m", 1, 1, false, pessoal, 1, 1, pessoal, 500, null);
+
+        new[] { rodada.MotivoFim, rodada.FalhaProvedor, uso.MotivoFim, uso.FalhaTipo }.Should().OnlyContain(v => v == "DESCONHECIDO");
     }
 
     [Fact]

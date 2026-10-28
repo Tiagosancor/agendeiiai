@@ -123,17 +123,82 @@ public class RodadaAgente : EntidadeBase, IEntidadeDoNegocio
         TokensEntrada = Math.Max(0, tokensEntrada);
         TokensSaida = Math.Max(0, tokensSaida);
         Modelo = CodigoSeguro(modelo, 100);
-        MotivoFim = CodigoSeguro(motivoFim, TamanhoMaximoCodigo);
+        MotivoFim = MotivoFimFechado(motivoFim);
         Ferramentas = Lista(ferramentas);
         ErrosFerramenta = Lista(errosFerramenta);
-        FalhaProvedor = CodigoSeguro(falhaProvedor, TamanhoMaximoCodigo);
+        FalhaProvedor = FalhaProvedorFechada(falhaProvedor);
         PromptVersao = CodigoSeguro(promptVersao, 20);
     }
 
+    /// <summary>Marcador fixo para qualquer valor fora das listas fechadas abaixo.</summary>
+    public const string Desconhecido = "DESCONHECIDO";
+
     /// <summary>
+    /// Únicos valores aceitos em <c>motivo_fim</c>: os motivos de término do Gemini e os marcadores do orquestrador. Qualquer outro
+    /// valor (inclusive texto que lembre dado pessoal) vira <see cref="Desconhecido"/>. A garantia de privacidade é ESTA lista, não o
+    /// filtro de caracteres de <see cref="CodigoSeguro"/>.
+    /// </summary>
+    private static readonly HashSet<string> MotivosFimAceitos = new(StringComparer.Ordinal)
+    {
+        "STOP", "MAX_TOKENS", "SAFETY", "RECITATION", "OTHER", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "MALFORMED_FUNCTION_CALL",
+        "LANGUAGE", "IMAGE_SAFETY", "UNEXPECTED_TOOL_CALL", "FINISH_REASON_UNSPECIFIED",
+        "LACO_FERRAMENTAS", "ORCAMENTO_TEMPO", "LIMITE_CUSTO", "EXCECAO", "TEXTO_DESCARTADO", Desconhecido,
+    };
+
+    /// <summary>Únicos tipos de falha do provedor aceitos (os que o provedor de IA lança).</summary>
+    private static readonly HashSet<string> TiposFalhaAceitos = new(StringComparer.Ordinal)
+    {
+        "http", "timeout", "rede", "resposta_invalida",
+    };
+
+    /// <summary>Motivo de término dentro da lista fechada (nulo continua nulo; o resto, <see cref="Desconhecido"/>).</summary>
+    public static string? MotivoFimFechado(string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+            return null;
+
+        var normal = valor.Trim().ToUpperInvariant();
+        return MotivosFimAceitos.Contains(normal) ? normal : Desconhecido;
+    }
+
+    /// <summary>Tipo de falha do provedor dentro da lista fechada (nulo continua nulo; o resto, <see cref="Desconhecido"/>).</summary>
+    public static string? TipoFalhaFechado(string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+            return null;
+
+        var normal = valor.Trim().ToLowerInvariant();
+        return TiposFalhaAceitos.Contains(normal) ? normal : Desconhecido;
+    }
+
+    /// <summary>Falha do provedor como <c>tipo</c> ou <c>tipo:status</c>, itens separados por vírgula; cada item é revalidado.</summary>
+    public static string? FalhaProvedorFechada(string? valor)
+    {
+        if (string.IsNullOrWhiteSpace(valor))
+            return null;
+
+        var itens = valor.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(item =>
+        {
+            var partes = item.Split(':', 2);
+            var tipo = TipoFalhaFechado(partes[0]);
+            return partes.Length == 2 && partes[1].Length is >= 1 and <= 3 && partes[1].All(char.IsAsciiDigit) ? $"{tipo}:{partes[1]}" : tipo;
+        }).Where(i => i is not null).Distinct().ToList();
+        if (itens.Count == 0)
+            return null;
+
+        var junto = string.Join(',', itens);
+        return junto.Length > TamanhoMaximoCodigo ? junto[..TamanhoMaximoCodigo] : junto;
+    }
+
+    /// <summary>
+    /// Formato defensivo: reduz o texto a letras ASCII, números e <c>_ . : -</c> (nada de espaço, quebra de linha ou acento). NÃO
+    /// garante privacidade — um telefone ou parte de um e-mail passa; por isso só é usado em valores que já vêm de catálogo
+    /// (nome do modelo, versão do prompt, nomes de ferramenta e códigos de erro) e nunca em campos livres.
+    /// </summary>
+    /// <remarks>
     /// Reduz o texto a um código curto (letras, números, <c>_ . : -</c>): o que vier do provedor ou das ferramentas nunca grava
     /// espaço, quebra de linha nem texto livre. Vazio vira nulo.
-    /// </summary>
+    /// </remarks>
     public static string? CodigoSeguro(string? valor, int maximo)
     {
         if (string.IsNullOrWhiteSpace(valor))

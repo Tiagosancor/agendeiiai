@@ -8,8 +8,8 @@ namespace Plataforma.Infraestrutura.WhatsAppAgente;
 
 /// <summary>
 /// Retenção do diagnóstico do agente: apaga de <c>rodadas_agente</c> o que passou de <c>Ai__RetencaoRodadasDias</c> (padrão 90), em lotes.
-/// Só essa tabela — <c>usos_ia</c> é a base da cota mensal e dos limites e fica. Varre todos os negócios (job sem tenant, como os
-/// demais). Registra apenas a quantidade removida.
+/// Só essa tabela — <c>usos_ia</c> é a base da cota mensal e dos limites e fica. Varre negócio a negócio (job sem tenant, como os
+/// demais), aproveitando o índice (negocio_id, iniciada_em). Registra apenas a quantidade removida.
 /// </summary>
 public sealed class JobLimparRodadasAgente
 {
@@ -33,20 +33,26 @@ public sealed class JobLimparRodadasAgente
     {
         var limite = agora.AddDays(-_opcoes.RetencaoRodadasDias);
         var removidas = 0;
-        while (true)
-        {
-            var ids = await _dbContext.RodadasAgente.IgnoreQueryFilters().AsNoTracking()
-                .Where(r => r.IniciadaEm < limite)
-                .OrderBy(r => r.IniciadaEm)
-                .Select(r => r.Id)
-                .Take(TamanhoDoLote)
-                .ToListAsync(cancellationToken);
-            if (ids.Count == 0)
-                break;
 
-            removidas += await _dbContext.RodadasAgente.IgnoreQueryFilters()
-                .Where(r => ids.Contains(r.Id) && r.IniciadaEm < limite)
-                .ExecuteDeleteAsync(cancellationToken);
+        // Por negócio: cada consulta usa o índice (negocio_id, iniciada_em), sem ordenar a tabela inteira a cada lote.
+        var negocios = await _dbContext.Negocios.AsNoTracking().Select(n => n.Id).ToListAsync(cancellationToken);
+        foreach (var negocioId in negocios)
+        {
+            while (true)
+            {
+                var ids = await _dbContext.RodadasAgente.IgnoreQueryFilters().AsNoTracking()
+                    .Where(r => r.NegocioId == negocioId && r.IniciadaEm < limite)
+                    .OrderBy(r => r.IniciadaEm)
+                    .Select(r => r.Id)
+                    .Take(TamanhoDoLote)
+                    .ToListAsync(cancellationToken);
+                if (ids.Count == 0)
+                    break;
+
+                removidas += await _dbContext.RodadasAgente.IgnoreQueryFilters()
+                    .Where(r => r.NegocioId == negocioId && ids.Contains(r.Id) && r.IniciadaEm < limite)
+                    .ExecuteDeleteAsync(cancellationToken);
+            }
         }
 
         if (removidas > 0)

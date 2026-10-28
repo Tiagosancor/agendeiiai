@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
@@ -50,12 +51,15 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private readonly GerenciadorPendenciasAgente _pendencias;
     private readonly ConfirmadorPendenciaAgente _confirmador;
     private readonly ILogger<ProcessadorRodadaAgente> _logger;
+    private readonly IServiceScopeFactory _escopos;
 
     public ProcessadorRodadaAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IRespostaAgente resposta, IClienteEvolution evolution,
         IConsultaSituacaoAssinatura assinatura, LimitadorUsoAgente limitador, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca,
-        GerenciadorPendenciasAgente pendencias, ConfirmadorPendenciaAgente confirmador, ILogger<ProcessadorRodadaAgente> logger)
+        GerenciadorPendenciasAgente pendencias, ConfirmadorPendenciaAgente confirmador, ILogger<ProcessadorRodadaAgente> logger,
+        IServiceScopeFactory escopos)
     {
+        _escopos = escopos;
         _pendencias = pendencias;
         _confirmador = confirmador;
         _dbContext = dbContext;
@@ -143,15 +147,19 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         {
             var t = diagnostico.Telemetria;
             using var prazo = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            _dbContext.RodadasAgente.Add(new RodadaAgente(
+            // Contexto e escopo PRÓPRIOS: o da rodada pode ter entidades funcionais pendentes (por exemplo, uma gravação cancelada
+            // antes do envio) que nunca devem ser persistidas pelo diagnóstico. Aqui só a RodadaAgente existe.
+            using var escopo = _escopos.CreateScope();
+            escopo.ServiceProvider.GetRequiredService<IContextoNegocio>().Definir(negocioId);
+            var banco = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
+            banco.RodadasAgente.Add(new RodadaAgente(
                 id, negocioId, conversaId, diagnostico.IniciadaEm, (int)diagnostico.Relogio.ElapsedMilliseconds, desfecho,
                 diagnostico.MotivoSilencio, t?.Chamadas ?? 0, t?.TokensEntrada ?? 0, t?.TokensSaida ?? 0, t?.Modelo, t?.MotivoFim,
                 t?.Ferramentas, t?.ErrosFerramenta, t?.FalhaProvedor, t?.PromptVersao ?? diagnostico.PromptVersao));
-            await _dbContext.SaveChangesAsync(prazo.Token);
+            await banco.SaveChangesAsync(prazo.Token);
         }
         catch (Exception excecao)
         {
-            _dbContext.ChangeTracker.Clear();
             _logger.LogWarning("Agente: não foi possível registrar a rodada (conversa {ConversaId}): {Tipo}.", conversaId, excecao.GetType().Name);
         }
     }
