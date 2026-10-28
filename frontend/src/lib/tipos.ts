@@ -973,7 +973,59 @@ export interface ConexaoWhatsApp {
 }
 
 export interface StatusWhatsApp {
+  agenteIaContratado: boolean;
   status: string;
   agenteAtivo: boolean;
   telefone: string | null;
+}
+
+export interface NegocioNaPlataforma {
+  id: string;
+  nome: string;
+  slug: string;
+  tipo: string;
+  plano: string | null;
+  estado: EstadoAssinatura | null;
+  fimTeste: string | null;
+  proximoVencimento: string | null;
+  cadastradoEm: string;
+  agenteIaContratado: boolean;
+  agenteIaOrigem: OrigemAgenteIa | null;
+  whatsAppConectado: boolean;
+}
+
+export interface DetalheNegocioNaPlataforma {
+  negocio: NegocioNaPlataforma;
+  agenteIa: ServicoAgenteIaNegocio;
+  planoId: string | null;
+  periodicidade: Periodicidade | null;
+  precoMensalTravado: number | null;
+  valorDoPeriodo: number | null;
+  carenciaAte: string | null;
+  profissionaisAtivos: number;
+  historico: { em: string; estadoAnterior: EstadoAssinatura | null; estadoNovo: EstadoAssinatura; autor: string; motivo: string }[];
+  cobrancas: { pagoEm: string; valor: number; forma: string; periodoInicio: string; periodoFim: string; origem: string }[];
+}
+
+
+export type OrigemAgenteIa = "Manual" | "Plano" | "Adicional";
+export interface ServicoAgenteIaNegocio {
+  contratado: boolean;
+  origem: OrigemAgenteIa | null;
+  alteradoEm: string | null;
+  alteradoPor: string | null;
+}
+export interface HistoricoAgenteIa {
+  em: string;
+  autor: string;
+  acao: "LigarAgenteIa" | "DesligarAgenteIa";
+  detalhes: string | null;
+}
+export interface DefinirAgenteIaRequisicao {
+  contratado: boolean;
+  motivo?: string;
+}
+export interface ServicoAgenteIaPainel {
+  contratado: boolean;
+  origem: OrigemAgenteIa | null;
 }

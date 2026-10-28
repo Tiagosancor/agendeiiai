@@ -1,37 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ErroApi, requisicaoApi } from "@/lib/api";
-import type { EstadoAssinatura, EstadoConexaoWhatsApp, Periodicidade, PlanoPublico, SaudeWhatsApp } from "@/lib/tipos";
+import type { DetalheNegocioNaPlataforma, NegocioNaPlataforma, EstadoAssinatura, EstadoConexaoWhatsApp, Periodicidade, PlanoPublico, SaudeWhatsApp, ServicoAgenteIaNegocio } from "@/lib/tipos";
 import { ROTULOS_ESTADO_ASSINATURA } from "@/lib/tipos";
 import { dataLocalIso, formatarReais } from "@/lib/formatacao";
 import { classeBotaoPerigo, classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { usePlataforma } from "@/components/plataforma/ContextoPlataforma";
+import { ControleServicoAgenteIa, HistoricoServicoAgenteIa } from "@/components/plataforma/ServicoAgenteIa";
 import { CartaoResumoOutbox } from "@/components/plataforma/MonitoramentoOutbox";
-
-interface NegocioNaPlataforma {
-  id: string;
-  nome: string;
-  slug: string;
-  tipo: string;
-  plano: string | null;
-  estado: EstadoAssinatura | null;
-  fimTeste: string | null;
-  proximoVencimento: string | null;
-  cadastradoEm: string;
-}
-
-interface DetalheNegocio {
-  negocio: NegocioNaPlataforma;
-  planoId: string | null;
-  periodicidade: Periodicidade | null;
-  precoMensalTravado: number | null;
-  valorDoPeriodo: number | null;
-  carenciaAte: string | null;
-  profissionaisAtivos: number;
-  historico: { em: string; estadoAnterior: EstadoAssinatura | null; estadoNovo: EstadoAssinatura; autor: string; motivo: string }[];
-  cobrancas: { pagoEm: string; valor: number; forma: string; periodoInicio: string; periodoFim: string; origem: string }[];
-}
 
 const FORMAS = ["Pix", "Boleto", "Cartao", "Transferencia", "Outro"];
 const ESTADOS: EstadoAssinatura[] = ["EmTeste", "Ativa", "Atrasada", "Suspensa", "Cancelada"];
@@ -61,12 +38,16 @@ export function AdministracaoPlataforma() {
 }
 
 function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void }) {
+  const versaoLista = useRef(0);
+  const [filtroIa, setFiltroIa] = useState("");
+  const [erroLista, setErroLista] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<EstadoAssinatura | "">("");
   const [negocios, setNegocios] = useState<NegocioNaPlataforma[] | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
+  const [servicosAtualizados, setServicosAtualizados] = useState<Record<string, ServicoAgenteIaNegocio>>({});
 
   const chamar = useCallback(
-    async <T,>(caminho: string, metodo: "GET" | "POST" = "GET", corpo?: unknown): Promise<T> => {
+    async <T,>(caminho: string, metodo: "GET" | "POST" | "PUT" = "GET", corpo?: unknown): Promise<T> => {
       try {
         return await requisicaoApi<T>(caminho, { metodo, corpo, tokenAcesso: token });
       } catch (excecao) {
@@ -78,20 +59,30 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
   );
 
   const carregar = useCallback(async () => {
-    setNegocios(await chamar<NegocioNaPlataforma[]>(`/plataforma/negocios${filtro ? `?estado=${filtro}` : ""}`));
-  }, [chamar, filtro]);
+    const versao = ++versaoLista.current;
+    const parametros = new URLSearchParams();
+    if (filtro) parametros.set("estado", filtro);
+    if (filtroIa) parametros.set("agenteIa", filtroIa);
+    setErroLista(null);
+    try {
+      const dados = await chamar<NegocioNaPlataforma[]>(`/plataforma/negocios?${parametros}`);
+      if (versao === versaoLista.current) setNegocios(dados);
+    } catch {
+      if (versao === versaoLista.current) setErroLista("Não foi possível carregar os negócios. Tente novamente.");
+    }
+  }, [chamar, filtro, filtroIa]);
 
   useEffect(() => {
     // Busca disparada pela montagem e pela troca do filtro.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    carregar();
+    void carregar();
   }, [carregar]);
 
   return (
     <main className="mx-auto max-w-6xl space-y-4 px-4 py-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-xl font-bold">Negócios</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Filtrar por estado" className={classeInput} value={filtro} onChange={(e) => setFiltro(e.target.value as EstadoAssinatura | "")}>
             <option value="">Todos os estados</option>
             {ESTADOS.map((e) => (
@@ -100,12 +91,18 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
               </option>
             ))}
           </select>
+          <select aria-label="Filtrar por agente de IA" className={classeInput} value={filtroIa} onChange={e => setFiltroIa(e.target.value)}>
+            <option value="">Todos os serviços de IA</option>
+            <option value="true">Agente de IA ligado</option>
+            <option value="false">Agente de IA desligado</option>
+          </select>
           <button onClick={aoSair} className={classeBotaoSecundario}>
             Sair
           </button>
         </div>
       </div>
 
+      {erroLista && <p role="alert">{erroLista} <button className={classeBotaoSecundario} onClick={() => void carregar()}>Tentar novamente</button></p>}
       <CartaoSaudeWhatsApp chamar={chamar} />
       <CartaoResumoOutbox />
 
@@ -119,13 +116,14 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
                 <th className={classeTh}>Estado</th>
                 <th className={classeTh}>Fim do teste / vencimento</th>
                 <th className={classeTh}>Cadastro</th>
+                <th className={classeTh}>Agente de IA</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
               {negocios?.map((n) => (
                 <tr key={n.id} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800" onClick={() => setSelecionado(n.id)}>
                   <td className={classeTd}>
-                    <span className="font-medium">{n.nome}</span>
+                    <button className="min-h-11 font-medium underline" onClick={e => { e.stopPropagation(); setSelecionado(n.id); }}>{n.nome}</button>
                     <span className="block text-xs text-gray-500">
                       {n.slug} · {n.tipo}
                     </span>
@@ -134,11 +132,18 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
                   <td className={classeTd}>{n.estado ? ROTULOS_ESTADO_ASSINATURA[n.estado] : "Sem assinatura"}</td>
                   <td className={classeTd}>{n.estado === "EmTeste" ? data(n.fimTeste) : data(n.proximoVencimento)}</td>
                   <td className={classeTd}>{data(n.cadastradoEm)}</td>
+                  <td className={classeTd} onClick={e => e.stopPropagation()}>
+                    <ControleServicoAgenteIa negocio={n} aoAlterar={async servico => {
+                      setServicosAtualizados(anteriores => ({ ...anteriores, [n.id]: servico }));
+                      setNegocios(anteriores => anteriores?.map(item => item.id === n.id ? { ...item, agenteIaContratado: servico.contratado, agenteIaOrigem: servico.origem } : item) ?? null);
+                      await carregar();
+                    }} />
+                  </td>
                 </tr>
               ))}
               {negocios?.length === 0 && (
                 <tr>
-                  <td className={classeTd} colSpan={5}>
+                  <td className={classeTd} colSpan={6}>
                     Nenhum negócio neste filtro.
                   </td>
                 </tr>
@@ -150,7 +155,9 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
 
       {selecionado && (
         <DetalheNegocioPlataforma
+          key={selecionado}
           negocioId={selecionado}
+          servicoAtualizado={servicosAtualizados[selecionado]}
           chamar={chamar}
           aoFechar={() => setSelecionado(null)}
           aoAlterar={carregar}
@@ -221,16 +228,18 @@ function CartaoSaudeWhatsApp({ chamar }: { chamar: <T>(caminho: string) => Promi
 
 function DetalheNegocioPlataforma({
   negocioId,
+  servicoAtualizado,
   chamar,
   aoFechar,
   aoAlterar,
 }: {
   negocioId: string;
-  chamar: <T>(caminho: string, metodo?: "GET" | "POST", corpo?: unknown) => Promise<T>;
+  servicoAtualizado?: ServicoAgenteIaNegocio;
+  chamar: <T>(caminho: string, metodo?: "GET" | "POST" | "PUT", corpo?: unknown) => Promise<T>;
   aoFechar: () => void;
   aoAlterar: () => Promise<void>;
 }) {
-  const [detalhe, setDetalhe] = useState<DetalheNegocio | null>(null);
+  const [detalhe, setDetalhe] = useState<DetalheNegocioNaPlataforma | null>(null);
   const [planos, setPlanos] = useState<PlanoPublico[]>([]);
   const [mensagem, setMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
 
@@ -245,7 +254,7 @@ function DetalheNegocioPlataforma({
   const [motivo, setMotivo] = useState("");
 
   const carregar = useCallback(async () => {
-    const d = await chamar<DetalheNegocio>(`/plataforma/negocios/${negocioId}`);
+    const d = await chamar<DetalheNegocioNaPlataforma>(`/plataforma/negocios/${negocioId}`);
     setDetalhe(d);
     setValor(d.valorDoPeriodo?.toFixed(2) ?? "");
     setPlanoId(d.planoId ?? "");
@@ -256,7 +265,7 @@ function DetalheNegocioPlataforma({
   useEffect(() => {
     // Busca disparada pela montagem do detalhe.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    carregar();
+    carregar().catch(() => setMensagem({ tipo: "erro", texto: "Não foi possível carregar o negócio." }));
     requisicaoApi<PlanoPublico[]>("/cadastro/planos").then(setPlanos).catch(() => setPlanos([]));
   }, [carregar]);
 
@@ -271,7 +280,7 @@ function DetalheNegocioPlataforma({
     }
   }
 
-  if (!detalhe) return null;
+  if (!detalhe) return mensagem ? <p role="alert">{mensagem.texto} <button className={classeBotaoSecundario} onClick={() => carregar().catch(() => setMensagem({ tipo: "erro", texto: "Não foi possível carregar o negócio." }))}>Tentar novamente</button></p> : <p>Carregando negócio…</p>;
   const n = detalhe.negocio;
 
   return (
@@ -298,6 +307,8 @@ function DetalheNegocioPlataforma({
           {mensagem.texto}
         </p>
       )}
+
+      <HistoricoServicoAgenteIa negocioId={negocioId} servico={servicoAtualizado ?? detalhe.agenteIa} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <form
