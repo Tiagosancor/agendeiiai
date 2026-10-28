@@ -65,6 +65,10 @@ public sealed class RegistroJobsRecorrentes(
         // Retenção do diagnóstico do agente de WhatsApp (rodadas_agente, Ai__RetencaoRodadasDias). 03:50 UTC = 00:50 em Brasília.
         gerenciador.AddOrUpdate<WhatsAppAgente.JobLimparRodadasAgente>(
             "limpar-rodadas-agente", job => job.ExecutarAsync(CancellationToken.None), "50 3 * * *");
+
+        // Retenção das mensagens do agente (Ai__RetencaoMensagensDias; padrão 0 = o job não apaga nada). 04:00 UTC = 01:00 em Brasília.
+        gerenciador.AddOrUpdate<WhatsAppAgente.JobLimparConversasWhatsApp>(
+            "limpar-conversas-whatsapp", job => job.ExecutarAsync(CancellationToken.None), "0 4 * * *");
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancelamento)

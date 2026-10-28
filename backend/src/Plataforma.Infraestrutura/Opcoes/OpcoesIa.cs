@@ -70,6 +70,12 @@ public sealed class OpcoesIa
     /// <summary>Dias que <c>rodadas_agente</c> é mantida; o job diário apaga o que for mais velho (7–365).</summary>
     public int RetencaoRodadasDias { get; set; } = 90;
 
+    /// <summary>
+    /// Dias que as mensagens de <c>mensagens_whatsapp</c> são mantidas; o job diário <c>limpar-conversas-whatsapp</c> apaga as mais velhas.
+    /// 0 (padrão) = desligado: apagar é irreversível e só liga com decisão do dono (recomendado ao ligar: 180). Faixa: 0 ou 30–730.
+    /// </summary>
+    public int RetencaoMensagensDias { get; set; }
+
     /// <summary>Mensagem fixa "atendimento automático indisponível" (negócio sem o serviço de IA contratado, agente ligado na tela).</summary>
     public OpcoesIndisponivelAgente Indisponivel { get; set; } = new();
 
@@ -213,6 +219,8 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
                 .Any(item => !Guid.TryParse(item, out _)))
             erros.Add("Ai__Agendamento__Negocios deve ser uma lista de GUIDs separada por vírgula.");
         Faixa(erros, nameof(o.RetencaoRodadasDias), o.RetencaoRodadasDias, 7, 365);
+        if (o.RetencaoMensagensDias != 0)
+            Faixa(erros, nameof(o.RetencaoMensagensDias), o.RetencaoMensagensDias, 30, 730);
         Faixa(erros, "Indisponivel.IntervaloHoras", o.Indisponivel.IntervaloHoras, 1, 168);
         Faixa(erros, "Indisponivel.LimitePorNegocioPorDia", o.Indisponivel.LimitePorNegocioPorDia, 1, 10_000);
         if (o.CotaMensalTokensPorNegocio < 1)

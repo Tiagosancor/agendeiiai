@@ -221,6 +221,15 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         return linhas == 1;
     }
 
+    private Task<bool> ConversaAindaNossaAsync(Lease lease, CancellationToken cancellationToken)
+    {
+        var dono = lease.Valor;
+        var agora = DateTimeOffset.UtcNow;
+        return _dbContext.ConversasWhatsApp.AsNoTracking().AnyAsync(
+            c => c.Id == lease.ConversaId && c.ProcessandoAte == dono && c.ProcessandoAte > agora
+                && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado), cancellationToken);
+    }
+
     private async Task SoltarLeaseAsync(Lease lease)
     {
         var atual = lease.Valor;
@@ -769,6 +778,14 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         if (restante <= TimeSpan.Zero)
         {
             _logger.LogWarning("Agente: sem prazo de lease para enviar (conversa {ConversaId}).", conversa.Id);
+            return new ResultadoEnvio(EstadoEnvio.SemPrazo);
+        }
+
+        // Última conferência ANTES de ir ao provedor: a anonimização (LGPD) zera o lease e troca o telefone, então conversa anonimizada
+        // ou lease que não é mais nosso = não envia. Não fecha a janela entre esta leitura e a chamada (ver ConversaWhatsApp.Anonimizar).
+        if (!await ConversaAindaNossaAsync(lease, cancellationToken))
+        {
+            _logger.LogWarning("Agente: conversa anonimizada ou lease perdido antes do envio (conversa {ConversaId}); nada é enviado.", conversa.Id);
             return new ResultadoEnvio(EstadoEnvio.SemPrazo);
         }
 

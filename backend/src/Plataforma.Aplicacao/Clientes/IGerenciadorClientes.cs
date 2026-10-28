@@ -34,7 +34,8 @@ public sealed record AtualizarCliente(string Nome, string? Email, string? Observ
 
 public sealed record ExportacaoCliente(
     Guid Id, string Nome, string? Telefone, string? Email, string? Observacoes, string Origem, DateTimeOffset CriadoEm,
-    IReadOnlyList<ExportacaoAgendamento> Agendamentos);
+    IReadOnlyList<ExportacaoAgendamento> Agendamentos,
+    IReadOnlyList<Plataforma.Aplicacao.WhatsAppAgente.ExportacaoConversaWhatsApp>? Conversas = null);
 
 public sealed record ExportacaoAgendamento(
     DateTimeOffset Inicio, DateTimeOffset Fim, string Status, IReadOnlyList<string> Servicos, decimal Total, string? Observacoes);

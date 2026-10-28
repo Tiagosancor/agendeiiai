@@ -62,6 +62,41 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Usado na anonimização do cliente (LGPD): a conversa deixa de apontar para ele.</summary>
     public void DesvincularCliente() => ClienteId = null;
 
+    /// <summary>Prefixo do telefone de uma conversa anonimizada (LGPD). O restante é um pedaço do <c>Id</c>: a coluna tem 20 posições.</summary>
+    public const string PrefixoTelefoneAnonimizado = "anonimizado:";
+
+    public bool Anonimizada => TelefoneCliente.StartsWith(PrefixoTelefoneAnonimizado, StringComparison.Ordinal);
+
+    /// <summary>
+    /// LGPD (G11): tira da linha tudo o que identifica a pessoa — telefone (vira <c>anonimizado:xxxxxxxx</c>, que cabe nas 20 posições da
+    /// coluna e mantém o índice único por instância+telefone), cliente e resumo. A linha FICA porque <c>usos_ia</c> e <c>rodadas_agente</c>
+    /// dependem dela (cota e diagnóstico, só números). Volta a <see cref="StatusConversaWhatsApp.Agente"/> e perde o lease: uma rodada em
+    /// andamento deixa de renovar, marcar e (conferindo antes) iniciar NOVOS envios, e toda gravação de mensagem na conversa é recusada
+    /// (<c>PlataformaDbContext</c>, sob FOR NO KEY UPDATE). LIMITE: um envio que já passou da última conferência e está no provedor não é cancelado — o
+    /// texto já entregue não é recuperável; o que se garante é que nada novo é gravado nem marcado depois. O mesmo número escrevendo depois
+    /// abre uma conversa nova.
+    /// </summary>
+    /// <param name="telefonesEmUso">Telefones já usados por outras conversas da mesma instância (evita colisão no índice único).</param>
+    public void Anonimizar(ISet<string> telefonesEmUso)
+    {
+        var texto = Id.ToString("N");
+        string? escolhido = null;
+        for (var inicio = 0; inicio + 8 <= texto.Length && escolhido is null; inicio += 8)
+        {
+            var candidato = PrefixoTelefoneAnonimizado + texto.Substring(inicio, 8);
+            if (!telefonesEmUso.Contains(candidato))
+                escolhido = candidato;
+        }
+
+        // Quatro pedaços de 32 bits de um Guid aleatório todos ocupados: praticamente impossível; cai no último.
+        TelefoneCliente = escolhido ?? PrefixoTelefoneAnonimizado + texto[^8..];
+        telefonesEmUso.Add(TelefoneCliente);
+        ClienteId = null;
+        Resumo = null;
+        Status = StatusConversaWhatsApp.Agente;
+        ProcessandoAte = null;
+    }
+
     public void RegistrarAvisoAutomatizado(DateTimeOffset em) => AvisoAutomatizadoEm = em;
 
     public bool AgenteResponde => Status == StatusConversaWhatsApp.Agente;

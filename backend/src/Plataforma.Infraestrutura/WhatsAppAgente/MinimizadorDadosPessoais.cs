@@ -38,7 +38,9 @@ public static class MinimizadorDadosPessoais
 
         try
         {
-            var resultado = Email.Replace(texto, MarcaEmail);
+            // Defesa em profundidade (G3): mesmo que o webhook não tenha mascarado (mensagem antiga), o token não vai à IA.
+            var resultado = MascaraLinkGestao.Aplicar(texto);
+            resultado = Email.Replace(resultado, MarcaEmail);
             resultado = Cnpj.Replace(resultado, MarcaDocumento);
             resultado = Cpf.Replace(resultado, MarcaDocumento);
 
