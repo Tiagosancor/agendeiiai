@@ -529,6 +529,26 @@ futuros, 3 confirmações/dia e 20 reservas ativas por negócio; aviso de atendi
 - **Pré-requisitos de ativação com clientes reais:** roteiros da Fase 2 e da Fase 3 completos com Gemini real; número dedicado ao piloto (ver `docs/ativacao-agente-fase3.md`, local) com a sessão da
   Evolution comprovadamente estável; aviso automatizado conferido; conferir a política v2.0 no ar. Faturamento do Gemini: **feito**.
 
+### Agente de WhatsApp — piloto ativado e correções dos primeiros testes — 2026-10-27/28
+
+O dono ativou o piloto (`Ai__Agendamento__Modo=Piloto`) com número dedicado e testou quatro conversas. Diagnóstico por `usos_ia` e `mensagens_whatsapp` (os logs do Railway
+só guardam as horas mais recentes e as conversas já tinham saído da janela):
+- **Interação 2 (tudo numa mensagem):** fluxo completo funcionou — resumo do servidor, "Sim", confirmação com link de gestão.
+- **Interação 3 (escolha em duas mensagens):** o histórico do modelo só tem texto (resultados de ferramenta não voltam, decisão de segurança da Fase 2), então na mensagem seguinte o modelo
+  chamou `preparar_agendamento` com `servico_id`/`profissional_id` **inventados** → "houve um erro ao processar o agendamento".
+- **Interação 4 ("Juliana"):** o modelo varria `listar_profissionais` serviço por serviço e estourava `MaxIteracoesFerramentas` (5, o máximo do validador) → fallback com o link. Cinco chamadas
+  seguidas, entrada subindo ~218 tokens por volta, aparecem em `usos_ia`.
+- **Interação 1 (resposta cortada no meio da frase):** o limite de saída padrão era 512 e o `finishReason` era ignorado pelo orquestrador; no horário o dono trocava de modelo, então a causa exata
+  não foi comprovada. Os 503 do principal só existiam na chave sem faturamento: de 17:05 UTC em diante `usos_ia` não tem uma falha.
+- **Correções (todas com CI completa verde):** PR #42 (merge `9d8a1e5`) — `Ai__MaxTokensSaida` 512 → 1536, `MAX_TOKENS` registrado e tratado (nova tentativa com o limite dobrado, nunca envia texto cortado),
+  prompt aceita datas naturais; PR #43 (merge `a462652`) — nota de contexto das ferramentas gravada pelo servidor (`contexto_consulta`, até 1000 caracteres, 2 notas e 1500 caracteres no histórico,
+  ids completos sempre preservados e horários em rodízio entre profissionais), `listar_profissionais` devolve os serviços de cada profissional, última chamada sem ferramentas antes do fallback,
+  primeiro nome do profissional (homônimos → pergunta; resumo do servidor mostra o nome completo). `preparar_agendamento` continua validando id e oferta no servidor. Revisão do Codex do #43:
+  sem crítico; o importante da nota com vários profissionais foi corrigido por **exceção aprovada pelo dono à regra de parada**; a evidência da integração completa é a CI.
+- **A conferir em produção, com o Gemini real:** repetir a Interação 3 (duas mensagens), a Interação 4 e o primeiro nome; só então os roteiros completos da Fase 3.
+- **Teste instável:** `CommitAmbiguoProxyTestes.Iniciar_com_conexao_derrubada_no_commit…` falhou uma vez na CI do PR #42 e passou na reexecução, sem relação com o agente (derruba a conexão no COMMIT por um proxy;
+  depende de tempo).
+
 ### Política de privacidade do produto — PR #28 (frontend)
 
 Texto do dono publicado em `/privacidade` do domínio raiz, sem a faixa de rascunho (`PaginaLegal` ganhou a prop
@@ -548,6 +568,9 @@ produto só será comercializado com tudo implementado. A política **do negóci
 | Conferir `/privacidade` de um negócio em produção (v2.0) e rodar o e2e novo contra stack construída do código | Dono/Claude Code | PR #37 mergeado; e2e nunca rodou contra esta versão |
 | Item 8.1.7 na especificação: agendamento pelo WhatsApp dispensa código | Dono | Decisão P0 aprovada em 2026-10-26; `prompt-do-projeto.md` é local |
 | Sugestões de cobertura do Codex em código já mergeado: corpo grande sem Content-Length (PR #31) e expiração do disjuntor (PR #32) | Claude Code | Baixa prioridade |
+| Repetir com o Gemini real as Interações 3 e 4 e o primeiro nome do profissional; depois os roteiros da Fase 3 | Dono | Após o deploy dos PRs #42 e #43 |
+| Teste instável `CommitAmbiguoProxyTestes.Iniciar_com_conexao_derrubada_no_commit…` | Claude Code | Falhou uma vez na CI do PR #42; passou na reexecução; estabilizar (baixa prioridade) |
+| Railway guarda só as horas recentes de log | Dono | Copiar as linhas `Agente:` na hora ao reproduzir; `usos_ia` e `mensagens_whatsapp` (papel Ferramenta) são a fonte persistente de diagnóstico |
 | Confirmar que o `ERR` de chave duplicada em `eventos_webhook_whatsapp` sumiu (PR #34) | Dono | Olhar o log do Railway por alguns dias |
 | Política de privacidade **do negócio** (subdomínio) mencionar a IA | Dono (texto) / Codex | Necessário antes do piloto com clientes reais |
 | Apagar conversas (`mensagens_whatsapp`) ao anonimizar cliente | Claude Code | LGPD; `Cliente.Anonimizar` não apaga; Fases 4/5 |
