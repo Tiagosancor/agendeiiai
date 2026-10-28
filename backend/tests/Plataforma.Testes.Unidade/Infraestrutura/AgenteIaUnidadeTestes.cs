@@ -399,7 +399,12 @@ public sealed class FerramentasAgenteUnidadeTestes
         servicos[0].GetProperty("categoria").GetString().Should().NotContain("\n");
 
         var semFiltro = await new FerramentaListarProfissionais(new CatalogoFalso()).ExecutarAsync(Contexto, Args("{}"));
-        semFiltro[0].EnumerateObject().Select(p => p.Name).Should().Equal("id", "nome", "funcao");
+        semFiltro[0].EnumerateObject().Select(p => p.Name).Should().Equal("id", "nome", "funcao", "servicos");
+        var dele = semFiltro[0].GetProperty("servicos");
+        dele[0].EnumerateObject().Select(p => p.Name).Should().Equal("id", "nome", "preco", "duracao_minutos");
+        dele[0].GetProperty("id").GetGuid().Should().Be(Corte);
+        dele[0].GetProperty("preco").GetString().Should().Be("R$ 40,00");
+        dele[0].GetProperty("duracao_minutos").GetInt32().Should().Be(45);
 
         var comFiltro = await new FerramentaListarProfissionais(new CatalogoFalso()).ExecutarAsync(Contexto, Args($$"""{"servico_id":"{{Corte}}"}"""));
         comFiltro[0].EnumerateObject().Select(p => p.Name).Should().Equal("id", "nome", "funcao", "preco", "duracao_minutos");
