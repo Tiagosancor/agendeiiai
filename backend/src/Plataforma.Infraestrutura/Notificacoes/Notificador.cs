@@ -286,6 +286,23 @@ public sealed class Notificador : INotificador
             ExecutarSemFalharAsync(() => _email.EnviarAsync(email, assunto, corpo, cancellationToken), "E-mail/alerta-estoque")));
     }
 
+    public async Task EnviarAvisoAtendimentoHumanoAsync(DadosAvisoAtendimentoHumano dados, CancellationToken cancellationToken = default)
+    {
+        static string Html(string texto) => System.Net.WebUtility.HtmlEncode(texto);
+
+        // Sem texto da conversa: só o telefone mascarado, o motivo (código fechado) e o link do painel.
+        var corpo = Envelope(dados.NomeNegocio, $"""
+            <p>O assistente de WhatsApp de <strong>{Html(dados.NomeNegocio)}</strong> pediu ajuda de uma pessoa da equipe.</p>
+            <p><strong>Cliente:</strong> {Html(dados.TelefoneMascarado)}</p>
+            <p><strong>Motivo:</strong> {Html(dados.MotivoTexto)}</p>
+            <p>O assistente parou de responder nessa conversa. Responda pelo WhatsApp do estabelecimento ou abra a conversa no painel.</p>
+            <p><a href="{dados.LinkConversa}">Abrir a conversa</a></p>
+            """);
+        var assunto = $"Cliente aguardando atendimento — {dados.NomeNegocio}";
+        await Task.WhenAll(dados.EmailsDestinatarios.Select(email =>
+            ExecutarSemFalharAsync(() => _email.EnviarAsync(email, assunto, corpo, cancellationToken), "E-mail/atendimento-humano")));
+    }
+
     public Task<ResultadoEnvioWhatsApp> EnviarLembreteRetornoAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default) =>
         EnviarWhatsAppSemFalharAsync(telefone, mensagem, "WhatsApp/lembrete-retorno", cancellationToken);
 

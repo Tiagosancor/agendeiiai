@@ -26,6 +26,9 @@ public static class ErrosFerramenta
     public const string AgendamentoIndisponivel = "agendamento_indisponivel";
     public const string ResumoJaEnviado = "resumo_ja_enviado";
 
+    // Fase 4 (chamar_atendente).
+    public const string AtendenteIndisponivel = "atendente_indisponivel";
+
     public static string Mensagem(string codigo) => codigo switch
     {
         ArgumentosInvalidos => "Argumentos inválidos para esta ferramenta.",
@@ -43,6 +46,7 @@ public static class ErrosFerramenta
         LimiteAgendamentos => "Limite de agendamentos pelo WhatsApp atingido. Envie ao cliente o link para agendar.",
         AgendamentoIndisponivel => "Não é possível agendar por aqui agora. Envie ao cliente o link para agendar.",
         ResumoJaEnviado => "O resumo desse agendamento já foi enviado. Peça ao cliente que responda SIM para confirmar.",
+        AtendenteIndisponivel => "Não foi possível chamar uma pessoa agora. Envie ao cliente o link para agendar.",
         _ => "Não foi possível consultar agora.",
     };
 }

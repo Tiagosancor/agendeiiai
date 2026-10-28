@@ -42,8 +42,25 @@ public sealed class ExecutorFerramentasAgente : IExecutorFerramentasAgente
             ? _politica.Memorizada(negocioId)?.AgendamentoLiberado == true
             : _opcoes?.AgendamentoAtivoPara(negocioId) == true;
 
+    /// <summary>
+    /// Atendimento humano (Fase 4): a ferramenta <c>chamar_atendente</c> não depende do agendamento — só da flag e do serviço de IA
+    /// contratado (mesma leitura memorizada da política; sem leitura, fechado).
+    /// </summary>
+    private bool HumanoLigado(Guid negocioId) =>
+        _opcoes?.Humano.FerramentaAtiva == true
+        && (_politica is not null
+            ? _politica.Memorizada(negocioId)?.IaLiberada == true
+            : _opcoes.Provider == ProvedorIa.Gemini && _opcoes.NegocioHabilitado(negocioId));
+
+    private bool Disponivel(IFerramentaAgente ferramenta, Guid negocioId) => ferramenta switch
+    {
+        IFerramentaDeAtendimentoHumano => HumanoLigado(negocioId),
+        IFerramentaDeEscritaAgente => EscritaLigada(negocioId),
+        _ => true,
+    };
+
     public IReadOnlyList<IFerramentaAgente> FerramentasPara(Guid negocioId) =>
-        EscritaLigada(negocioId) ? Ferramentas : Ferramentas.Where(f => f is not IFerramentaDeEscritaAgente).ToList();
+        Ferramentas.Where(f => Disponivel(f, negocioId)).ToList();
 
     public async Task<JsonElement> ExecutarAsync(
         ContextoConversaAgente contexto, string nome, JsonElement argumentos, CancellationToken cancellationToken = default) =>
@@ -61,8 +78,8 @@ public sealed class ExecutorFerramentasAgente : IExecutorFerramentasAgente
         }
 
         // Ferramenta de escrita com o agendamento desligado (ou fora do piloto) não existe: mesmo erro de nome inventado.
-        if (!_porNome.TryGetValue(nome, out var ferramenta)
-            || (ferramenta is IFerramentaDeEscritaAgente && !EscritaLigada(contexto.NegocioId)))
+        // Idem chamar_atendente com a flag desligada.
+        if (!_porNome.TryGetValue(nome, out var ferramenta) || !Disponivel(ferramenta, contexto.NegocioId))
             return new(RespostaFerramenta.Erro(ErrosFerramenta.FerramentaDesconhecida));
 
         try

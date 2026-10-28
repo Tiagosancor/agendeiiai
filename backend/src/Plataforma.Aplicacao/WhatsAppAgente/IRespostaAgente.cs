@@ -12,7 +12,8 @@ public sealed record ContextoRespostaAgente(
 /// de preparar agendamento reservou o horário nesta rodada: o texto do modelo (se houver) é DESCARTADO e quem envia o resumo é o
 /// servidor. Só o processador lê esse id; ele nunca vai ao modelo.
 /// </summary>
-public sealed record RespostaAgente(string? Texto, Guid? PendenciaPreparadaId = null, TelemetriaRodadaAgente? Telemetria = null);
+public sealed record RespostaAgente(
+    string? Texto, Guid? PendenciaPreparadaId = null, TelemetriaRodadaAgente? Telemetria = null, AcaoServidor? Acao = null);
 
 /// <summary>
 /// O que a rodada fez, só em números e códigos fechados (nunca texto de mensagem, argumento de ferramenta, telefone ou token), para

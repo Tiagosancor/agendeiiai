@@ -64,6 +64,12 @@ public interface INotificador
     /// </summary>
     Task<ResultadoEnvioWhatsApp> EnviarLembreteRetornoAsync(TelefoneE164 telefone, string mensagem, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Aviso aos usuários que atendem as conversas do WhatsApp de que o agente chamou um atendente. SEM texto da conversa e com o
+    /// telefone mascarado; leva só o motivo (código fechado) e o link da conversa no painel.
+    /// </summary>
+    Task EnviarAvisoAtendimentoHumanoAsync(DadosAvisoAtendimentoHumano dados, CancellationToken cancellationToken = default);
+
     /// <summary>Convite para o profissional criar a senha do próprio acesso (seção 7).</summary>
     Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default);
 }
@@ -75,6 +81,9 @@ public sealed record DadosBoasVindas(
 public sealed record DadosAlertaEstoque(
     IReadOnlyList<string> EmailsAdministradores, string NomeNegocio,
     IReadOnlyList<(string Nome, int Quantidade, int Minima)> EstoqueBaixo, IReadOnlyList<string> Esgotados, string LinkEstoque);
+
+public sealed record DadosAvisoAtendimentoHumano(
+    IReadOnlyList<string> EmailsDestinatarios, string NomeNegocio, string TelefoneMascarado, string MotivoTexto, string LinkConversa);
 
 public sealed record DadosAvisoAssinatura(
     IReadOnlyList<string> EmailsAdministradores, string NomeNegocio, string Fuso, bool EmTeste, int DiasRestantes,

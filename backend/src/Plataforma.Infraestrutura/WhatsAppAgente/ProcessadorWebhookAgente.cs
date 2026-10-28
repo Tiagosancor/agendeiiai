@@ -29,13 +29,15 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
     private readonly IDeduplicadorMensagens _deduplicador;
     private readonly IFilaRespostaAgente _fila;
     private readonly OpcoesAgenteWhatsApp _opcoes;
+    private readonly OpcoesIa _opcoesIa;
     private readonly ILogger<ProcessadorWebhookAgente> _logger;
 
     public ProcessadorWebhookAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IDeduplicadorMensagens deduplicador,
-        IFilaRespostaAgente fila, IOptions<OpcoesAgenteWhatsApp> opcoes,
+        IFilaRespostaAgente fila, IOptions<OpcoesAgenteWhatsApp> opcoes, IOptions<OpcoesIa> opcoesIa,
         ILogger<ProcessadorWebhookAgente> logger)
     {
+        _opcoesIa = opcoesIa.Value;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _deduplicador = deduplicador;
@@ -221,6 +223,7 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
             else
             {
                 conversa.RegistrarMensagem(agora);
+                await TratarAtendimentoHumanoAsync(conversa, agora, cancellationToken);
             }
 
             _dbContext.MensagensWhatsApp.Add(new MensagemWhatsApp(
@@ -251,6 +254,42 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Conversa em atendimento humano (Fase 4). Prazo vencido: devolve ao agente (preguiçosa, sem job) NUM <c>UPDATE</c> que também leva o
+    /// "processado até" à última mensagem anterior — o acumulado nunca é respondido, só a mensagem nova, que esta chamada vai gravar.
+    /// Prazo vigente: cada mensagem do cliente o adia. Em ambos os casos a mensagem é gravada normalmente. As transições são
+    /// condicionais no banco, então corrida com "assumir"/"devolver" do painel nunca deixa estado misto.
+    /// </summary>
+    private async Task TratarAtendimentoHumanoAsync(ConversaWhatsApp conversa, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        if (conversa.Status != StatusConversaWhatsApp.Humano)
+            return;
+
+        if (conversa.PrazoHumanoVencido(agora))
+        {
+            var linhas = await GerenciadorConversasWhatsApp.DevolverAtomicoAsync(
+                _dbContext, conversa.NegocioId, conversa.Id, agora, somenteSePrazoVencido: true, cancellationToken);
+            if (linhas > 0)
+            {
+                // A entidade rastreada ainda tem o estado antigo: recarrega (o Reload traz status Agente e devolvida_em novos).
+                await _dbContext.Entry(conversa).ReloadAsync(cancellationToken);
+                conversa.RegistrarMensagem(agora);
+                _logger.LogInformation("Agente: conversa devolvida ao agente pelo prazo (conversa {ConversaId}, negócio {NegocioId}).",
+                    conversa.Id, conversa.NegocioId);
+            }
+
+            return;
+        }
+
+        if (conversa.HumanoAte is not null && _opcoesIa.Humano.PrazoDevolucao is { } prazo)
+        {
+            var novoPrazo = agora + prazo;
+            await _dbContext.ConversasWhatsApp
+                .Where(c => c.Id == conversa.Id && c.NegocioId == conversa.NegocioId && c.Status == StatusConversaWhatsApp.Humano && c.HumanoAte != null)
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.HumanoAte, (DateTimeOffset?)novoPrazo), cancellationToken);
+        }
     }
 
     /// <summary>

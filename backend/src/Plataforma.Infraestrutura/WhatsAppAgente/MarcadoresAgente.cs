@@ -11,6 +11,9 @@ public static class MarcadoresAgente
     /// <summary>Mensagem fixa "atendimento automático indisponível" (negócio sem o serviço de IA contratado). Não vai ao histórico da IA.</summary>
     public const string IndisponivelAviso = "indisponivel_aviso";
 
+    /// <summary>Texto fixo enviado quando o agente chama um atendente (Fase 4). Ainda não vai ao histórico do modelo.</summary>
+    public const string Transferencia = "transferencia";
+
     public const string Resumo = "agendamento_resumo";
     public const string Confirmado = "agendamento_confirmado";
     public const string NaoConfirmado = "agendamento_nao_confirmado";

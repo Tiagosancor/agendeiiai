@@ -53,13 +53,15 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private readonly ILogger<ProcessadorRodadaAgente> _logger;
     private readonly IServiceScopeFactory _escopos;
     private readonly PoliticaAgenteIa _politica;
+    private readonly AvisadorAtendimentoHumano _avisador;
 
     public ProcessadorRodadaAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IRespostaAgente resposta, IClienteEvolution evolution,
         IConsultaSituacaoAssinatura assinatura, LimitadorUsoAgente limitador, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca,
         GerenciadorPendenciasAgente pendencias, ConfirmadorPendenciaAgente confirmador, ILogger<ProcessadorRodadaAgente> logger,
-        IServiceScopeFactory escopos, PoliticaAgenteIa politica)
+        IServiceScopeFactory escopos, PoliticaAgenteIa politica, AvisadorAtendimentoHumano avisador)
     {
+        _avisador = avisador;
         _politica = politica;
         _escopos = escopos;
         _pendencias = pendencias;
@@ -206,13 +208,19 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// Confere a posse e a renova (por <see cref="DuracaoEnvio"/>) numa única operação atômica. Falso = perdemos o lease
     /// (expirou ou outro processador assumiu): não se envia nem se marca nada.
     /// </summary>
-    private async Task<bool> RenovarLeaseAsync(Lease lease, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Também exige <c>status = 'Agente'</c> (G12): se alguém assumiu a conversa enquanto a IA pensava, a renovação falha e nada é
+    /// enviado nem marcado. <paramref name="exigirAgente"/> = falso só para o anúncio de um FATO já efetivado (confirmação gravada) e para
+    /// o texto de transferência que o próprio agente causou.
+    /// </remarks>
+    private async Task<bool> RenovarLeaseAsync(Lease lease, CancellationToken cancellationToken, bool exigirAgente = true)
     {
         var agora = DateTimeOffset.UtcNow;
         var atual = lease.Valor;
         var novo = NovoValorDeLease(agora, DuracaoEnvio);
         var linhas = await _dbContext.ConversasWhatsApp
-            .Where(c => c.Id == lease.ConversaId && c.ProcessandoAte == atual && c.ProcessandoAte > agora)
+            .Where(c => c.Id == lease.ConversaId && c.ProcessandoAte == atual && c.ProcessandoAte > agora
+                && (!exigirAgente || c.Status == StatusConversaWhatsApp.Agente))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.ProcessandoAte, (DateTimeOffset?)novo), cancellationToken);
         if (linhas == 1)
             lease.Valor = novo;
@@ -221,12 +229,13 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         return linhas == 1;
     }
 
-    private Task<bool> ConversaAindaNossaAsync(Lease lease, CancellationToken cancellationToken)
+    private Task<bool> ConversaAindaNossaAsync(Lease lease, CancellationToken cancellationToken, bool exigirAgente = true)
     {
         var dono = lease.Valor;
         var agora = DateTimeOffset.UtcNow;
         return _dbContext.ConversasWhatsApp.AsNoTracking().AnyAsync(
             c => c.Id == lease.ConversaId && c.ProcessandoAte == dono && c.ProcessandoAte > agora
+                && (!exigirAgente || c.Status == StatusConversaWhatsApp.Agente)
                 && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado), cancellationToken);
     }
 
@@ -241,12 +250,13 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// Marca o lote como tratado SÓ se o lease ainda for nosso (e não tiver vencido). Falso = perdemos a posse: o chamador não
     /// envia nada. Linha já marcada mais adiante não é falha (continua verdadeiro).
     /// </summary>
-    private async Task<bool> MarcarProcessadaAsync(Lease lease, DateTimeOffset ate, CancellationToken cancellationToken)
+    private async Task<bool> MarcarProcessadaAsync(Lease lease, DateTimeOffset ate, CancellationToken cancellationToken, bool exigirAgente = true)
     {
         var dono = lease.Valor;
         var agora = DateTimeOffset.UtcNow;
         var linhas = await _dbContext.ConversasWhatsApp
-            .Where(c => c.Id == lease.ConversaId && c.ProcessandoAte == dono && c.ProcessandoAte > agora)
+            .Where(c => c.Id == lease.ConversaId && c.ProcessandoAte == dono && c.ProcessandoAte > agora
+                && (!exigirAgente || c.Status == StatusConversaWhatsApp.Agente))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.ProcessadaAte,
                 c => c.ProcessadaAte == null || c.ProcessadaAte < ate ? (DateTimeOffset?)ate : c.ProcessadaAte), cancellationToken);
         if (linhas != 1)
@@ -257,7 +267,8 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private async Task<bool> HaPendentesAsync(Guid conversaId, CancellationToken cancellationToken)
     {
         var conversa = await _dbContext.ConversasWhatsApp.AsNoTracking().FirstOrDefaultAsync(c => c.Id == conversaId, cancellationToken);
-        if (conversa is null)
+        // Em atendimento humano as mensagens ficam só gravadas: não há o que processar (a devolução leva o "processado até" à frente).
+        if (conversa is null || conversa.Status != StatusConversaWhatsApp.Agente)
             return false;
 
         return await _dbContext.MensagensWhatsApp.AsNoTracking().AnyAsync(
@@ -295,6 +306,17 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.Silencio;
             diagnostico.MotivoSilencio = decisao.Motivo;
+
+            if (decisao.Motivo == MotivoSilencioRodada.Humano)
+            {
+                // Em atendimento humano nada é respondido nem marcado (quem devolve leva o "processado até" à frente). Única exceção: uma
+                // confirmação JÁ gravada e ainda não anunciada é fato e sai mesmo assim (G12-c).
+                var anuncio = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
+                if (anuncio is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada })
+                    diagnostico.Desfecho = await TratarRespostaAoResumoAsync(lease, conversa, instancia, anuncio, ultima, cancellationToken);
+                return;
+            }
+
             if (await RenovarLeaseAsync(lease, cancellationToken))
                 await MarcarProcessadaAsync(lease, ultima, cancellationToken);
             return;
@@ -393,16 +415,22 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         diagnostico.Telemetria = resposta.Telemetria;
         diagnostico.Desfecho = falhouAoResponder ? DesfechoRodadaAgente.Erro : DesfechoRodadaAgente.Silencio;
 
-        // Quem perdeu o lease durante a IA não envia nem marca: o dono atual cuida da conversa.
-        if (!await RenovarLeaseAsync(lease, cancellationToken))
+        // O agente chamou um atendente nesta rodada: a conversa JÁ está em Humano por causa dele, e o texto de transferência é a
+        // consequência (não conversa), então só ele dispensa a exigência de status Agente.
+        var transferencia = resposta.Acao is { Tipo: TipoAcaoServidor.Transferencia } pedido && pedido.Id == conversa.Id ? pedido : null;
+
+        // Quem perdeu o lease durante a IA não envia nem marca: o dono atual cuida da conversa. Isso inclui quem ASSUMIU a conversa
+        // enquanto o modelo pensava (a renovação exige status Agente).
+        if (!await RenovarLeaseAsync(lease, cancellationToken, exigirAgente: transferencia is null))
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.LeasePerdido;
+            await LiberarReservaDeConversaAssumidaAsync(conversa.Id, resposta.PendenciaPreparadaId);
             return;
         }
 
         // Serviço desligado enquanto a IA pensava: relê o banco (sem memória) e descarta o que o modelo produziu — não envia nada.
         // Uma confirmação JÁ gravada antes do desligamento continua sendo anunciada (é fato; está no ramo do confirmador).
-        if (!await _politica.ContratadoAgoraAsync(conversa.NegocioId, cancellationToken))
+        if (transferencia is null && !await _politica.ContratadoAgoraAsync(conversa.NegocioId, cancellationToken))
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.Silencio;
             diagnostico.MotivoSilencio = MotivoSilencioRodada.NaoContratado;
@@ -414,9 +442,15 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         }
 
         // Marca antes de enviar: se o envio falhar, não reenvia em loop (a mensagem do cliente já está salva).
-        if (!await MarcarProcessadaAsync(lease, ultima, cancellationToken))
+        if (!await MarcarProcessadaAsync(lease, ultima, cancellationToken, exigirAgente: transferencia is null))
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.LeasePerdido;
+            return;
+        }
+
+        if (transferencia is not null)
+        {
+            diagnostico.Desfecho = await EnviarTransferenciaAsync(lease, conversa, instancia, transferencia, cancellationToken);
             return;
         }
 
@@ -460,17 +494,23 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private async Task<DesfechoRodadaAgente> TratarRespostaAoResumoAsync(
         Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, PlanoConfirmacao plano, DateTimeOffset ultima, CancellationToken cancellationToken)
     {
-        if (!await RenovarLeaseAsync(lease, cancellationToken))
+        // Anunciar uma confirmação que já estava gravada é fato: sai mesmo que a conversa tenha ido para Humano no meio (G12-c).
+        var fatoPendente = plano.Tipo is TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada;
+        if (!await RenovarLeaseAsync(lease, cancellationToken, exigirAgente: !fatoPendente))
             return DesfechoRodadaAgente.LeasePerdido;
 
         var mensagem = await _confirmador.ExecutarAsync(plano, conversa, instancia, cancellationToken);
 
-        if (!await RenovarLeaseAsync(lease, cancellationToken))
+        // Se ESTA execução gravou a confirmação, quem assumiu a conversa logo depois não a impede de ser anunciada (nunca um agendamento
+        // confirmado sem anúncio). Qualquer outro texto (recusa, prazo, "não consegui") exige a conversa ainda com o agente: se o
+        // assumir ganhou a pendência, nada disso é enviado.
+        var fato = fatoPendente || mensagem?.Marcador == MarcadoresAgente.Confirmado;
+        if (!await RenovarLeaseAsync(lease, cancellationToken, exigirAgente: !fato))
             return DesfechoRodadaAgente.LeasePerdido;
 
         if (mensagem is null)
         {
-            await MarcarProcessadaAsync(lease, ultima, cancellationToken);
+            await MarcarProcessadaAsync(lease, ultima, cancellationToken, exigirAgente: !fato);
             return DesfechoRodadaAgente.Confirmacao;
         }
 
@@ -482,7 +522,9 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         if (!confirmacao && !await MarcarProcessadaAsync(lease, ultima, cancellationToken))
             return DesfechoRodadaAgente.LeasePerdido;
 
-        var envio = await EnviarEGravarAsync(lease, conversa, instancia, mensagem.Texto, PapelMensagemWhatsApp.Sistema, mensagem.Marcador, cancellationToken, mensagem.TextoGravado);
+        var envio = await EnviarEGravarAsync(
+            lease, conversa, instancia, mensagem.Texto, PapelMensagemWhatsApp.Sistema, mensagem.Marcador, cancellationToken, mensagem.TextoGravado,
+            exigirAgente: !fato);
         var desfecho = envio.Estado switch
         {
             EstadoEnvio.Enviado => DesfechoRodadaAgente.Confirmacao,
@@ -502,8 +544,66 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             return desfecho;
         }
 
-        await MarcarProcessadaAsync(lease, ultima, cancellationToken);
+        await MarcarProcessadaAsync(lease, ultima, cancellationToken, exigirAgente: false);
         return desfecho;
+    }
+
+    // ---------------------------------------------------------------- atendimento humano (Fase 4)
+
+    /// <summary>
+    /// O texto de transferência (fixo do servidor + a mensagem do negócio, sanitizada) e, se passou nos limites, o e-mail ao dono.
+    /// A conversa já está em Humano por causa da ferramenta; o texto é a consequência e sai mesmo assim.
+    /// </summary>
+    private async Task<DesfechoRodadaAgente> EnviarTransferenciaAsync(
+        Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, AcaoServidor acao, CancellationToken cancellationToken)
+    {
+        var estado = EstadoEnvio.SemPrazo;
+        var negocio = await _dbContext.Negocios.AsNoTracking().Where(n => n.Id == conversa.NegocioId)
+            .Select(n => new { n.NomeExibido, Slug = n.Slug.Valor }).FirstOrDefaultAsync(cancellationToken);
+        if (negocio is not null)
+        {
+            var link = ConstrutorUrlPublica.Construir(_marca, negocio.Slug, string.Empty);
+            var texto = TextosHumanoAgente.Transferencia(negocio.NomeExibido, instancia.MensagemTransferencia, link, instancia.Telefone);
+            var envio = await EnviarEGravarAsync(
+                lease, conversa, instancia, texto, PapelMensagemWhatsApp.Sistema, MarcadoresAgente.Transferencia, cancellationToken, exigirAgente: false);
+            estado = envio.Estado;
+            if (envio.Estado is EstadoEnvio.FalhaDefinitiva or EstadoEnvio.SemPrazo && envio.MensagemId is { } mensagemId)
+                await _dbContext.MensagensWhatsApp.Where(m => m.Id == mensagemId).ExecuteDeleteAsync(CancellationToken.None);
+        }
+
+        // O dono é avisado mesmo que o texto ao cliente não tenha saído: a conversa está esperando uma pessoa.
+        if (acao.AvisarAtendente)
+            await _avisador.AvisarAsync(conversa.NegocioId, conversa.Id, conversa.TelefoneCliente, acao.Motivo, cancellationToken);
+
+        return estado switch
+        {
+            EstadoEnvio.Enviado => DesfechoRodadaAgente.Transferida,
+            EstadoEnvio.Ambiguo => DesfechoRodadaAgente.EnvioAmbiguo,
+            _ => DesfechoRodadaAgente.EnvioFalhou,
+        };
+    }
+
+    /// <summary>
+    /// Rodada que perdeu a conversa para quem a assumiu e tinha acabado de reservar um horário: sem resumo enviado o "sim" nunca valeria,
+    /// então a pendência é encerrada e o horário liberado na hora (senão só o job a expiraria em até 10 min).
+    /// </summary>
+    private async Task LiberarReservaDeConversaAssumidaAsync(Guid conversaId, Guid? pendenciaId)
+    {
+        if (pendenciaId is not { } id)
+            return;
+
+        try
+        {
+            var emHumano = await _dbContext.ConversasWhatsApp.AsNoTracking()
+                .AnyAsync(c => c.Id == conversaId && c.Status == StatusConversaWhatsApp.Humano, CancellationToken.None);
+            if (emHumano)
+                await _pendencias.EncerrarAsync(id, DesfechoPendenciaAgente.Falhou, CancellationToken.None);
+        }
+        catch (Exception excecao) when (excecao is not OperationCanceledException)
+        {
+            _logger.LogWarning("Agente: não foi possível liberar a reserva da conversa assumida (conversa {ConversaId}): {Tipo}.",
+                conversaId, excecao.GetType().Name);
+        }
     }
 
     // ---------------------------------------------------------------- aviso de atendimento automatizado (Fase 3)
@@ -772,7 +872,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private async Task<ResultadoEnvio> EnviarEGravarAsync(
         Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, string texto, PapelMensagemWhatsApp papel, string? marcador,
         CancellationToken cancellationToken, string? textoGravado = null, Action<MensagemWhatsApp>? aoReservar = null,
-        MensagemWhatsApp? reservaPronta = null)
+        MensagemWhatsApp? reservaPronta = null, bool exigirAgente = true)
     {
         var restante = lease.Valor - DateTimeOffset.UtcNow - MargemEnvio;
         if (restante <= TimeSpan.Zero)
@@ -783,7 +883,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
         // Última conferência ANTES de ir ao provedor: a anonimização (LGPD) zera o lease e troca o telefone, então conversa anonimizada
         // ou lease que não é mais nosso = não envia. Não fecha a janela entre esta leitura e a chamada (ver ConversaWhatsApp.Anonimizar).
-        if (!await ConversaAindaNossaAsync(lease, cancellationToken))
+        if (!await ConversaAindaNossaAsync(lease, cancellationToken, exigirAgente))
         {
             _logger.LogWarning("Agente: conversa anonimizada ou lease perdido antes do envio (conversa {ConversaId}); nada é enviado.", conversa.Id);
             return new ResultadoEnvio(EstadoEnvio.SemPrazo);
