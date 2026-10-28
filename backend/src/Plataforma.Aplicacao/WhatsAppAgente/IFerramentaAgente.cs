@@ -6,7 +6,8 @@ namespace Plataforma.Aplicacao.WhatsAppAgente;
 /// Quem a conversa é, montado SÓ pelo servidor. O modelo nunca informa nem decide o negócio, a instância ou a conversa
 /// (nem o telefone, que sequer faz parte deste contexto).
 /// </summary>
-public sealed record ContextoConversaAgente(Guid NegocioId, Guid InstanciaId, Guid ConversaId);
+public sealed record ContextoConversaAgente(Guid NegocioId, Guid InstanciaId, Guid ConversaId, int? Epoca = null);
+// Epoca: época do atendimento em que a rodada começou (ver ConversaWhatsApp.EpocaAtendimento); só o servidor a preenche.
 
 /// <summary>
 /// Ferramenta que o modelo pode pedir. Na Fase 2 todas são SOMENTE LEITURA de dado público do próprio negócio. O retorno é

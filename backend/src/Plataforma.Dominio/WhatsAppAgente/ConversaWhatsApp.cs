@@ -68,6 +68,13 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Último e-mail de aviso ao atendente por <c>chamar_atendente</c> (limita a 1 a cada N horas por conversa).</summary>
     public DateTimeOffset? AtendenteAvisadoEm { get; private set; }
 
+    /// <summary>
+    /// Época do atendimento: sobe a cada assumir/devolver (pelo painel ou pelo prazo). A rodada do agente guarda a época em que começou;
+    /// se ela mudou, a rodada é de antes da transição e não responde nem chama ferramenta (exceto fato já efetivado). Não é um token de
+    /// concorrência do EF: as transições são <c>UPDATE</c> condicionais.
+    /// </summary>
+    public int EpocaAtendimento { get; private set; }
+
     protected ConversaWhatsApp()
     {
     }
@@ -151,6 +158,7 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
         }
 
         EntrarEmHumano(MotivoHumanoConversa.Painel, agora, devolverApos);
+        EpocaAtendimento++;
         HumanoPorUsuarioId = usuarioId;
         return true;
     }
@@ -176,6 +184,7 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
 
         Status = StatusConversaWhatsApp.Agente;
         LimparEstadoHumano();
+        EpocaAtendimento++;
         DevolvidaEm = agora;
         if (ultimaMensagemDoCliente is { } ultima && (ProcessadaAte is null || ProcessadaAte < ultima))
             ProcessadaAte = ultima;
@@ -215,4 +224,28 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
     public void RegistrarAvisoAutomatizado(DateTimeOffset em) => AvisoAutomatizadoEm = em;
 
     public bool AgenteResponde => Status == StatusConversaWhatsApp.Agente;
+}
+
+/// <summary>
+/// Um aviso por e-mail ao atendente autorizado (<c>chamar_atendente</c>). Existe só para o teto diário por negócio contar AVISOS, e não
+/// conversas: gravado na mesma transação da decisão, sob a trava por negócio/dia. Sem texto nem telefone.
+/// </summary>
+public class AvisoAtendenteWhatsApp : EntidadeBase, IEntidadeDoNegocio
+{
+    public Guid NegocioId { get; private set; }
+
+    public Guid ConversaId { get; private set; }
+
+    public DateTimeOffset Em { get; private set; }
+
+    protected AvisoAtendenteWhatsApp()
+    {
+    }
+
+    public AvisoAtendenteWhatsApp(Guid negocioId, Guid conversaId, DateTimeOffset em)
+    {
+        NegocioId = negocioId;
+        ConversaId = conversaId;
+        Em = em;
+    }
 }

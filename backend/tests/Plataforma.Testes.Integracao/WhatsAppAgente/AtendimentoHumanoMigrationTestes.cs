@@ -20,8 +20,8 @@ namespace Plataforma.Testes.Integracao.WhatsAppAgente;
 public sealed class AtendimentoHumanoMigrationTestes(PostgresContainerFixture postgres)
 {
     private const string Anterior = "20261028155133_AgenteWhatsAppLgpdIndice";
-    private const string Colunas = "20261028181920_AgenteWhatsAppHumano";
-    private const string Permissao_ = "20261028182000_AgenteWhatsAppAtenderPermissao";
+    private const string Colunas = "20261028191733_AgenteWhatsAppHumano";
+    private const string Permissao_ = "20261028191802_AgenteWhatsAppAtenderPermissao";
 
     private static readonly string[] ColunasNovas =
         ["atendente_avisado_em", "devolvida_em", "humano_ate", "humano_desde", "humano_motivo", "humano_por_usuario_id"];

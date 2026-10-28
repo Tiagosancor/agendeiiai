@@ -2,7 +2,7 @@ namespace Plataforma.Aplicacao.WhatsAppAgente;
 
 public sealed record ContextoRespostaAgente(
     Guid NegocioId, Guid InstanciaId, Guid ConversaId, string TelefoneCliente, string TextoRecebido,
-    DateTimeOffset? LimiteHistorico = null, Guid? RodadaId = null);
+    DateTimeOffset? LimiteHistorico = null, Guid? RodadaId = null, int? Epoca = null);
 // LimiteHistorico: instante da última mensagem do lote que esta rodada vai marcar como processado. O histórico enviado à IA
 // só inclui mensagens até ele (inclusive); o que chegar depois fica pendente para a rodada seguinte, sem ser respondido duas vezes.
 // RodadaId: id da linha de diagnóstico (rodadas_agente) que o processador gravará ao fim; preenchido só com Ai__RegistrarRodadas ligado.

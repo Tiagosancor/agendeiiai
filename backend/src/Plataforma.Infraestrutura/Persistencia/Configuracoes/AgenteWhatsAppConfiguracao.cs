@@ -152,3 +152,19 @@ public sealed class PendenciaAgendamentoWhatsAppConfiguracao : IEntityTypeConfig
         builder.HasIndex(p => p.AgendamentoId);
     }
 }
+
+public sealed class AvisoAtendenteWhatsAppConfiguracao : IEntityTypeConfiguration<AvisoAtendenteWhatsApp>
+{
+    public void Configure(EntityTypeBuilder<AvisoAtendenteWhatsApp> builder)
+    {
+        builder.ToTable("avisos_atendente_whatsapp");
+
+        builder.HasKey(a => a.Id);
+
+        builder.HasOne<Negocio>().WithMany().HasForeignKey(a => a.NegocioId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ConversaWhatsApp>().WithMany().HasForeignKey(a => a.ConversaId).OnDelete(DeleteBehavior.Cascade);
+
+        // A contagem do dia é por negócio e instante.
+        builder.HasIndex(a => new { a.NegocioId, a.Em });
+    }
+}

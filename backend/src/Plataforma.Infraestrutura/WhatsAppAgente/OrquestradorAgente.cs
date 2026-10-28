@@ -228,7 +228,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
 
         var ferramentas = _executor.FerramentasPara(contexto.NegocioId)
             .Select(f => new AiFerramenta(f.Nome, f.Descricao, f.Esquema)).ToList();
-        var contextoConversa = new ContextoConversaAgente(contexto.NegocioId, contexto.InstanciaId, contexto.ConversaId);
+        var contextoConversa = new ContextoConversaAgente(contexto.NegocioId, contexto.InstanciaId, contexto.ConversaId, contexto.Epoca);
 
         var reserva = _opcoes.Gemini.TemModeloReserva ? _opcoes.Gemini.ModeloReserva!.Trim() : null;
         if (reserva is null)

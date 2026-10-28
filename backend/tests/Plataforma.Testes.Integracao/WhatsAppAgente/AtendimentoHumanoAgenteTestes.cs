@@ -628,4 +628,128 @@ public sealed class AtendimentoHumanoAgenteTestes : IAsyncLifetime
         Email().Enviados.Should().BeEmpty();
         (await ConversaAsync()).HumanoMotivo.Should().Be(MotivoHumanoConversa.Painel);
     }
+    // ---------------------------------------------------------------- revisão: época, avisos contados e contratação relida
+
+    [Fact]
+    public async Task Rodada_antiga_nao_responde_depois_de_assumir_e_devolver_com_o_lease_ainda_valido()
+    {
+        var c = await _ambiente.SemearAsync();
+        var admin = await AdminAsync(c);
+        await _ambiente.EnviarAsync(c, "oi");
+        var conversa = await ConversaAsync();
+        var envios = _ambiente.Evolution.Envios.Count;
+        var chamadas = _ambiente.Provedor.Chamadas;
+
+        _ambiente.Provedor.Atraso = TimeSpan.FromSeconds(2);
+        var emAndamento = _ambiente.EnviarAsync(c, "quanto custa o corte?");
+        await EsperarAsync(() => _ambiente.Provedor.Chamadas > chamadas);
+        (await AssumirAsync(admin, conversa.Id)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await DevolverAsync(admin, conversa.Id)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await ConversaAsync()).Status.Should().Be(StatusConversaWhatsApp.Agente);
+        await emAndamento;
+
+        _ambiente.Evolution.Envios.Count.Should().Be(envios, "a rodada é de antes da transição: não responde");
+        (await RodadasAsync()).Last().Desfecho.Should().Be(DesfechoRodadaAgente.LeasePerdido);
+
+        // A próxima mensagem nova é respondida normalmente.
+        _ambiente.Provedor.Atraso = TimeSpan.Zero;
+        await _ambiente.EnviarAsync(c, "e a barba?");
+        _ambiente.Evolution.Envios.Count.Should().Be(envios + 1);
+    }
+
+    [Fact]
+    public async Task Chamar_atendente_de_rodada_antiga_nao_leva_a_Humano_depois_de_assumir_e_devolver()
+    {
+        await IniciarAsync(new Dictionary<string, string?> { ["Ai:Humano:FerramentaAtiva"] = "true" });
+        var c = await _ambiente.SemearAsync();
+        var admin = await AdminAsync(c);
+        await _ambiente.EnviarAsync(c, "oi");
+        var conversa = await ConversaAsync();
+        var envios = _ambiente.Evolution.Envios.Count;
+        ModeloChamaAtendente(Motivo("reclamacao"));
+        _ambiente.Provedor.Atraso = TimeSpan.FromSeconds(2);
+        var chamadas = _ambiente.Provedor.Chamadas;
+        var emAndamento = _ambiente.EnviarAsync(c, "quero reclamar");
+        await EsperarAsync(() => _ambiente.Provedor.Chamadas > chamadas);
+
+        await AssumirAsync(admin, conversa.Id);
+        await DevolverAsync(admin, conversa.Id);
+        await emAndamento;
+
+        (await ConversaAsync()).Status.Should().Be(StatusConversaWhatsApp.Agente, "a ferramenta da rodada antiga não efetiva");
+        _ambiente.Evolution.Envios.Count.Should().Be(envios);
+        Email().Enviados.Should().BeEmpty();
+        (await AuditoriaAsync("AtenderConversaPeloAgente")).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Limite_diario_conta_avisos_a_mesma_conversa_avisada_duas_vezes_gasta_dois()
+    {
+        await IniciarAsync(new Dictionary<string, string?>
+        {
+            ["Ai:Humano:FerramentaAtiva"] = "true",
+            ["Ai:Humano:LimiteAvisosPorNegocioPorDia"] = "2",
+        });
+        var c = await _ambiente.SemearAsync();
+        await AdminAsync(c);
+
+        ModeloChamaAtendente(Motivo("reclamacao"));
+        await _ambiente.EnviarAsync(c, "quero reclamar");
+        await DefinirAsync("UPDATE conversas_whatsapp SET atendente_avisado_em = now() - interval '7 hours', status = 'Agente'");
+        ModeloChamaAtendente(Motivo("reclamacao"));
+        await _ambiente.EnviarAsync(c, "ainda quero reclamar");
+        Email().Enviados.Count(e => e.Assunto.Contains("aguardando atendimento")).Should().Be(2);
+
+        ModeloChamaAtendente(Motivo("reclamacao"));
+        await _ambiente.EnviarAsync(c, "outra pessoa", Tel2);
+
+        Email().Enviados.Count(e => e.Assunto.Contains("aguardando atendimento")).Should().Be(2, "o teto de 2 AVISOS do dia já foi gasto pela primeira conversa");
+        (await ConversaAsync(Tel2)).Status.Should().Be(StatusConversaWhatsApp.Humano);
+        (await _ambiente.NoBancoAsync(db => db.AvisosAtendenteWhatsApp.IgnoreQueryFilters().CountAsync())).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Avisos_simultaneos_de_varias_conversas_nunca_passam_do_teto_do_dia()
+    {
+        await IniciarAsync(new Dictionary<string, string?>
+        {
+            ["Ai:Humano:FerramentaAtiva"] = "true",
+            ["Ai:Humano:LimiteAvisosPorNegocioPorDia"] = "2",
+        });
+        var c = await _ambiente.SemearAsync();
+        await AdminAsync(c);
+        _ambiente.Provedor.Roteiro = (requisicao, _) => ProvedorIaRoteirizado.Resultados(requisicao).Count == 0
+            ? Chama(("chamar_atendente", Motivo("outro")))
+            : Texto("ok");
+
+        var telefones = Enumerable.Range(0, 6).Select(i => $"557198877{i:0000}").ToList();
+        await Task.WhenAll(telefones.Select(t => _ambiente.EnviarAsync(c, "preciso de uma pessoa", t)));
+
+        (await _ambiente.ConversasAsync()).Should().OnlyContain(x => x.Status == StatusConversaWhatsApp.Humano);
+        Email().Enviados.Count(e => e.Assunto.Contains("aguardando atendimento")).Should().Be(2);
+        (await _ambiente.NoBancoAsync(db => db.AvisosAtendenteWhatsApp.IgnoreQueryFilters().CountAsync())).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Contratacao_revogada_enquanto_o_modelo_pensa_impede_a_transferencia()
+    {
+        await IniciarAsync(new Dictionary<string, string?> { ["Ai:Humano:FerramentaAtiva"] = "true" });
+        var c = await _ambiente.SemearAsync();
+        await AdminAsync(c);
+        await _ambiente.EnviarAsync(c, "oi");
+        var envios = _ambiente.Evolution.Envios.Count;
+        ModeloChamaAtendente(Motivo("pedido_do_cliente"));
+        _ambiente.Provedor.Atraso = TimeSpan.FromSeconds(2);
+        var chamadas = _ambiente.Provedor.Chamadas;
+        var emAndamento = _ambiente.EnviarAsync(c, "quero uma pessoa");
+        await EsperarAsync(() => _ambiente.Provedor.Chamadas > chamadas);
+
+        await _ambiente.ContratarAgenteIaAsync(c.NegocioId, false);
+        await emAndamento;
+
+        (await ConversaAsync()).Status.Should().Be(StatusConversaWhatsApp.Agente, "sem o serviço contratado não há transferência");
+        _ambiente.Evolution.Envios.Count.Should().Be(envios);
+        Email().Enviados.Should().BeEmpty();
+        (await _ambiente.NoBancoAsync(db => db.AvisosAtendenteWhatsApp.IgnoreQueryFilters().CountAsync())).Should().Be(0);
+    }
 }

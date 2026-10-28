@@ -61,7 +61,8 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
                     .SetProperty(c => c.HumanoDesde, (DateTimeOffset?)agora)
                     .SetProperty(c => c.HumanoAte, ate)
                     .SetProperty(c => c.HumanoMotivo, (MotivoHumanoConversa?)MotivoHumanoConversa.Painel)
-                    .SetProperty(c => c.HumanoPorUsuarioId, usuarioId), cancellationToken);
+                    .SetProperty(c => c.HumanoPorUsuarioId, usuarioId)
+                    .SetProperty(c => c.EpocaAtendimento, c => c.EpocaAtendimento + 1), cancellationToken);
 
             // Já estava em Humano (por pedido do agente): quem clicou passa a constar como quem atende, se ainda ninguém constava.
             if (linhas == 0 && usuarioId is not null)
@@ -126,7 +127,7 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
         PlataformaDbContext dbContext, Guid negocioId, Guid conversaId, DateTimeOffset agora, bool somenteSePrazoVencido, CancellationToken cancellationToken) =>
         dbContext.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE conversas_whatsapp c
-               SET status = 'Agente', devolvida_em = {agora},
+               SET status = 'Agente', devolvida_em = {agora}, epoca_atendimento = c.epoca_atendimento + 1,
                    humano_desde = NULL, humano_ate = NULL, humano_motivo = NULL, humano_por_usuario_id = NULL,
                    processada_ate = GREATEST(c.processada_ate,
                        (SELECT max(m.criado_em) FROM mensagens_whatsapp m
@@ -136,7 +137,7 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
             """, cancellationToken);
 
     public async Task<ResultadoMarcarHumano> MarcarHumanoPeloAgenteAsync(
-        Guid conversaId, MotivoChamadaAtendente motivo, CancellationToken cancellationToken = default)
+        Guid conversaId, MotivoChamadaAtendente motivo, int? epocaEsperada = null, CancellationToken cancellationToken = default)
     {
         var negocioId = _contextoNegocio.NegocioId!.Value;
         var agora = DateTimeOffset.UtcNow;
@@ -154,7 +155,11 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
 
             var linhas = await _dbContext.ConversasWhatsApp
                 .Where(c => c.Id == conversaId && c.NegocioId == negocioId && c.Status == StatusConversaWhatsApp.Agente
-                    && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado))
+                    && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado)
+                    // Rodada de antes de um assumir/devolver não chama atendente (época mudou).
+                    && (epocaEsperada == null || c.EpocaAtendimento == epocaEsperada)
+                    // A contratação é conferida no próprio UPDATE: revogar o serviço no meio da rodada impede a transferência.
+                    && _dbContext.Negocios.Any(n => n.Id == c.NegocioId && n.AgenteIaContratado))
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(c => c.Status, StatusConversaWhatsApp.Humano)
                     .SetProperty(c => c.HumanoDesde, (DateTimeOffset?)agora)
@@ -168,13 +173,16 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
             }
 
             var avisar = false;
-            var avisadasHoje = await _dbContext.ConversasWhatsApp.AsNoTracking()
-                .CountAsync(c => c.NegocioId == negocioId && c.AtendenteAvisadoEm >= inicioDoDia, cancellationToken);
-            if (avisadasHoje < _opcoes.Humano.LimiteAvisosPorNegocioPorDia)
+            // O teto conta AVISOS (uma linha por e-mail autorizado), não conversas: a mesma conversa avisada duas vezes no dia conta duas.
+            var avisosHoje = await _dbContext.AvisosAtendenteWhatsApp.AsNoTracking()
+                .CountAsync(a => a.NegocioId == negocioId && a.Em >= inicioDoDia, cancellationToken);
+            if (avisosHoje < _opcoes.Humano.LimiteAvisosPorNegocioPorDia)
             {
                 avisar = await _dbContext.ConversasWhatsApp
                     .Where(c => c.Id == conversaId && c.NegocioId == negocioId && (c.AtendenteAvisadoEm == null || c.AtendenteAvisadoEm < corteDoAviso))
                     .ExecuteUpdateAsync(s => s.SetProperty(c => c.AtendenteAvisadoEm, (DateTimeOffset?)agora), cancellationToken) == 1;
+                if (avisar)
+                    _dbContext.AvisosAtendenteWhatsApp.Add(new AvisoAtendenteWhatsApp(negocioId, conversaId, agora));
             }
 
             _auditoria.Registrar(AcoesAuditoria.AtenderConversaPeloAgente, nameof(ConversaWhatsApp), conversaId, $"motivo {motivo}");

@@ -182,6 +182,12 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         public Guid ConversaId { get; } = conversaId;
 
         public DateTimeOffset Valor { get; set; } = valor;
+
+        /// <summary>
+        /// Época do atendimento em que a rodada começou. Assumir/devolver sobem a época da conversa: a rodada de antes deixa de poder
+        /// renovar, marcar e enviar (a menos que seja um FATO já efetivado), mesmo com o lease ainda válido.
+        /// </summary>
+        public int Epoca { get; set; }
     }
 
     private static DateTimeOffset NovoValorDeLease(DateTimeOffset agora, TimeSpan duracao)
@@ -217,10 +223,11 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     {
         var agora = DateTimeOffset.UtcNow;
         var atual = lease.Valor;
+        var epoca = lease.Epoca;
         var novo = NovoValorDeLease(agora, DuracaoEnvio);
         var linhas = await _dbContext.ConversasWhatsApp
             .Where(c => c.Id == lease.ConversaId && c.ProcessandoAte == atual && c.ProcessandoAte > agora
-                && (!exigirAgente || c.Status == StatusConversaWhatsApp.Agente))
+                && (!exigirAgente || (c.Status == StatusConversaWhatsApp.Agente && c.EpocaAtendimento == epoca)))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.ProcessandoAte, (DateTimeOffset?)novo), cancellationToken);
         if (linhas == 1)
             lease.Valor = novo;
@@ -232,10 +239,11 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private Task<bool> ConversaAindaNossaAsync(Lease lease, CancellationToken cancellationToken, bool exigirAgente = true)
     {
         var dono = lease.Valor;
+        var epoca = lease.Epoca;
         var agora = DateTimeOffset.UtcNow;
         return _dbContext.ConversasWhatsApp.AsNoTracking().AnyAsync(
             c => c.Id == lease.ConversaId && c.ProcessandoAte == dono && c.ProcessandoAte > agora
-                && (!exigirAgente || c.Status == StatusConversaWhatsApp.Agente)
+                && (!exigirAgente || (c.Status == StatusConversaWhatsApp.Agente && c.EpocaAtendimento == epoca))
                 && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado), cancellationToken);
     }
 
@@ -253,10 +261,11 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private async Task<bool> MarcarProcessadaAsync(Lease lease, DateTimeOffset ate, CancellationToken cancellationToken, bool exigirAgente = true)
     {
         var dono = lease.Valor;
+        var epoca = lease.Epoca;
         var agora = DateTimeOffset.UtcNow;
         var linhas = await _dbContext.ConversasWhatsApp
             .Where(c => c.Id == lease.ConversaId && c.ProcessandoAte == dono && c.ProcessandoAte > agora
-                && (!exigirAgente || c.Status == StatusConversaWhatsApp.Agente))
+                && (!exigirAgente || (c.Status == StatusConversaWhatsApp.Agente && c.EpocaAtendimento == epoca)))
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.ProcessadaAte,
                 c => c.ProcessadaAte == null || c.ProcessadaAte < ate ? (DateTimeOffset?)ate : c.ProcessadaAte), cancellationToken);
         if (linhas != 1)
@@ -286,6 +295,9 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             : await _dbContext.InstanciasWhatsApp.AsNoTracking().FirstOrDefaultAsync(i => i.Id == conversa.InstanciaId, cancellationToken);
         if (conversa is null || instancia is null)
             return;
+
+        // A época do atendimento é a de agora: se alguém assumir e devolver depois, esta rodada passa a ser "de antes".
+        lease.Epoca = conversa.EpocaAtendimento;
 
         // Só a pendente MAIS RECENTE é lida: ela dá o limite do lote ("processado até"), a idade e o texto recebido. O histórico tem
         // consulta própria, limitada em quantidade; um backlog grande nunca é materializado aqui.
@@ -400,7 +412,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
                 // Mesmo lote para histórico e para o "processado": a IA só vê mensagens até `ultima`.
                 resposta = await _resposta.ResponderAsync(
                     new ContextoRespostaAgente(conversa.NegocioId, instancia.Id, conversa.Id, conversa.TelefoneCliente,
-                        maisRecente.Conteudo, ultima, diagnostico.Id),
+                        maisRecente.Conteudo, ultima, diagnostico.Id, lease.Epoca),
                     prazo.Token);
             }
             catch (Exception excecao) when (!(excecao is OperationCanceledException && cancellationToken.IsCancellationRequested))
@@ -424,7 +436,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         if (!await RenovarLeaseAsync(lease, cancellationToken, exigirAgente: transferencia is null))
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.LeasePerdido;
-            await LiberarReservaDeConversaAssumidaAsync(conversa.Id, resposta.PendenciaPreparadaId);
+            await LiberarReservaDeConversaAssumidaAsync(conversa.Id, lease.Epoca, resposta.PendenciaPreparadaId);
             return;
         }
 
@@ -587,16 +599,16 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// Rodada que perdeu a conversa para quem a assumiu e tinha acabado de reservar um horário: sem resumo enviado o "sim" nunca valeria,
     /// então a pendência é encerrada e o horário liberado na hora (senão só o job a expiraria em até 10 min).
     /// </summary>
-    private async Task LiberarReservaDeConversaAssumidaAsync(Guid conversaId, Guid? pendenciaId)
+    private async Task LiberarReservaDeConversaAssumidaAsync(Guid conversaId, int epoca, Guid? pendenciaId)
     {
         if (pendenciaId is not { } id)
             return;
 
         try
         {
-            var emHumano = await _dbContext.ConversasWhatsApp.AsNoTracking()
-                .AnyAsync(c => c.Id == conversaId && c.Status == StatusConversaWhatsApp.Humano, CancellationToken.None);
-            if (emHumano)
+            var assumida = await _dbContext.ConversasWhatsApp.AsNoTracking()
+                .AnyAsync(c => c.Id == conversaId && (c.Status == StatusConversaWhatsApp.Humano || c.EpocaAtendimento != epoca), CancellationToken.None);
+            if (assumida)
                 await _pendencias.EncerrarAsync(id, DesfechoPendenciaAgente.Falhou, CancellationToken.None);
         }
         catch (Exception excecao) when (excecao is not OperationCanceledException)

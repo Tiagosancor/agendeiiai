@@ -12,7 +12,7 @@ using Plataforma.Infraestrutura.Persistencia;
 namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 {
     [DbContext(typeof(PlataformaDbContext))]
-    [Migration("20261028182000_AgenteWhatsAppAtenderPermissao")]
+    [Migration("20261028191802_AgenteWhatsAppAtenderPermissao")]
     partial class AgenteWhatsAppAtenderPermissao
     {
         /// <inheritdoc />
@@ -3137,6 +3137,44 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.ToTable("codigos_verificacao", (string)null);
                 });
 
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.AvisoAtendenteWhatsApp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<Guid>("ConversaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversa_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<DateTimeOffset>("Em")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("em");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_avisos_atendente_whatsapp");
+
+                    b.HasIndex("ConversaId")
+                        .HasDatabaseName("ix_avisos_atendente_whatsapp_conversa_id");
+
+                    b.HasIndex("NegocioId", "Em")
+                        .HasDatabaseName("ix_avisos_atendente_whatsapp_negocio_id_em");
+
+                    b.ToTable("avisos_atendente_whatsapp", (string)null);
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3166,6 +3204,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.Property<DateTimeOffset?>("DevolvidaEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("devolvida_em");
+
+                    b.Property<int>("EpocaAtendimento")
+                        .HasColumnType("integer")
+                        .HasColumnName("epoca_atendimento");
 
                     b.Property<DateTimeOffset?>("HumanoAte")
                         .HasColumnType("timestamp with time zone")
@@ -4156,6 +4198,23 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_usuario_permissoes_usuarios_usuario_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.AvisoAtendenteWhatsApp", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", null)
+                        .WithMany()
+                        .HasForeignKey("ConversaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_avisos_atendente_whatsapp_conversas_whats_app_conversa_id");
+
+                    b.HasOne("Plataforma.Dominio.Negocios.Negocio", null)
+                        .WithMany()
+                        .HasForeignKey("NegocioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_avisos_atendente_whatsapp_negocios_negocio_id");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", b =>

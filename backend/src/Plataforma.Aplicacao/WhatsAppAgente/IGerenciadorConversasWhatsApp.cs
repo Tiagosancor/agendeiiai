@@ -39,6 +39,8 @@ public interface IGerenciadorConversasWhatsApp
     /// </summary>
     Task<ResultadoConversaWhatsApp> DevolverAsync(Guid conversaId, CancellationToken cancellationToken = default);
 
-    /// <summary>Usado pela ferramenta <c>chamar_atendente</c> (sem usuário). Só sai de Agente; já em Humano devolve <c>Marcada = false</c>.</summary>
-    Task<ResultadoMarcarHumano> MarcarHumanoPeloAgenteAsync(Guid conversaId, MotivoChamadaAtendente motivo, CancellationToken cancellationToken = default);
+    /// <summary>Usado pela ferramenta <c>chamar_atendente</c> (sem usuário). Só sai de Agente e só com o serviço de IA contratado (conferido no mesmo UPDATE); já em Humano devolve <c>Marcada = false</c>.</summary>
+    /// <param name="epocaEsperada">Época do atendimento em que a rodada começou; se a conversa já foi assumida/devolvida desde então, não marca.</param>
+    Task<ResultadoMarcarHumano> MarcarHumanoPeloAgenteAsync(
+        Guid conversaId, MotivoChamadaAtendente motivo, int? epocaEsperada = null, CancellationToken cancellationToken = default);
 }

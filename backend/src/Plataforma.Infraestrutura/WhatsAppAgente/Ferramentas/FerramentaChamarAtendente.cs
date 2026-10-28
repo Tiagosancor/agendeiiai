@@ -76,8 +76,12 @@ public sealed class FerramentaChamarAtendente : IFerramentaDeAtendimentoHumano
         if (!_opcoes.Value.Humano.FerramentaAtiva || !(await _politica.ObterAsync(negocioId, cancellationToken)).IaLiberada)
             return Erro(AtendenteIndisponivel);
 
+        // A situação acima é a do início da rodada: a contratação é relida no banco antes de efetivar (e conferida de novo no UPDATE da transferência).
+        if (!await _politica.ContratadoAgoraAsync(negocioId, cancellationToken))
+            return Erro(AtendenteIndisponivel);
+
         // 3. A conversa é a do contexto (servidor). Já em Humano (o dono assumiu antes) = nada a fazer: sem texto ao cliente.
-        var resultado = await _conversas.MarcarHumanoPeloAgenteAsync(contexto.ConversaId, motivo, cancellationToken);
+        var resultado = await _conversas.MarcarHumanoPeloAgenteAsync(contexto.ConversaId, motivo, contexto.Epoca, cancellationToken);
         if (!resultado.Marcada)
             return Erro(AtendenteIndisponivel);
 
