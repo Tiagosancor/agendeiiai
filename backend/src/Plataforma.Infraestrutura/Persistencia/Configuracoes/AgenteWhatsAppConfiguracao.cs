@@ -78,12 +78,39 @@ public sealed class UsoIaConfiguracao : IEntityTypeConfiguration<UsoIa>
         builder.HasKey(u => u.Id);
 
         builder.Property(u => u.Modelo).HasMaxLength(100).IsRequired();
+        builder.Property(u => u.MotivoFim).HasMaxLength(RodadaAgente.TamanhoMaximoCodigo);
+        builder.Property(u => u.FalhaTipo).HasMaxLength(RodadaAgente.TamanhoMaximoCodigo);
 
         builder.HasOne<Negocio>().WithMany().HasForeignKey(u => u.NegocioId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne<ConversaWhatsApp>().WithMany().HasForeignKey(u => u.ConversaId).OnDelete(DeleteBehavior.Cascade);
 
         // Limites por negócio: chamadas no dia e tokens no mês.
         builder.HasIndex(u => new { u.NegocioId, u.CriadoEm });
+    }
+}
+
+public sealed class RodadaAgenteConfiguracao : IEntityTypeConfiguration<RodadaAgente>
+{
+    public void Configure(EntityTypeBuilder<RodadaAgente> builder)
+    {
+        builder.ToTable("rodadas_agente");
+
+        builder.HasKey(r => r.Id);
+
+        builder.Property(r => r.Desfecho).HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(r => r.MotivoSilencio).HasConversion<string>().HasMaxLength(30);
+        builder.Property(r => r.Modelo).HasMaxLength(100);
+        builder.Property(r => r.MotivoFim).HasMaxLength(RodadaAgente.TamanhoMaximoCodigo);
+        builder.Property(r => r.Ferramentas).HasMaxLength(RodadaAgente.TamanhoMaximoLista);
+        builder.Property(r => r.ErrosFerramenta).HasMaxLength(RodadaAgente.TamanhoMaximoLista);
+        builder.Property(r => r.FalhaProvedor).HasMaxLength(RodadaAgente.TamanhoMaximoCodigo);
+        builder.Property(r => r.PromptVersao).HasMaxLength(20);
+
+        builder.HasOne<Negocio>().WithMany().HasForeignKey(r => r.NegocioId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ConversaWhatsApp>().WithMany().HasForeignKey(r => r.ConversaId).OnDelete(DeleteBehavior.Cascade);
+
+        // Diagnóstico por negócio e período; também serve à retenção.
+        builder.HasIndex(r => new { r.NegocioId, r.IniciadaEm });
     }
 }
 

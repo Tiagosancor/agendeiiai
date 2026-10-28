@@ -3405,6 +3405,101 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.ToTable("pendencias_agendamento_whatsapp", (string)null);
                 });
 
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.RodadaAgente", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<int>("Chamadas")
+                        .HasColumnType("integer")
+                        .HasColumnName("chamadas");
+
+                    b.Property<Guid>("ConversaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversa_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Desfecho")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("desfecho");
+
+                    b.Property<int>("DuracaoMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("duracao_ms");
+
+                    b.Property<string>("ErrosFerramenta")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("erros_ferramenta");
+
+                    b.Property<string>("FalhaProvedor")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("falha_provedor");
+
+                    b.Property<string>("Ferramentas")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("ferramentas");
+
+                    b.Property<DateTimeOffset>("IniciadaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("iniciada_em");
+
+                    b.Property<string>("Modelo")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("modelo");
+
+                    b.Property<string>("MotivoFim")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("motivo_fim");
+
+                    b.Property<string>("MotivoSilencio")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("motivo_silencio");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<string>("PromptVersao")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("prompt_versao");
+
+                    b.Property<int>("TokensEntrada")
+                        .HasColumnType("integer")
+                        .HasColumnName("tokens_entrada");
+
+                    b.Property<int>("TokensSaida")
+                        .HasColumnType("integer")
+                        .HasColumnName("tokens_saida");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rodadas_agente");
+
+                    b.HasIndex("ConversaId")
+                        .HasDatabaseName("ix_rodadas_agente_conversa_id");
+
+                    b.HasIndex("NegocioId", "IniciadaEm")
+                        .HasDatabaseName("ix_rodadas_agente_negocio_id_iniciada_em");
+
+                    b.ToTable("rodadas_agente", (string)null);
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.UsoIa", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3423,15 +3518,41 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
 
+                    b.Property<string>("FalhaTipo")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("falha_tipo");
+
+                    b.Property<int?>("Iteracao")
+                        .HasColumnType("integer")
+                        .HasColumnName("iteracao");
+
+                    b.Property<int?>("LatenciaMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("latencia_ms");
+
                     b.Property<string>("Modelo")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("modelo");
 
+                    b.Property<string>("MotivoFim")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("motivo_fim");
+
                     b.Property<Guid>("NegocioId")
                         .HasColumnType("uuid")
                         .HasColumnName("negocio_id");
+
+                    b.Property<Guid?>("RodadaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("rodada_id");
+
+                    b.Property<int?>("StatusHttp")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_http");
 
                     b.Property<bool>("Sucesso")
                         .HasColumnType("boolean")
@@ -4033,6 +4154,23 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_pendencias_agendamento_whatsapp_negocios_negocio_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.RodadaAgente", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", null)
+                        .WithMany()
+                        .HasForeignKey("ConversaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_rodadas_agente_conversas_whatsapp_conversa_id");
+
+                    b.HasOne("Plataforma.Dominio.Negocios.Negocio", null)
+                        .WithMany()
+                        .HasForeignKey("NegocioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_rodadas_agente_negocios_negocio_id");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.UsoIa", b =>

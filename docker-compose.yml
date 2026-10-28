@@ -95,6 +95,8 @@ services:
       Ai__Agendamento__LimiteConfirmacoesPorTelefonePorDia: ${AI_AGENDAMENTO_LIMITE_CONFIRMACOES_DIA:-3}
       Ai__Agendamento__LimiteReservasAtivasPorNegocio: ${AI_AGENDAMENTO_LIMITE_RESERVAS_NEGOCIO:-20}
       Ai__AvisoAutomatizadoDias: ${AI_AVISO_AUTOMATIZADO_DIAS:-90}
+      Ai__RegistrarRodadas: ${AI_REGISTRAR_RODADAS:-true}
+      Ai__RetencaoRodadasDias: ${AI_RETENCAO_RODADAS_DIAS:-90}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}

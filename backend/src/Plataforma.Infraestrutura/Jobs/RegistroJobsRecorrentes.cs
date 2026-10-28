@@ -61,6 +61,10 @@ public sealed class RegistroJobsRecorrentes(
         // Apaga as chaves de idempotência expiradas (retenção padrão 24 h), em lotes. 03:30 UTC = 00:30 em Brasília.
         gerenciador.AddOrUpdate<Idempotencia.JobLimparIdempotencia>(
             "limpar-idempotencia", job => job.ExecutarAsync(CancellationToken.None), "30 3 * * *");
+
+        // Retenção do diagnóstico do agente de WhatsApp (rodadas_agente, Ai__RetencaoRodadasDias). 03:50 UTC = 00:50 em Brasília.
+        gerenciador.AddOrUpdate<WhatsAppAgente.JobLimparRodadasAgente>(
+            "limpar-rodadas-agente", job => job.ExecutarAsync(CancellationToken.None), "50 3 * * *");
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancelamento)
