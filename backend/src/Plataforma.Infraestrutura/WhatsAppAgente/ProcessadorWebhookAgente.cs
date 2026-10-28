@@ -20,6 +20,15 @@ namespace Plataforma.Infraestrutura.WhatsAppAgente;
 /// (<c>IgnoreQueryFilters</c> só nessa busca, como o webhook de pagamento) — nunca do corpo. Instância
 /// desconhecida: loga o evento e ignora. Nunca loga o conteúdo das mensagens nem o telefone.
 /// </summary>
+/// <summary>
+/// Ponto de teste (nunca registrado em produção): chamado dentro da transação do webhook, DEPOIS de travar a conversa e tratar o estado
+/// humano e ANTES de gravar a mensagem. Permite provar a ordem com uma devolução concorrente.
+/// </summary>
+public interface IGanchoWebhookAgente
+{
+    Task AposTratarEstadoAsync(CancellationToken cancellationToken);
+}
+
 public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
 {
     private const string SufixoIndividual = "@s.whatsapp.net";
@@ -30,14 +39,16 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
     private readonly IFilaRespostaAgente _fila;
     private readonly OpcoesAgenteWhatsApp _opcoes;
     private readonly OpcoesIa _opcoesIa;
+    private readonly IGanchoWebhookAgente? _gancho;
     private readonly ILogger<ProcessadorWebhookAgente> _logger;
 
     public ProcessadorWebhookAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IDeduplicadorMensagens deduplicador,
         IFilaRespostaAgente fila, IOptions<OpcoesAgenteWhatsApp> opcoes, IOptions<OpcoesIa> opcoesIa,
-        ILogger<ProcessadorWebhookAgente> logger)
+        ILogger<ProcessadorWebhookAgente> logger, IGanchoWebhookAgente? gancho = null)
     {
         _opcoesIa = opcoesIa.Value;
+        _gancho = gancho;
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _deduplicador = deduplicador;
@@ -206,50 +217,88 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
         return ResultadoWebhookAgente.Processado;
     }
 
-    /// <summary>Acha ou cria a conversa e grava a mensagem. <c>null</c> = a mensagem já existia (índice único por instância).</summary>
+    private enum ResultadoTentativa
+    {
+        Salvo,
+        Anonimizada,
+        Unicidade,
+    }
+
+    /// <summary>
+    /// Acha ou cria a conversa e grava a mensagem. <c>null</c> = a mensagem já existia (índice único por instância).
+    /// Leitura do estado, tratamento do prazo humano e inserção da mensagem rodam NUMA transação sob <c>FOR UPDATE</c> da linha da
+    /// conversa — a mesma que a devolução (<c>UPDATE</c>) toma. Assim a devolução ou enxerga a mensagem ao calcular o "processado até"
+    /// ou espera o commit e o webhook enxerga a conversa já devolvida: nenhuma mensagem recebida durante o atendimento humano fica
+    /// além do marcador.
+    /// </summary>
     private async Task<ConversaWhatsApp?> SalvarRecebidaAsync(InstanciaWhatsApp instancia, MensagemRecebida recebida, CancellationToken cancellationToken)
     {
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
         for (var tentativa = 1; tentativa <= 3; tentativa++)
         {
-            var agora = DateTimeOffset.UtcNow;
-            var conversa = await _dbContext.ConversasWhatsApp
-                .FirstOrDefaultAsync(c => c.InstanciaId == instancia.Id && c.TelefoneCliente == recebida.TelefoneE164, cancellationToken);
-
-            if (conversa is null)
-            {
-                conversa = new ConversaWhatsApp(instancia.NegocioId, instancia.Id, recebida.TelefoneE164, agora);
-                _dbContext.ConversasWhatsApp.Add(conversa);
-            }
-            else
-            {
-                conversa.RegistrarMensagem(agora);
-                await TratarAtendimentoHumanoAsync(conversa, agora, cancellationToken);
-            }
-
-            _dbContext.MensagensWhatsApp.Add(new MensagemWhatsApp(
-                instancia.NegocioId, instancia.Id, conversa.Id, recebida.IdExterno, PapelMensagemWhatsApp.Usuario, recebida.Texto));
-
-            try
-            {
-                await _dbContext.SaveChangesAsync(cancellationToken);
-                return conversa;
-            }
-            catch (ConversaAnonimizadaException)
-            {
-                // A conversa foi anonimizada entre a leitura e a gravação (LGPD): nada foi gravado; a nova resolução, pelo telefone,
-                // não a encontra mais e abre uma conversa nova.
-                _dbContext.ChangeTracker.Clear();
-            }
-            catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+            ConversaWhatsApp? conversaSalva = null;
+            var resultado = await estrategia.ExecuteAsync(async () =>
             {
                 _dbContext.ChangeTracker.Clear();
+                await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+                try
+                {
+                    var agora = DateTimeOffset.UtcNow;
+                    var conversa = await _dbContext.ConversasWhatsApp
+                        .FirstOrDefaultAsync(c => c.InstanciaId == instancia.Id && c.TelefoneCliente == recebida.TelefoneE164, cancellationToken);
 
+                    if (conversa is null)
+                    {
+                        conversa = new ConversaWhatsApp(instancia.NegocioId, instancia.Id, recebida.TelefoneE164, agora);
+                        _dbContext.ConversasWhatsApp.Add(conversa);
+                    }
+                    else
+                    {
+                        // Trava comum com assumir/devolver e relê o estado já travado.
+                        await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                            $"SELECT 1 FROM conversas_whatsapp WHERE id = {conversa.Id} AND negocio_id = {instancia.NegocioId} FOR UPDATE", cancellationToken);
+                        await _dbContext.Entry(conversa).ReloadAsync(cancellationToken);
+                        conversa.RegistrarMensagem(agora);
+                        await TratarAtendimentoHumanoAsync(conversa, agora, cancellationToken);
+                        if (_gancho is not null)
+                            await _gancho.AposTratarEstadoAsync(cancellationToken);
+                    }
+
+                    _dbContext.MensagensWhatsApp.Add(new MensagemWhatsApp(
+                        instancia.NegocioId, instancia.Id, conversa.Id, recebida.IdExterno, PapelMensagemWhatsApp.Usuario, recebida.Texto));
+
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                    await transacao.CommitAsync(cancellationToken);
+                    conversaSalva = conversa;
+                    return ResultadoTentativa.Salvo;
+                }
+                catch (ConversaAnonimizadaException)
+                {
+                    // A conversa foi anonimizada entre a leitura e a gravação (LGPD): nada foi gravado; a nova resolução, pelo telefone,
+                    // não a encontra mais e abre uma conversa nova.
+                    await transacao.RollbackAsync(cancellationToken);
+                    _dbContext.ChangeTracker.Clear();
+                    return ResultadoTentativa.Anonimizada;
+                }
+                catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    _dbContext.ChangeTracker.Clear();
+                    return ResultadoTentativa.Unicidade;
+                }
+            });
+
+            if (resultado == ResultadoTentativa.Salvo)
+                return conversaSalva;
+
+            if (resultado == ResultadoTentativa.Unicidade)
+            {
                 if (await _dbContext.MensagensWhatsApp.AnyAsync(m => m.InstanciaId == instancia.Id && m.IdExterno == recebida.IdExterno, cancellationToken))
                     return null;
 
                 // Senão foi a corrida de duas mensagens criando a mesma conversa: a segunda tentativa a encontra.
                 if (tentativa == 3)
-                    throw;
+                    throw new InvalidOperationException("Não foi possível gravar a mensagem recebida.");
             }
         }
 

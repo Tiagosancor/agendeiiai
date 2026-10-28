@@ -38,7 +38,8 @@ public sealed class AtendimentoHumanoAgenteTestes : IAsyncLifetime
 
     public async Task DisposeAsync() => await _ambiente.DisposeAsync();
 
-    private async Task IniciarAsync(Dictionary<string, string?>? extra = null, bool logs = false, string provedorIa = "Gemini")
+    private async Task IniciarAsync(
+        Dictionary<string, string?>? extra = null, bool logs = false, string provedorIa = "Gemini", Action<IServiceCollection>? servicos = null)
     {
         if (_ambiente is not null)
             await _ambiente.DisposeAsync();
@@ -53,7 +54,7 @@ public sealed class AtendimentoHumanoAgenteTestes : IAsyncLifetime
         };
         foreach (var (chave, valor) in extra ?? new Dictionary<string, string?>())
             config[chave] = valor;
-        await _ambiente.IniciarAsync(config, capturarLogs: logs, provedorIa: provedorIa);
+        await _ambiente.IniciarAsync(config, capturarLogs: logs, provedorIa: provedorIa, ajustarServicos: servicos);
     }
 
     private EspiaEmail Email() => _ambiente.Fabrica.Services.GetRequiredService<EspiaEmail>();
@@ -751,5 +752,70 @@ public sealed class AtendimentoHumanoAgenteTestes : IAsyncLifetime
         _ambiente.Evolution.Envios.Count.Should().Be(envios);
         Email().Enviados.Should().BeEmpty();
         (await _ambiente.NoBancoAsync(db => db.AvisosAtendenteWhatsApp.IgnoreQueryFilters().CountAsync())).Should().Be(0);
+    }
+
+    // ---------------------------------------------------------------- revisão 2: devolver × mensagem chegando
+
+    /// <summary>Barreira dentro da transação do webhook: avisa que chegou e espera a liberação.</summary>
+    private sealed class BarreiraDoWebhook : IGanchoWebhookAgente
+    {
+        public TaskCompletionSource Chegou { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Liberar { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task AposTratarEstadoAsync(CancellationToken cancellationToken)
+        {
+            Chegou.TrySetResult();
+            await Liberar.Task.WaitAsync(cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task Devolver_concorrendo_com_mensagem_chegando_nunca_deixa_mensagem_do_humano_pendente()
+    {
+        var barreira = new BarreiraDoWebhook();
+        barreira.Chegou.TrySetResult(); // as mensagens de preparo passam direto; a barreira só vale para a mensagem do teste
+        var armada = false;
+        await IniciarAsync(servicos: s => s.AddSingleton<IGanchoWebhookAgente>(new GanchoCondicional(() => armada ? barreira : null)));
+        var c = await _ambiente.SemearAsync();
+        var admin = await AdminAsync(c);
+        await _ambiente.EnviarAsync(c, "oi");
+        var conversa = await ConversaAsync();
+        await AssumirAsync(admin, conversa.Id);
+        var chamadas = _ambiente.Provedor.Chamadas;
+        var envios = _ambiente.Evolution.Envios.Count;
+
+        // A mensagem do cliente leu Humano, tratou o prazo e parou ANTES de gravar.
+        var nova = new BarreiraDoWebhook();
+        armada = true;
+        barreira = nova;
+        var emAndamento = _ambiente.EnviarAsync(c, "mensagem chegando durante o atendimento humano");
+        await nova.Chegou.Task.WaitAsync(TimeSpan.FromSeconds(15));
+
+        // Devolver tem que esperar a mensagem (trava comum da conversa): não pode terminar enquanto o webhook está parado.
+        var devolucao = DevolverAsync(admin, conversa.Id);
+        (await Task.WhenAny(devolucao, Task.Delay(1500))).Should().NotBe(devolucao, "a devolução espera o commit do webhook");
+
+        nova.Liberar.SetResult();
+        await emAndamento;
+        (await devolucao).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var depois = await ConversaAsync();
+        depois.Status.Should().Be(StatusConversaWhatsApp.Agente);
+        var mensagem = (await _ambiente.MensagensAsync()).Last(m => m.Papel == PapelMensagemWhatsApp.Usuario);
+        depois.ProcessadaAte.Should().BeOnOrAfter(mensagem.CriadoEm, "a mensagem do atendimento humano ficou dentro do processado");
+        _ambiente.Provedor.Chamadas.Should().Be(chamadas);
+        _ambiente.Evolution.Envios.Count.Should().Be(envios);
+
+        // O recuperador não acha nada pendente; a próxima mensagem nova é respondida.
+        armada = false;
+        await _ambiente.EnviarAsync(c, "quanto custa o corte?");
+        _ambiente.Provedor.Chamadas.Should().Be(chamadas + 1);
+    }
+
+    private sealed class GanchoCondicional(Func<BarreiraDoWebhook?> barreira) : IGanchoWebhookAgente
+    {
+        public Task AposTratarEstadoAsync(CancellationToken cancellationToken) =>
+            barreira()?.AposTratarEstadoAsync(cancellationToken) ?? Task.CompletedTask;
     }
 }

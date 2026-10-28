@@ -123,9 +123,16 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
     /// mensagem do cliente JÁ GRAVADA — o acumulado nunca é respondido. Com <paramref name="somenteSePrazoVencido"/> (devolução
     /// preguiçosa do webhook) só devolve se <c>humano_ate</c> já passou. Devolve as linhas atingidas (0 = não estava em Humano).
     /// </summary>
-    public static Task<int> DevolverAtomicoAsync(
-        PlataformaDbContext dbContext, Guid negocioId, Guid conversaId, DateTimeOffset agora, bool somenteSePrazoVencido, CancellationToken cancellationToken) =>
-        dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+    public static async Task<int> DevolverAtomicoAsync(
+        PlataformaDbContext dbContext, Guid negocioId, Guid conversaId, DateTimeOffset agora, bool somenteSePrazoVencido, CancellationToken cancellationToken)
+    {
+        // Trava a linha em um statement SEPARADO: o UPDATE abaixo, em READ COMMITTED, calcula a subconsulta do "processado até" com o
+        // snapshot do próprio statement; se esperasse o lock dentro dele, não veria a mensagem que o webhook acabou de commitar.
+        // Roda na transação do chamador (webhook ou DevolverAsync).
+        await dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM conversas_whatsapp WHERE id = {conversaId} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+
+        return await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
             UPDATE conversas_whatsapp c
                SET status = 'Agente', devolvida_em = {agora}, epoca_atendimento = c.epoca_atendimento + 1,
                    humano_desde = NULL, humano_ate = NULL, humano_motivo = NULL, humano_por_usuario_id = NULL,
@@ -135,6 +142,7 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
              WHERE c.id = {conversaId} AND c.negocio_id = {negocioId} AND c.status = 'Humano'
                AND (NOT {somenteSePrazoVencido} OR (c.humano_ate IS NOT NULL AND c.humano_ate <= {agora}))
             """, cancellationToken);
+    }
 
     public async Task<ResultadoMarcarHumano> MarcarHumanoPeloAgenteAsync(
         Guid conversaId, MotivoChamadaAtendente motivo, int? epocaEsperada = null, CancellationToken cancellationToken = default)
