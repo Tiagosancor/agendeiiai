@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Clientes;
+using Plataforma.Aplicacao.WhatsAppAgente;
 using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Infraestrutura.Persistencia;
@@ -12,10 +13,13 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
 
-    public GerenciadorClientes(PlataformaDbContext dbContext, IContextoNegocio contextoNegocio)
+    private readonly IServicoLgpdConversasWhatsApp _lgpdConversas;
+
+    public GerenciadorClientes(PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IServicoLgpdConversasWhatsApp lgpdConversas)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
+        _lgpdConversas = lgpdConversas;
     }
 
     public async Task<IReadOnlyList<ClienteResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
@@ -113,11 +117,14 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
             .OrderByDescending(a => a.Inicio)
             .ToListAsync(cancellationToken);
 
+        var conversas = await _lgpdConversas.ExportarDoClienteAsync(cliente.Id, cliente.Telefone, cancellationToken);
+
         return new ExportacaoCliente(
             cliente.Id, cliente.Nome, cliente.Telefone?.Valor, cliente.Email, cliente.Observacoes,
             cliente.Origem.ToString(), cliente.CriadoEm,
             agendamentos.Select(a => new ExportacaoAgendamento(
-                a.Inicio, a.Fim, a.Status.ToString(), a.Servicos.Select(s => s.Nome).ToList(), a.Total, a.Observacoes)).ToList());
+                a.Inicio, a.Fim, a.Status.ToString(), a.Servicos.Select(s => s.Nome).ToList(), a.Total, a.Observacoes)).ToList(),
+            conversas);
     }
 
     public async Task<bool> ExcluirAsync(Guid clienteId, CancellationToken cancellationToken = default)
@@ -143,6 +150,9 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
             }
 
             await _dbContext.Entry(cliente).ReloadAsync(cancellationToken);
+
+            // O telefone é lido ANTES de anonimizar (Anonimizar o troca): é por ele que se acham as conversas do WhatsApp (G11).
+            var telefoneOriginal = cliente.Telefone;
             cliente.Anonimizar(DateTimeOffset.UtcNow);
 
             // Zera também o que o cliente informou de próprio punho no link público (seção 8.1.4)
@@ -151,10 +161,9 @@ public sealed class GerenciadorClientes : IGerenciadorClientes, IBuscaClientes
                 .Where(a => a.ClienteId == clienteId)
                 .ExecuteUpdateAsync(s => s.SetProperty(a => a.NomeInformado, (string?)null), cancellationToken);
 
-            // A conversa do WhatsApp guardava o cliente como atalho (Fase 3): deixa de apontar para ele.
-            await _dbContext.ConversasWhatsApp
-                .Where(c => c.ClienteId == clienteId)
-                .ExecuteUpdateAsync(s => s.SetProperty(c => c.ClienteId, (Guid?)null), cancellationToken);
+            // Conversas do agente de WhatsApp (Fase 3/4): apaga as mensagens e anonimiza as linhas (telefone trocado, sem cliente).
+            // usos_ia e rodadas_agente ficam. Mesma transação e mesma trava do cliente.
+            await _lgpdConversas.AnonimizarDoClienteAsync(clienteId, telefoneOriginal, cancellationToken);
 
             await _dbContext.SaveChangesAsync(cancellationToken);
             await transacao.CommitAsync(cancellationToken);

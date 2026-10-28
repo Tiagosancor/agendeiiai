@@ -146,7 +146,8 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
         if (!TelefoneE164.TentarCriar("+" + digitos, out var telefone))
             return null;
 
-        return new MensagemRecebida(id.Trim(), telefone!.Valor, texto);
+        // G3: link de gestão e JWT colados pelo cliente são credencial e não persistem.
+        return new MensagemRecebida(id.Trim(), telefone!.Valor, MascaraLinkGestao.Aplicar(texto));
     }
 
     /// <summary>

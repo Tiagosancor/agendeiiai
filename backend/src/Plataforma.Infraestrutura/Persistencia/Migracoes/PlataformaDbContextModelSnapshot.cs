@@ -3334,6 +3334,9 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasDatabaseName("ix_mensagens_whatsapp_indisponivel_aviso")
                         .HasFilter("nome_ferramenta = 'indisponivel_aviso'");
 
+                    b.HasIndex(new[] { "NegocioId", "CriadoEm" }, "ix_mensagens_whatsapp_negocio_id_criado_em")
+                        .HasDatabaseName("ix_mensagens_whatsapp_negocio_id_criado_em");
+
                     b.ToTable("mensagens_whatsapp", (string)null);
                 });
 

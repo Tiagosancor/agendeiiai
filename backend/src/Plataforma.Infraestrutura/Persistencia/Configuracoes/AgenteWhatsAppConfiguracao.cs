@@ -67,6 +67,10 @@ public sealed class MensagemWhatsAppConfiguracao : IEntityTypeConfiguration<Mens
         builder.HasIndex(m => new { m.InstanciaId, m.IdExterno }).IsUnique();
         builder.HasIndex(m => new { m.ConversaId, m.CriadoEm });
 
+        // Retenção LGPD (job limpar-conversas-whatsapp): varre por negócio, da mais antiga para a mais nova.
+        // Com nome de modelo: sem ele o EF trata como o MESMO índice do parcial abaixo (mesmas colunas) e um sobrescreve o outro.
+        builder.HasIndex(m => new { m.NegocioId, m.CriadoEm }, "ix_mensagens_whatsapp_negocio_id_criado_em");
+
         // Contagem diária da mensagem fixa "indisponível" por negócio (serviço premium do agente): índice parcial, só essas linhas.
         builder.HasIndex(m => new { m.NegocioId, m.CriadoEm }).HasDatabaseName("ix_mensagens_whatsapp_indisponivel_aviso")
             .HasFilter("nome_ferramenta = 'indisponivel_aviso'");

@@ -261,6 +261,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<Estoque.JobAlertaEstoque>();
         servicos.AddScoped<Idempotencia.JobLimparIdempotencia>();
         servicos.AddScoped<WhatsAppAgente.JobLimparRodadasAgente>();
+        servicos.AddScoped<WhatsAppAgente.JobLimparConversasWhatsApp>();
+        servicos.AddScoped<Plataforma.Aplicacao.WhatsAppAgente.IServicoLgpdConversasWhatsApp, WhatsAppAgente.ServicoLgpdConversasWhatsApp>();
         servicos.AddScoped<Idempotencia.ContextoIdempotencia>();
         servicos.AddScoped<Aplicacao.Idempotencia.IServicoIdempotencia, Idempotencia.ServicoIdempotencia>();
         servicos.AddScoped<IConsultaSituacaoAssinatura, ConsultaSituacaoAssinatura>();
