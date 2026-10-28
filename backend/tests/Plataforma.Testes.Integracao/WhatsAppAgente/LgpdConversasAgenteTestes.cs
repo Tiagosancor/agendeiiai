@@ -1,5 +1,8 @@
+using System.Data.Common;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Plataforma.Infraestrutura.Persistencia;
 using Microsoft.Extensions.DependencyInjection;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Clientes;
@@ -25,6 +28,7 @@ public sealed class LgpdConversasAgenteTestes : IAsyncLifetime
     private const string OutroTelefone = "5571977776666";
 
     private readonly PostgresContainerFixture _postgres;
+    private readonly GanchoAposLerConversa _gancho = new();
     private AmbienteAgente _ambiente = null!;
 
     public LgpdConversasAgenteTestes(PostgresContainerFixture postgres) => _postgres = postgres;
@@ -46,7 +50,8 @@ public sealed class LgpdConversasAgenteTestes : IAsyncLifetime
         };
         foreach (var (chave, valor) in extra ?? new Dictionary<string, string?>())
             config[chave] = valor;
-        await _ambiente.IniciarAsync(config);
+        await _ambiente.IniciarAsync(config, ajustarServicos: servicos =>
+            servicos.ConfigureDbContext<PlataformaDbContext>(o => o.AddInterceptors(_gancho)));
     }
 
     private IServiceScope Escopo(Guid negocioId)
@@ -259,6 +264,137 @@ public sealed class LgpdConversasAgenteTestes : IAsyncLifetime
         depois.Where(m => m.ConversaId == conversaOutro.Id).Should().BeEmpty();
         (await _ambiente.ConversasAsync()).Should().HaveCount(2);
         (await _ambiente.UsosAsync()).Should().HaveCount(usosAntes);
+    }
+
+    // ---------------------------------------------------------------- protocolo de trava (mensagens não reaparecem)
+
+    /// <summary>Roda uma ação (uma vez) logo depois de o webhook LER a conversa pelo telefone — antes de gravar a mensagem.</summary>
+    private sealed class GanchoAposLerConversa : DbCommandInterceptor
+    {
+        private Func<Task>? _acao;
+
+        public bool Disparou { get; private set; }
+
+        public void Armar(Func<Task> acao) => (_acao, Disparou) = (acao, false);
+
+        public override async ValueTask<DbDataReader> ReaderExecutedAsync(
+            DbCommand command, CommandExecutedEventData eventData, DbDataReader result, CancellationToken cancellationToken = default)
+        {
+            if (_acao is not null && command.CommandText.Contains("FROM conversas_whatsapp") && command.CommandText.Contains("telefone_cliente")
+                && command.CommandText.Contains("instancia_id"))
+            {
+                var acao = _acao;
+                _acao = null;
+                Disparou = true;
+                await acao();
+            }
+
+            return result;
+        }
+    }
+
+    private async Task ExcluirClienteAsync(Guid negocioId, Guid clienteId)
+    {
+        using var escopo = Escopo(negocioId);
+        (await escopo.ServiceProvider.GetRequiredService<IGerenciadorClientes>().ExcluirAsync(clienteId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Webhook_que_leu_a_conversa_antes_da_anonimizacao_nao_grava_nela_e_abre_uma_conversa_nova()
+    {
+        var c = await _ambiente.SemearAsync();
+        (await _ambiente.EnviarAsync(c, "primeira", TelefoneSem9)).EnsureSuccessStatusCode();
+        var velha = await ConversaDoAsync(TelefoneSem9);
+        var clienteId = await CriarClienteAsync(c.NegocioId, "Maria", TelefoneMais9);
+
+        // Leitura (conversa velha) → exclusão por inteiro → gravação.
+        _gancho.Armar(() => ExcluirClienteAsync(c.NegocioId, clienteId));
+        (await _ambiente.EnviarAsync(c, "segunda", TelefoneSem9)).EnsureSuccessStatusCode();
+
+        _gancho.Disparou.Should().BeTrue();
+        var mensagens = await _ambiente.MensagensAsync();
+        mensagens.Where(m => m.ConversaId == velha.Id).Should().BeEmpty("nada reaparece na conversa anonimizada");
+        var nova = (await _ambiente.ConversasAsync()).Single(x => x.TelefoneCliente == "+" + TelefoneSem9);
+        nova.Id.Should().NotBe(velha.Id);
+        mensagens.Should().Contain(m => m.ConversaId == nova.Id && m.Conteudo == "segunda");
+        (await _ambiente.ConversasAsync()).Single(x => x.Id == velha.Id).TelefoneCliente.Should().StartWith("anonimizado:");
+    }
+
+    [Fact]
+    public async Task Rodada_em_andamento_nao_envia_nem_grava_mensagem_depois_da_anonimizacao()
+    {
+        var c = await _ambiente.SemearAsync();
+        var clienteId = await CriarClienteAsync(c.NegocioId, "Maria", TelefoneMais9);
+        _ambiente.Provedor.Roteiro = (_, n) =>
+        {
+            if (n == 1)
+                return ProvedorIaRoteirizado.Chama(("listar_servicos", "{}"));
+            // Segunda chamada ao modelo: o dono apaga os dados no meio da rodada.
+            ExcluirClienteAsync(c.NegocioId, clienteId).GetAwaiter().GetResult();
+            return ProvedorIaRoteirizado.Texto("Resposta que nunca deve sair");
+        };
+
+        (await _ambiente.EnviarAsync(c, "quais serviços?", TelefoneSem9)).EnsureSuccessStatusCode();
+
+        var conversa = (await _ambiente.ConversasAsync()).Single();
+        conversa.TelefoneCliente.Should().StartWith("anonimizado:");
+        (await _ambiente.MensagensAsync()).Where(m => m.ConversaId == conversa.Id).Should().BeEmpty(
+            "nem a auditoria de ferramenta, nem a resposta, nem a mensagem do cliente reaparecem");
+        _ambiente.Evolution.Envios.Should().BeEmpty("a conferência antes do envio vê a conversa anonimizada");
+    }
+
+    [Fact]
+    public async Task Envio_ja_iniciado_no_provedor_nao_e_cancelado_mas_nada_e_gravado_depois()
+    {
+        var c = await _ambiente.SemearAsync();
+        var clienteId = await CriarClienteAsync(c.NegocioId, "Maria", TelefoneMais9);
+        var noEnvio = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var liberar = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _ambiente.Evolution.AoEnviar = async (_, _, _) =>
+        {
+            noEnvio.TrySetResult();
+            await liberar.Task;
+        };
+
+        var webhook = _ambiente.EnviarAsync(c, "Oi", TelefoneSem9);
+        await noEnvio.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // O envio já passou da última conferência e está no provedor: a anonimização termina mesmo assim.
+        await ExcluirClienteAsync(c.NegocioId, clienteId);
+        liberar.SetResult();
+        (await webhook).EnsureSuccessStatusCode();
+
+        _ambiente.Evolution.Envios.Should().ContainSingle("o texto já entregue ao provedor não é recuperável (limite documentado)");
+        var conversa = (await _ambiente.ConversasAsync()).Single();
+        conversa.TelefoneCliente.Should().StartWith("anonimizado:");
+        (await _ambiente.MensagensAsync()).Where(m => m.ConversaId == conversa.Id).Should().BeEmpty(
+            "depois da anonimização a rodada não grava a resposta enviada nem o resto");
+    }
+
+    [Fact]
+    public async Task Job_apaga_mensagens_que_sobrarem_em_conversa_anonimizada_mesmo_com_retencao_desligada()
+    {
+        var c = await _ambiente.SemearAsync();
+        (await _ambiente.EnviarAsync(c, "Oi", TelefoneSem9)).EnsureSuccessStatusCode();
+        var viva = await ConversaDoAsync(TelefoneSem9);
+        (await _ambiente.EnviarAsync(c, "Oi", OutroTelefone)).EnsureSuccessStatusCode();
+        var outra = await ConversaDoAsync(OutroTelefone);
+        // Simula um escritor que escapou do protocolo: anonimiza a linha por fora e deixa as mensagens.
+        await _ambiente.NoBancoAsync(async db =>
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE conversas_whatsapp SET telefone_cliente = 'anonimizado:abcd1234' WHERE id = {viva.Id}");
+            return 0;
+        });
+        (await _ambiente.MensagensAsync()).Where(m => m.ConversaId == viva.Id).Should().NotBeEmpty();
+        var daOutra = (await _ambiente.MensagensAsync()).Count(m => m.ConversaId == outra.Id);
+
+        using (var escopo = _ambiente.Fabrica.Services.CreateScope())
+            (await escopo.ServiceProvider.GetRequiredService<JobLimparConversasWhatsApp>().ExecutarAsync()).Should().BeGreaterThan(0);
+
+        var depois = await _ambiente.MensagensAsync();
+        depois.Where(m => m.ConversaId == viva.Id).Should().BeEmpty();
+        depois.Count(m => m.ConversaId == outra.Id).Should().Be(daOutra);
     }
 
     // ---------------------------------------------------------------- G3

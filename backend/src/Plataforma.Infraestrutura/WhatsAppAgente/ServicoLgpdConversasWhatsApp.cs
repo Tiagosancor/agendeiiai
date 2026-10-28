@@ -104,6 +104,14 @@ public sealed class ServicoLgpdConversasWhatsApp : IServicoLgpdConversasWhatsApp
         if (ids.Count == 0)
             return 0;
 
+        // Protocolo de G11: trava as linhas das conversas ANTES de apagar. Quem está gravando mensagem nelas (FOR SHARE em
+        // PlataformaDbContext.SaveChanges) termina primeiro e sua mensagem é apagada junto; quem chegar depois espera o commit, vê
+        // "anonimizado:..." e é desfeito. Ordem global: pendência → agendamento → cliente (o chamador já tem o cliente) → conversa.
+        // SQL direto não recebe o filtro global: negocio_id no WHERE.
+        var idsArray = ids.ToArray();
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM conversas_whatsapp WHERE id = ANY({idsArray}) AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+
         await _dbContext.MensagensWhatsApp
             .Where(m => m.NegocioId == negocioId && ids.Contains(m.ConversaId))
             .ExecuteDeleteAsync(cancellationToken);

@@ -207,7 +207,7 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
     /// <summary>Acha ou cria a conversa e grava a mensagem. <c>null</c> = a mensagem já existia (índice único por instância).</summary>
     private async Task<ConversaWhatsApp?> SalvarRecebidaAsync(InstanciaWhatsApp instancia, MensagemRecebida recebida, CancellationToken cancellationToken)
     {
-        for (var tentativa = 1; tentativa <= 2; tentativa++)
+        for (var tentativa = 1; tentativa <= 3; tentativa++)
         {
             var agora = DateTimeOffset.UtcNow;
             var conversa = await _dbContext.ConversasWhatsApp
@@ -231,6 +231,12 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
                 await _dbContext.SaveChangesAsync(cancellationToken);
                 return conversa;
             }
+            catch (ConversaAnonimizadaException)
+            {
+                // A conversa foi anonimizada entre a leitura e a gravação (LGPD): nada foi gravado; a nova resolução, pelo telefone,
+                // não a encontra mais e abre uma conversa nova.
+                _dbContext.ChangeTracker.Clear();
+            }
             catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
             {
                 _dbContext.ChangeTracker.Clear();
@@ -239,7 +245,7 @@ public sealed class ProcessadorWebhookAgente : IProcessadorWebhookAgente
                     return null;
 
                 // Senão foi a corrida de duas mensagens criando a mesma conversa: a segunda tentativa a encontra.
-                if (tentativa == 2)
+                if (tentativa == 3)
                     throw;
             }
         }

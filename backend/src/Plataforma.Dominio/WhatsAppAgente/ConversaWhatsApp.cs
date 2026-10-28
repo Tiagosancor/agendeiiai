@@ -71,7 +71,10 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
     /// LGPD (G11): tira da linha tudo o que identifica a pessoa — telefone (vira <c>anonimizado:xxxxxxxx</c>, que cabe nas 20 posições da
     /// coluna e mantém o índice único por instância+telefone), cliente e resumo. A linha FICA porque <c>usos_ia</c> e <c>rodadas_agente</c>
     /// dependem dela (cota e diagnóstico, só números). Volta a <see cref="StatusConversaWhatsApp.Agente"/> e perde o lease: uma rodada em
-    /// andamento deixa de ser dona da conversa (não envia nem marca). O mesmo número escrevendo depois abre uma conversa nova.
+    /// andamento deixa de renovar, marcar e (conferindo antes) iniciar NOVOS envios, e toda gravação de mensagem na conversa é recusada
+    /// (<c>PlataformaDbContext</c>, sob FOR SHARE). LIMITE: um envio que já passou da última conferência e está no provedor não é cancelado — o
+    /// texto já entregue não é recuperável; o que se garante é que nada novo é gravado nem marcado depois. O mesmo número escrevendo depois
+    /// abre uma conversa nova.
     /// </summary>
     /// <param name="telefonesEmUso">Telefones já usados por outras conversas da mesma instância (evita colisão no índice único).</param>
     public void Anonimizar(ISet<string> telefonesEmUso)

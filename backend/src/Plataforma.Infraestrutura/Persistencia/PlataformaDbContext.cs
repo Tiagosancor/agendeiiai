@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Storage;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -213,13 +214,94 @@ public class PlataformaDbContext : DbContext
     public override int SaveChanges()
     {
         AtualizarCarimbosDeAuditoria();
-        return base.SaveChanges();
+        var conversas = ConversasDeMensagensNovas();
+        if (conversas.Count == 0)
+            return base.SaveChanges();
+
+        if (Database.CurrentTransaction is not null)
+        {
+            GuardarConversas(conversas);
+            return base.SaveChanges();
+        }
+
+        return Database.CreateExecutionStrategy().Execute(() =>
+        {
+            using var transacao = Database.BeginTransaction();
+            GuardarConversas(conversas);
+            var linhas = base.SaveChanges();
+            transacao.Commit();
+            return linhas;
+        });
     }
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         AtualizarCarimbosDeAuditoria();
-        return base.SaveChangesAsync(cancellationToken);
+        var conversas = ConversasDeMensagensNovas();
+        if (conversas.Count == 0)
+            return await base.SaveChangesAsync(cancellationToken);
+
+        if (Database.CurrentTransaction is not null)
+        {
+            await GuardarConversasAsync(conversas, cancellationToken);
+            return await base.SaveChangesAsync(cancellationToken);
+        }
+
+        return await Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var transacao = await Database.BeginTransactionAsync(cancellationToken);
+            await GuardarConversasAsync(conversas, cancellationToken);
+            var linhas = await base.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return linhas;
+        });
+    }
+
+    // ---- LGPD das conversas do agente (G11) -------------------------------------------------------------------------------------
+    // Protocolo comum a todo escritor de mensagem: antes de gravar, trava a linha da conversa com FOR SHARE (na MESMA transação da gravação)
+    // e confere que ela não foi anonimizada. A anonimização toma FOR UPDATE na mesma linha (ServicoLgpdConversasWhatsApp), então ou ela
+    // espera a gravação terminar e apaga a mensagem junto, ou a gravação espera, vê o telefone "anonimizado:..." e é desfeita.
+    // Ordem de locks: a conversa vem DEPOIS de pendência, agendamento e cliente (quem já os tem os mantém; ninguém pede cliente
+    // segurando a conversa). Pedido sem transação do chamador ganha uma própria (a estratégia de retry exige o ExecuteAsync).
+
+    private List<(Guid Id, Guid NegocioId)> ConversasDeMensagensNovas() =>
+        ChangeTracker.Entries<Plataforma.Dominio.WhatsAppAgente.MensagemWhatsApp>()
+            .Where(e => e.State == EntityState.Added)
+            .Select(e => (e.Entity.ConversaId, e.Entity.NegocioId))
+            .Distinct()
+            .ToList();
+
+    private System.Data.Common.DbCommand ComandoDeGuarda(List<(Guid Id, Guid NegocioId)> conversas)
+    {
+        var comando = Database.GetDbConnection().CreateCommand();
+        comando.Transaction = Database.CurrentTransaction!.GetDbTransaction();
+        comando.CommandText =
+            "SELECT telefone_cliente FROM conversas_whatsapp WHERE id = ANY(@ids) AND negocio_id = ANY(@negocios) FOR SHARE";
+        comando.Parameters.Add(new Npgsql.NpgsqlParameter("ids", conversas.Select(c => c.Id).ToArray()));
+        comando.Parameters.Add(new Npgsql.NpgsqlParameter("negocios", conversas.Select(c => c.NegocioId).Distinct().ToArray()));
+        return comando;
+    }
+
+    private void GuardarConversas(List<(Guid Id, Guid NegocioId)> conversas)
+    {
+        using var comando = ComandoDeGuarda(conversas);
+        using var leitor = comando.ExecuteReader();
+        while (leitor.Read())
+        {
+            if (leitor.GetString(0).StartsWith(Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp.PrefixoTelefoneAnonimizado, StringComparison.Ordinal))
+                throw new Plataforma.Infraestrutura.WhatsAppAgente.ConversaAnonimizadaException(conversas[0].Id);
+        }
+    }
+
+    private async Task GuardarConversasAsync(List<(Guid Id, Guid NegocioId)> conversas, CancellationToken cancellationToken)
+    {
+        await using var comando = ComandoDeGuarda(conversas);
+        await using var leitor = await comando.ExecuteReaderAsync(cancellationToken);
+        while (await leitor.ReadAsync(cancellationToken))
+        {
+            if (leitor.GetString(0).StartsWith(Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp.PrefixoTelefoneAnonimizado, StringComparison.Ordinal))
+                throw new Plataforma.Infraestrutura.WhatsAppAgente.ConversaAnonimizadaException(conversas[0].Id);
+        }
     }
 
     private void AtualizarCarimbosDeAuditoria()

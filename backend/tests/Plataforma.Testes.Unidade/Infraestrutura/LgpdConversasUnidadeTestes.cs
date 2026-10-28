@@ -69,3 +69,25 @@ public sealed class LgpdConversasUnidadeTestes
             validador.Validate(null, new OpcoesIa { RetencaoMensagensDias = dias }).Failed.Should().BeTrue();
     }
 }
+
+/// <summary>Contrato serializado da exportação (conversas): nomes e capitalização que o contrato.md promete.</summary>
+public sealed class ContratoExportacaoConversasTestes
+{
+    [Fact]
+    public void Exportacao_serializa_conversas_em_camelCase_com_papel_minusculo()
+    {
+        var em = new DateTimeOffset(2026, 10, 28, 15, 0, 0, TimeSpan.Zero);
+        var exportacao = new Plataforma.Aplicacao.Clientes.ExportacaoCliente(
+            Guid.NewGuid(), "Maria", "+5571988887777", null, null, "WhatsApp", em, [],
+            [new Plataforma.Aplicacao.WhatsAppAgente.ExportacaoConversaWhatsApp(em, [new Plataforma.Aplicacao.WhatsAppAgente.ExportacaoMensagemWhatsApp(em, "cliente", "Oi")])]);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(exportacao, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var conversa = doc.RootElement.GetProperty("conversas")[0];
+        conversa.TryGetProperty("ultimaMensagemEm", out _).Should().BeTrue();
+        var mensagem = conversa.GetProperty("mensagens")[0];
+        mensagem.GetProperty("papel").GetString().Should().Be("cliente");
+        mensagem.GetProperty("texto").GetString().Should().Be("Oi");
+        mensagem.TryGetProperty("em", out _).Should().BeTrue();
+    }
+}
