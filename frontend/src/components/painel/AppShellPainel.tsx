@@ -79,7 +79,10 @@ export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSa
       <nav aria-label="Navegação do painel"><ul>{ITENS_MENU.flatMap<ItemMenu>((item) => {
         const [href] = item;
         if (href === "/painel/assinatura" && temPermissao("GerenciarConfiguracoesDoNegocio")) {
-          return [["/painel/configuracoes/notificacoes", "Notificações", "M18 8A6 6 0 0 0 6 8c0 7-3 7h18c-3 0-3-7-3-7M10 19a2 2 0 0 0 4 0"] as ItemMenu, item];
+          return [
+            ["/painel/whatsapp", "WhatsApp", "M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5M8 8c0 4 2 6 6 6"],
+            ["/painel/configuracoes/notificacoes", "Notificações", "M18 8A6 6 0 0 0 6 8c0 7-3 7h18c-3 0-3-7-3-7M10 19a2 2 0 0 0 4 0"], item,
+          ];
         }
         return [item];
       }).map(([href, rotulo, desenho]) => {
