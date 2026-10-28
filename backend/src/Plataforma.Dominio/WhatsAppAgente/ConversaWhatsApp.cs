@@ -8,6 +8,16 @@ public enum StatusConversaWhatsApp
     Humano = 2,
 }
 
+/// <summary>Como a conversa foi para o atendimento humano (Fase 4).</summary>
+public enum MotivoHumanoConversa
+{
+    /// <summary>Alguém com permissão assumiu pelo painel.</summary>
+    Painel = 1,
+
+    /// <summary>O agente chamou um atendente (ferramenta <c>chamar_atendente</c>).</summary>
+    PedidoDoAgente = 2,
+}
+
 /// <summary>Conversa de um cliente (por telefone) com uma instância. Única por (instância, telefone).</summary>
 public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
 {
@@ -34,6 +44,29 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
 
     /// <summary>Quando o aviso de atendimento automatizado foi enviado pela última vez (Fase 3; controla o reenvio a cada N dias).</summary>
     public DateTimeOffset? AvisoAutomatizadoEm { get; private set; }
+
+    /// <summary>Desde quando a conversa está com atendimento humano. Nulo fora do modo Humano.</summary>
+    public DateTimeOffset? HumanoDesde { get; private set; }
+
+    /// <summary>
+    /// Quando a devolução automática vale (última mensagem do cliente + prazo; renovado a cada mensagem dele). Nulo = sem prazo.
+    /// A devolução é preguiçosa: acontece quando chega a próxima mensagem, não por job.
+    /// </summary>
+    public DateTimeOffset? HumanoAte { get; private set; }
+
+    public MotivoHumanoConversa? HumanoMotivo { get; private set; }
+
+    /// <summary>Quem assumiu pelo painel. Atalho sem FK (o usuário pode ser excluído).</summary>
+    public Guid? HumanoPorUsuarioId { get; private set; }
+
+    /// <summary>
+    /// Quando o atendimento voltou ao agente. As mensagens anteriores não contam nos limites por telefone nem entram no histórico
+    /// do modelo (o humano tratou o assunto sem o agente ver as respostas dele).
+    /// </summary>
+    public DateTimeOffset? DevolvidaEm { get; private set; }
+
+    /// <summary>Último e-mail de aviso ao atendente por <c>chamar_atendente</c> (limita a 1 a cada N horas por conversa).</summary>
+    public DateTimeOffset? AtendenteAvisadoEm { get; private set; }
 
     protected ConversaWhatsApp()
     {
@@ -95,6 +128,88 @@ public class ConversaWhatsApp : EntidadeBase, IEntidadeDoNegocio
         Resumo = null;
         Status = StatusConversaWhatsApp.Agente;
         ProcessandoAte = null;
+        LimparEstadoHumano();
+        DevolvidaEm = null;
+        AtendenteAvisadoEm = null;
+    }
+
+    // ---------------------------------------------------------------- atendimento humano (Fase 4)
+
+    /// <summary>
+    /// Assume pelo painel. As transições reais no banco são atômicas (<c>UPDATE</c> condicional no gerenciador de conversas); estes
+    /// métodos são a mesma regra no domínio. Idempotente: já em Humano, só registra quem atende (se ainda ninguém).
+    /// </summary>
+    public bool AssumirPeloPainel(Guid usuarioId, DateTimeOffset agora, TimeSpan? devolverApos)
+    {
+        if (Status == StatusConversaWhatsApp.Humano)
+        {
+            if (HumanoPorUsuarioId is not null)
+                return false;
+
+            HumanoPorUsuarioId = usuarioId;
+            return true;
+        }
+
+        EntrarEmHumano(MotivoHumanoConversa.Painel, agora, devolverApos);
+        HumanoPorUsuarioId = usuarioId;
+        return true;
+    }
+
+    /// <summary>O agente chamou um atendente. Só sai de <see cref="StatusConversaWhatsApp.Agente"/>; já em Humano não muda nada.</summary>
+    public bool ChamarAtendentePeloAgente(DateTimeOffset agora, TimeSpan? devolverApos)
+    {
+        if (Status == StatusConversaWhatsApp.Humano || Anonimizada)
+            return false;
+
+        EntrarEmHumano(MotivoHumanoConversa.PedidoDoAgente, agora, devolverApos);
+        return true;
+    }
+
+    /// <summary>
+    /// Devolve ao agente. <paramref name="ultimaMensagemDoCliente"/> vira o "processado até": o acumulado durante o atendimento humano
+    /// nunca é respondido — o agente só responde a próxima mensagem nova.
+    /// </summary>
+    public bool Devolver(DateTimeOffset agora, DateTimeOffset? ultimaMensagemDoCliente)
+    {
+        if (Status != StatusConversaWhatsApp.Humano)
+            return false;
+
+        Status = StatusConversaWhatsApp.Agente;
+        LimparEstadoHumano();
+        DevolvidaEm = agora;
+        if (ultimaMensagemDoCliente is { } ultima && (ProcessadaAte is null || ProcessadaAte < ultima))
+            ProcessadaAte = ultima;
+        return true;
+    }
+
+    /// <summary>Cada mensagem do cliente em atendimento humano adia a devolução automática. Sem prazo (nulo em <c>HumanoAte</c>) não muda.</summary>
+    public void RenovarPrazoHumano(DateTimeOffset agora, TimeSpan? devolverApos)
+    {
+        if (Status == StatusConversaWhatsApp.Humano && HumanoAte is not null && devolverApos is { } prazo)
+            HumanoAte = agora + prazo;
+    }
+
+    /// <summary>O prazo da devolução automática já passou? (A devolução em si é feita quando chega a próxima mensagem.)</summary>
+    public bool PrazoHumanoVencido(DateTimeOffset agora) =>
+        Status == StatusConversaWhatsApp.Humano && HumanoAte is { } ate && ate <= agora;
+
+    public void RegistrarAtendenteAvisado(DateTimeOffset em) => AtendenteAvisadoEm = em;
+
+    private void EntrarEmHumano(MotivoHumanoConversa motivo, DateTimeOffset agora, TimeSpan? devolverApos)
+    {
+        Status = StatusConversaWhatsApp.Humano;
+        HumanoDesde = agora;
+        HumanoMotivo = motivo;
+        HumanoPorUsuarioId = null;
+        HumanoAte = devolverApos is { } prazo ? agora + prazo : null;
+    }
+
+    private void LimparEstadoHumano()
+    {
+        HumanoDesde = null;
+        HumanoAte = null;
+        HumanoMotivo = null;
+        HumanoPorUsuarioId = null;
     }
 
     public void RegistrarAvisoAutomatizado(DateTimeOffset em) => AvisoAutomatizadoEm = em;

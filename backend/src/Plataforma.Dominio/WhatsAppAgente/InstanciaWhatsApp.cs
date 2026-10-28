@@ -56,4 +56,27 @@ public class InstanciaWhatsApp : EntidadeBase, IEntidadeDoNegocio
     }
 
     public void DefinirAgente(bool ativo) => AgenteAtivo = ativo;
+
+    public const int MaximoMensagemTransferencia = 300;
+
+    /// <summary>
+    /// Texto que o negócio acrescenta ao aviso fixo de transferência para atendimento humano. Vazio tira. Sem caractere de controle e
+    /// até <see cref="MaximoMensagemTransferencia"/> caracteres (o texto ainda passa pelo sanitizador antes de sair).
+    /// </summary>
+    public void DefinirMensagemTransferencia(string? mensagem)
+    {
+        if (string.IsNullOrWhiteSpace(mensagem))
+        {
+            MensagemTransferencia = null;
+            return;
+        }
+
+        var limpa = mensagem.Trim();
+        if (limpa.Length > MaximoMensagemTransferencia)
+            throw new ArgumentException($"A mensagem de transferência tem no máximo {MaximoMensagemTransferencia} caracteres.", nameof(mensagem));
+        if (limpa.Any(c => char.IsControl(c) && c != '\n'))
+            throw new ArgumentException("A mensagem de transferência tem caracteres inválidos.", nameof(mensagem));
+
+        MensagemTransferencia = limpa;
+    }
 }

@@ -3140,6 +3140,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("AtendenteAvisadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atendente_avisado_em");
+
                     b.Property<DateTimeOffset?>("AtualizadoEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("atualizado_em");
@@ -3155,6 +3159,27 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.Property<DateTimeOffset>("CriadoEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
+
+                    b.Property<DateTimeOffset?>("DevolvidaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("devolvida_em");
+
+                    b.Property<DateTimeOffset?>("HumanoAte")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("humano_ate");
+
+                    b.Property<DateTimeOffset?>("HumanoDesde")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("humano_desde");
+
+                    b.Property<string>("HumanoMotivo")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("humano_motivo");
+
+                    b.Property<Guid?>("HumanoPorUsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("humano_por_usuario_id");
 
                     b.Property<Guid>("InstanciaId")
                         .HasColumnType("uuid")

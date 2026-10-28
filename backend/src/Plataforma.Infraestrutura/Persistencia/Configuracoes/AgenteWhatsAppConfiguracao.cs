@@ -40,6 +40,7 @@ public sealed class ConversaWhatsAppConfiguracao : IEntityTypeConfiguration<Conv
         builder.Property(c => c.TelefoneCliente).HasMaxLength(20).IsRequired();
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(c => c.Resumo).HasMaxLength(4000);
+        builder.Property(c => c.HumanoMotivo).HasConversion<string>().HasMaxLength(20);
 
         builder.HasOne<InstanciaWhatsApp>().WithMany().HasForeignKey(c => c.InstanciaId).OnDelete(DeleteBehavior.Cascade);
 

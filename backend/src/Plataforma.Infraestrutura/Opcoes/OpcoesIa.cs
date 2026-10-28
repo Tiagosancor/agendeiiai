@@ -79,6 +79,9 @@ public sealed class OpcoesIa
     /// <summary>Mensagem fixa "atendimento automático indisponível" (negócio sem o serviço de IA contratado, agente ligado na tela).</summary>
     public OpcoesIndisponivelAgente Indisponivel { get; set; } = new();
 
+    /// <summary>Fase 4: atendimento humano (ferramenta <c>chamar_atendente</c>, devolução automática, avisos ao dono).</summary>
+    public OpcoesHumanoAgente Humano { get; set; } = new();
+
     /// <summary>
     /// Parte GLOBAL da conta (disjuntor): Gemini + piloto da Fase 2 + modo/piloto da Fase 3. NÃO inclui a contratação do negócio —
     /// quem decide se o agente roda para um negócio é a <c>PoliticaAgenteIa</c> (global E contratado).
@@ -105,6 +108,28 @@ public sealed class OpcoesIndisponivelAgente
 
     /// <summary>Teto de mensagens fixas por negócio por dia UTC; acima disso, silêncio (1–10.000).</summary>
     public int LimitePorNegocioPorDia { get; set; } = 200;
+}
+
+/// <summary>Seção <c>Ai:Humano</c> (<c>Ai__Humano__FerramentaAtiva</c>, ...). Assumir pelo painel não depende de nada disto.</summary>
+public sealed class OpcoesHumanoAgente
+{
+    /// <summary>Oferece ao modelo a ferramenta <c>chamar_atendente</c>. Desligada por padrão.</summary>
+    public bool FerramentaAtiva { get; set; }
+
+    /// <summary>
+    /// Horas sem mensagem do cliente até a próxima mensagem devolver a conversa ao agente (preguiçoso, sem job). 0 = nunca devolve
+    /// sozinha. O prazo é renovado a cada mensagem do cliente. Faixa: 0 ou 1–168.
+    /// </summary>
+    public int DevolverAposHoras { get; set; } = 24;
+
+    /// <summary>No máximo um e-mail ao atendente por conversa neste intervalo (1–72 h).</summary>
+    public int IntervaloAvisoPorConversaHoras { get; set; } = 6;
+
+    /// <summary>Teto de conversas avisadas por e-mail por negócio por dia UTC (1–500). Acima disso a conversa vai a Humano sem e-mail.</summary>
+    public int LimiteAvisosPorNegocioPorDia { get; set; } = 20;
+
+    /// <summary>Prazo da devolução automática; nulo = nunca.</summary>
+    public TimeSpan? PrazoDevolucao => DevolverAposHoras > 0 ? TimeSpan.FromHours(DevolverAposHoras) : null;
 }
 
 public enum ModoAgendamentoAgente
@@ -223,6 +248,10 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
             Faixa(erros, nameof(o.RetencaoMensagensDias), o.RetencaoMensagensDias, 30, 730);
         Faixa(erros, "Indisponivel.IntervaloHoras", o.Indisponivel.IntervaloHoras, 1, 168);
         Faixa(erros, "Indisponivel.LimitePorNegocioPorDia", o.Indisponivel.LimitePorNegocioPorDia, 1, 10_000);
+        if (o.Humano.DevolverAposHoras != 0)
+            Faixa(erros, "Humano.DevolverAposHoras", o.Humano.DevolverAposHoras, 1, 168);
+        Faixa(erros, "Humano.IntervaloAvisoPorConversaHoras", o.Humano.IntervaloAvisoPorConversaHoras, 1, 72);
+        Faixa(erros, "Humano.LimiteAvisosPorNegocioPorDia", o.Humano.LimiteAvisosPorNegocioPorDia, 1, 500);
         if (o.CotaMensalTokensPorNegocio < 1)
             erros.Add("Ai__CotaMensalTokensPorNegocio deve ser positiva.");
 
