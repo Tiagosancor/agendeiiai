@@ -35,6 +35,41 @@ public sealed class OrquestradorAgente : IRespostaAgente
     /// <summary>Consultas de ferramenta da rodada (do último modelo que rodou); viram a nota de contexto. O orquestrador é por escopo/rodada.</summary>
     private readonly List<ConsultaDaRodada> _consultasDaRodada = [];
 
+    /// <summary>Diagnóstico da rodada (só números e códigos); vira <see cref="TelemetriaRodadaAgente"/> quando o registro de rodadas está ligado.</summary>
+    private ColetaRodada _coleta = new();
+
+    private sealed class ColetaRodada
+    {
+        public int Chamadas { get; set; }
+
+        public int TokensEntrada { get; set; }
+
+        public int TokensSaida { get; set; }
+
+        public string? Modelo { get; set; }
+
+        public string? UltimoMotivoFim { get; set; }
+
+        /// <summary>Por que o laço terminou sem texto (LACO_FERRAMENTAS, ORCAMENTO_TEMPO, LIMITE_CUSTO...); prevalece sobre o motivo do provedor.</summary>
+        public string? Interrupcao { get; set; }
+
+        public string? PromptVersao { get; set; }
+
+        public List<string> Ferramentas { get; } = [];
+
+        public List<string> ErrosFerramenta { get; } = [];
+
+        public List<string> FalhasProvedor { get; } = [];
+    }
+
+    private TelemetriaRodadaAgente? Telemetria(bool fallback) =>
+        !_opcoes.RegistrarRodadas
+            ? null
+            : new TelemetriaRodadaAgente(
+                _coleta.Chamadas, _coleta.TokensEntrada, _coleta.TokensSaida, _coleta.Modelo, _coleta.Interrupcao ?? _coleta.UltimoMotivoFim,
+                _coleta.Ferramentas, _coleta.ErrosFerramenta, _coleta.FalhasProvedor.Count == 0 ? null : string.Join(',', _coleta.FalhasProvedor.Distinct()),
+                fallback, _coleta.PromptVersao);
+
     /// <summary>Fatia do orçamento de tempo que o modelo principal pode gastar quando há reserva (o resto é da reserva).</summary>
     private const double FracaoDoOrcamentoDoPrincipal = 0.6;
 
@@ -54,6 +89,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
 
     public async Task<RespostaAgente> ResponderAsync(ContextoRespostaAgente contexto, CancellationToken cancellationToken = default)
     {
+        _coleta = new ColetaRodada();
         var negocio = await _dbContext.Negocios.AsNoTracking().FirstOrDefaultAsync(n => n.Id == contexto.NegocioId, cancellationToken);
         if (negocio is null)
             return new RespostaAgente(null);
@@ -77,25 +113,30 @@ public sealed class OrquestradorAgente : IRespostaAgente
             _logger.LogWarning("Agente: falha ao conversar (conversa {ConversaId}, negócio {NegocioId}): {Tipo}.",
                 contexto.ConversaId, contexto.NegocioId, excecao.GetType().Name);
             await GravarNotaContextoAsync(contexto, cancellationToken);
-            return new RespostaAgente(fallback);
+            _coleta.Interrupcao ??= "EXCECAO";
+            return new RespostaAgente(fallback, null, Telemetria(true));
         }
 
         await GravarNotaContextoAsync(contexto, cancellationToken);
 
         // Preparou um agendamento nesta rodada: o texto do modelo é DESCARTADO; o servidor envia o resumo.
         if (resultado?.PendenciaId is { } pendenciaId)
-            return new RespostaAgente(null, pendenciaId);
+            return new RespostaAgente(null, pendenciaId, Telemetria(false));
 
         var texto = SanitizadorRespostaAgente.Sanitizar(resultado?.Texto, hostPermitido, telefoneInstancia, _opcoes.MaxCaracteresResposta);
         if (texto is null)
-            return new RespostaAgente(fallback);
+        {
+            if (!string.IsNullOrWhiteSpace(resultado?.Texto))
+                _coleta.Interrupcao ??= "TEXTO_DESCARTADO";
+            return new RespostaAgente(fallback, null, Telemetria(true));
+        }
 
         // Guarda de promessa falsa: o modelo não agenda nem confirma; se disse que sim sem confirmação recente, o aviso fixo corrige.
         if (_opcoes.AgendamentoAtivoPara(contexto.NegocioId) && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
             && !await ConfirmouRecentementeAsync(contexto.ConversaId, cancellationToken))
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
 
-        return new RespostaAgente(texto);
+        return new RespostaAgente(texto, null, Telemetria(false));
     }
 
     /// <summary>
@@ -158,6 +199,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
         var prompt = agendamentoLigado
             ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link)
             : ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link);
+        _coleta.PromptVersao = agendamentoLigado ? ConstrutorPromptAgente.VersaoAgendamento : ConstrutorPromptAgente.Versao;
         var historico = await MontarHistoricoAsync(contexto.ConversaId, contexto.LimiteHistorico, agendamentoLigado, cancellationToken);
         if (historico.Count == 0)
             return null;
@@ -179,13 +221,17 @@ public sealed class OrquestradorAgente : IRespostaAgente
 
             _disjuntor.Abrir(contexto.NegocioId, DateTimeOffset.UtcNow);
             if (relogio.Elapsed >= orcamento)
+            {
+                _coleta.Interrupcao = "ORCAMENTO_TEMPO";
                 return null;
+            }
 
             // A rodada recomeça com o custo reavaliado: a tentativa que falhou também entrou em usos_ia.
             var motivo = await _limitador.VerificarCustoAsync(DateTimeOffset.UtcNow, cancellationToken);
             if (motivo != MotivoLimiteAgente.Nenhum)
             {
                 _logger.LogWarning("Agente: limite {Motivo} atingido antes do modelo de reserva (conversa {ConversaId}).", motivo, contexto.ConversaId);
+                _coleta.Interrupcao = "LIMITE_CUSTO";
                 return null;
             }
 
@@ -211,6 +257,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
     {
         var mensagens = historico;
         _consultasDaRodada.Clear();
+        _coleta.Interrupcao = null;
         var modeloRegistrado = modelo ?? _opcoes.Gemini.Model;
         // Ferramenta de escrita: no máximo UMA execução por rodada deste modelo (a volta seguinte e o laço não repetem o preparo).
         var preparosExecutados = 0;
@@ -222,6 +269,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
             {
                 _logger.LogWarning("Agente: orçamento de tempo esgotado (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}).", contexto.ConversaId, iteracao, modeloRegistrado);
                 // Estourou o tempo do principal na 2ª+ volta: a reserva ainda pode tentar com o tempo que sobrou.
+                _coleta.Interrupcao = "ORCAMENTO_TEMPO";
                 return new ResultadoModelo(null, FalhaDeCapacidade: modelo is null);
             }
 
@@ -233,6 +281,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 {
                     _logger.LogWarning("Agente: limite {Motivo} atingido no meio da rodada (conversa {ConversaId}, iteração {Iteracao}).",
                         motivo, contexto.ConversaId, iteracao);
+                    _coleta.Interrupcao = "LIMITE_CUSTO";
                     return new ResultadoModelo(null, false);
                 }
             }
@@ -265,6 +314,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
                 {
                     _logger.LogWarning("Agente: limite {Motivo} atingido antes da nova tentativa (conversa {ConversaId}, iteração {Iteracao}).",
                         motivoCusto, contexto.ConversaId, iteracao);
+                    _coleta.Interrupcao = "LIMITE_CUSTO";
                     return new ResultadoModelo(null, false);
                 }
 
@@ -294,6 +344,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
             {
                 _logger.LogWarning("Agente: limite de {Max} iterações de ferramenta atingido (conversa {ConversaId}); chamada final sem ferramentas.",
                     _opcoes.MaxIteracoesFerramentas, contexto.ConversaId);
+                _coleta.Interrupcao = "LACO_FERRAMENTAS";
                 return await RespostaFinalSemFerramentasAsync(contexto, modelo, modeloRegistrado, iteracao + 1, historico, prompt, relogio, fim, cancellationToken);
             }
 
@@ -303,13 +354,16 @@ public sealed class OrquestradorAgente : IRespostaAgente
             {
                 var chamada = resposta.Chamadas[i];
                 JsonElement conteudo;
+                _coleta.Ferramentas.Add(NomeSeguro(chamada.Nome, ferramentas));
                 if (i >= _opcoes.MaxChamadasFerramentaPorIteracao)
                 {
                     conteudo = Ferramentas.RespostaFerramenta.Erro(Ferramentas.ErrosFerramenta.LimiteChamadas);
+                    _coleta.ErrosFerramenta.Add(Ferramentas.ErrosFerramenta.LimiteChamadas);
                 }
                 else if (EhFerramentaDeEscrita(chamada.Nome) && preparosExecutados >= 1)
                 {
                     conteudo = Ferramentas.RespostaFerramenta.Erro(Ferramentas.ErrosFerramenta.LimiteChamadas);
+                    _coleta.ErrosFerramenta.Add(Ferramentas.ErrosFerramenta.LimiteChamadas);
                 }
                 else
                 {
@@ -322,6 +376,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
                         conteudo = executada.Conteudo;
                         _consultasDaRodada.Add(new ConsultaDaRodada(chamada.Nome ?? string.Empty, chamada.Argumentos, conteudo));
                         pendenciaPreparada ??= executada.PendenciaPreparadaId;
+                        RegistrarErroDeFerramenta(conteudo);
                     }
                     catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                     {
@@ -330,6 +385,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
                         // do histórico original. Cancelamento externo continua propagando.
                         _logger.LogWarning("Agente: prazo esgotado durante a ferramenta (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}).",
                             contexto.ConversaId, iteracao, modeloRegistrado);
+                        _coleta.Interrupcao = "ORCAMENTO_TEMPO";
                         return new ResultadoModelo(null, FalhaDeCapacidade: modelo is null);
                     }
 
@@ -355,8 +411,26 @@ public sealed class OrquestradorAgente : IRespostaAgente
             mensagens = [.. mensagens, new AiMensagem(PapelIa.Modelo, resposta.Texto, resposta.Chamadas), .. resultados];
         }
 
+        _coleta.Interrupcao = "LACO_FERRAMENTAS";
         return new ResultadoModelo(null, false);
     }
+
+    /// <summary>Guarda só o CÓDIGO de erro que a ferramenta devolveu (<c>{ erro, mensagem }</c>), nunca a mensagem nem os dados.</summary>
+    private void RegistrarErroDeFerramenta(JsonElement conteudo)
+    {
+        if (conteudo.ValueKind == JsonValueKind.Object && conteudo.TryGetProperty("erro", out var erro) && erro.ValueKind == JsonValueKind.String)
+            _coleta.ErrosFerramenta.Add(CodigoDeErroConhecido(erro.GetString()));
+    }
+
+    private static readonly HashSet<string> CodigosDeErroConhecidos = typeof(Ferramentas.ErrosFerramenta)
+        .GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
+        .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+        .Select(f => (string)f.GetRawConstantValue()!)
+        .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>Só códigos do catálogo <see cref="Ferramentas.ErrosFerramenta"/> são guardados; o resto vira DESCONHECIDO.</summary>
+    private static string CodigoDeErroConhecido(string? codigo) =>
+        codigo is not null && CodigosDeErroConhecidos.Contains(codigo) ? codigo : RodadaAgente.Desconhecido;
 
     /// <summary>Instrução fixa da última chamada, sem ferramentas, quando as voltas acabaram sem texto.</summary>
     public const string InstrucaoRespostaFinal =
@@ -374,12 +448,16 @@ public sealed class OrquestradorAgente : IRespostaAgente
     {
         var restante = fim - relogio.Elapsed;
         if (restante <= TimeSpan.Zero)
+        {
+            _coleta.Interrupcao = "ORCAMENTO_TEMPO";
             return new ResultadoModelo(null, false);
+        }
 
         var motivo = await _limitador.VerificarCustoAsync(DateTimeOffset.UtcNow, cancellationToken);
         if (motivo != MotivoLimiteAgente.Nenhum)
         {
             _logger.LogWarning("Agente: limite {Motivo} atingido antes da chamada final (conversa {ConversaId}).", motivo, contexto.ConversaId);
+            _coleta.Interrupcao = "LIMITE_CUSTO";
             return new ResultadoModelo(null, false);
         }
 
@@ -413,6 +491,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
     {
         AiResponse resposta;
         var inicio = relogio.Elapsed;
+        _coleta.Chamadas++;
         try
         {
             resposta = await _provedor.GenerateAsync(new AiRequest(prompt, mensagens, ferramentas, maxTokensSaida, modelo), token);
@@ -420,7 +499,12 @@ public sealed class OrquestradorAgente : IRespostaAgente
         catch (Exception excecao) when (excecao is FalhaProvedorIaException || (excecao is OperationCanceledException && !cancellationToken.IsCancellationRequested))
         {
             // A tentativa falha também é gravada (sucesso = false) e conta nos limites de chamadas por dia, como sempre.
-            await RegistrarUsoAsync(contexto, modeloRegistrado, 0, 0, sucesso: false, cancellationToken);
+            var tipoFalha = (excecao as FalhaProvedorIaException)?.Tipo ?? "timeout";
+            var statusFalha = (excecao as FalhaProvedorIaException)?.StatusHttp;
+            _coleta.Modelo = modeloRegistrado;
+            _coleta.FalhasProvedor.Add(statusFalha is int sf ? $"{tipoFalha}:{sf}" : tipoFalha);
+            await RegistrarUsoAsync(contexto, modeloRegistrado, 0, 0, false, null, (int)(relogio.Elapsed - inicio).TotalMilliseconds, iteracao,
+                tipoFalha, statusFalha, cancellationToken);
             _logger.LogWarning("Agente: provedor de IA falhou (conversa {ConversaId}, iteração {Iteracao}, modelo {Modelo}): {Tipo}{Status}.",
                 contexto.ConversaId, iteracao, modeloRegistrado, (excecao as FalhaProvedorIaException)?.Tipo ?? "timeout",
                 (excecao as FalhaProvedorIaException)?.StatusHttp is int s ? $" HTTP {s}" : string.Empty);
@@ -429,7 +513,12 @@ public sealed class OrquestradorAgente : IRespostaAgente
             return new TentativaModelo(null, new ResultadoModelo(null, capacidade && modelo is null));
         }
 
-        await RegistrarUsoAsync(contexto, resposta.Modelo, resposta.TokensEntrada, resposta.TokensSaida, sucesso: true, cancellationToken);
+        _coleta.TokensEntrada += resposta.TokensEntrada;
+        _coleta.TokensSaida += resposta.TokensSaida;
+        _coleta.Modelo = resposta.Modelo;
+        _coleta.UltimoMotivoFim = resposta.MotivoFim;
+        await RegistrarUsoAsync(contexto, resposta.Modelo, resposta.TokensEntrada, resposta.TokensSaida, true, resposta.MotivoFim,
+            (int)(relogio.Elapsed - inicio).TotalMilliseconds, iteracao, null, null, cancellationToken);
         _logger.LogInformation("Agente: chamada ao modelo (conversa {ConversaId}, iteração {Iteracao}, tokens {Entrada}/{Saida}, {Ms} ms, ferramentas {Ferramentas}).",
             contexto.ConversaId, iteracao, resposta.TokensEntrada, resposta.TokensSaida, (long)(relogio.Elapsed - inicio).TotalMilliseconds, resposta.Chamadas.Count);
         return new TentativaModelo(resposta, null);
@@ -455,9 +544,14 @@ public sealed class OrquestradorAgente : IRespostaAgente
         return "{" + string.Join(',', campos) + "}";
     }
 
-    private async Task RegistrarUsoAsync(ContextoRespostaAgente contexto, string modelo, int entrada, int saida, bool sucesso, CancellationToken cancellationToken)
+    private async Task RegistrarUsoAsync(
+        ContextoRespostaAgente contexto, string modelo, int entrada, int saida, bool sucesso, string? motivoFim, int latenciaMs, int iteracao,
+        string? falhaTipo, int? statusHttp, CancellationToken cancellationToken)
     {
-        _dbContext.UsosIa.Add(new UsoIa(contexto.NegocioId, contexto.ConversaId, modelo, entrada, saida, sucesso));
+        // Com o registro de rodadas desligado grava-se só o que a Fase 2 gravava (colunas novas nulas).
+        _dbContext.UsosIa.Add(_opcoes.RegistrarRodadas
+            ? new UsoIa(contexto.NegocioId, contexto.ConversaId, modelo, entrada, saida, sucesso, motivoFim, latenciaMs, iteracao, falhaTipo, statusHttp, contexto.RodadaId)
+            : new UsoIa(contexto.NegocioId, contexto.ConversaId, modelo, entrada, saida, sucesso));
         await _dbContext.SaveChangesAsync(cancellationToken);
     }
 

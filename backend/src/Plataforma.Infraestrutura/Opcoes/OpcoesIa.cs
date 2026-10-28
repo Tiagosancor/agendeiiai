@@ -61,6 +61,15 @@ public sealed class OpcoesIa
     /// <summary>Intervalo, em dias, do aviso fixo de atendimento automatizado por conversa (só sai com o agendamento ligado).</summary>
     public int AvisoAutomatizadoDias { get; set; } = 90;
 
+    /// <summary>
+    /// Fase 4: grava uma linha por rodada em <c>rodadas_agente</c> (e os campos extras de <c>usos_ia</c>) — só números e códigos, para
+    /// o diagnóstico sobreviver ao log curto da hospedagem. Desligar para de gravar e não muda o comportamento do agente.
+    /// </summary>
+    public bool RegistrarRodadas { get; set; } = true;
+
+    /// <summary>Dias que <c>rodadas_agente</c> é mantida; o job diário apaga o que for mais velho (7–365).</summary>
+    public int RetencaoRodadasDias { get; set; } = 90;
+
     /// <summary>Agendamento pelo agente ligado para o negócio: Gemini + piloto da Fase 2 + modo/piloto da Fase 3.</summary>
     public bool AgendamentoAtivoPara(Guid negocioId) =>
         Provider == ProvedorIa.Gemini && NegocioHabilitado(negocioId) && Agendamento.Habilitado(negocioId);
@@ -187,6 +196,7 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
             && o.Agendamento.Negocios.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(item => !Guid.TryParse(item, out _)))
             erros.Add("Ai__Agendamento__Negocios deve ser uma lista de GUIDs separada por vírgula.");
+        Faixa(erros, nameof(o.RetencaoRodadasDias), o.RetencaoRodadasDias, 7, 365);
         if (o.CotaMensalTokensPorNegocio < 1)
             erros.Add("Ai__CotaMensalTokensPorNegocio deve ser positiva.");
 

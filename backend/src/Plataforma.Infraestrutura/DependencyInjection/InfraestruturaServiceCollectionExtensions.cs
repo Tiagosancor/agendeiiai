@@ -260,6 +260,7 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<JobAtualizarAssinaturas>();
         servicos.AddScoped<Estoque.JobAlertaEstoque>();
         servicos.AddScoped<Idempotencia.JobLimparIdempotencia>();
+        servicos.AddScoped<WhatsAppAgente.JobLimparRodadasAgente>();
         servicos.AddScoped<Idempotencia.ContextoIdempotencia>();
         servicos.AddScoped<Aplicacao.Idempotencia.IServicoIdempotencia, Idempotencia.ServicoIdempotencia>();
         servicos.AddScoped<IConsultaSituacaoAssinatura, ConsultaSituacaoAssinatura>();
