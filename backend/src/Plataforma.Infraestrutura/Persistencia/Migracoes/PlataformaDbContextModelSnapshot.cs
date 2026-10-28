@@ -2038,6 +2038,24 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("AgenteIaAlteradoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("agente_ia_alterado_em");
+
+                    b.Property<string>("AgenteIaAlteradoPor")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("agente_ia_alterado_por");
+
+                    b.Property<bool>("AgenteIaContratado")
+                        .HasColumnType("boolean")
+                        .HasColumnName("agente_ia_contratado");
+
+                    b.Property<string>("AgenteIaOrigem")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("agente_ia_origem");
+
                     b.Property<bool>("Ativo")
                         .HasColumnType("boolean")
                         .HasColumnName("ativo");
@@ -2177,7 +2195,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .IsUnique()
                         .HasDatabaseName("ix_negocios_slug");
 
-                    b.ToTable("negocios", (string)null);
+                    b.ToTable("negocios", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_negocios_agente_ia_origem", "agente_ia_origem IS NULL OR agente_ia_origem IN ('Manual', 'Plano', 'Adicional')");
+                        });
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Negocios.SlugAnterior", b =>
@@ -3308,6 +3329,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.HasIndex("InstanciaId", "IdExterno")
                         .IsUnique()
                         .HasDatabaseName("ix_mensagens_whatsapp_instancia_id_id_externo");
+
+                    b.HasIndex("NegocioId", "CriadoEm")
+                        .HasDatabaseName("ix_mensagens_whatsapp_indisponivel_aviso")
+                        .HasFilter("nome_ferramenta = 'indisponivel_aviso'");
 
                     b.ToTable("mensagens_whatsapp", (string)null);
                 });

@@ -60,6 +60,14 @@ public sealed class NegocioConfiguracao : IEntityTypeConfiguration<Negocio>
         builder.Property(n => n.LembreteRetornoHorario).IsRequired();
         builder.Property(n => n.LembreteRetornoMensagem).HasMaxLength(LembreteRetorno.TamanhoMaximoMensagem).IsRequired();
 
+        // Agente de IA do WhatsApp (serviço premium): o DEFAULT false fica só na coluna da migration, sem HasDefaultValue no modelo
+        // (senão o EF omite do INSERT um valor igual ao padrão do CLR). A origem é gravada como texto; o check no banco fecha a lista.
+        builder.Property(n => n.AgenteIaContratado).IsRequired();
+        builder.Property(n => n.AgenteIaOrigem).HasConversion<string>().HasMaxLength(20);
+        builder.Property(n => n.AgenteIaAlteradoPor).HasMaxLength(320);
+        builder.ToTable(t => t.HasCheckConstraint(
+            "ck_negocios_agente_ia_origem", "agente_ia_origem IS NULL OR agente_ia_origem IN ('Manual', 'Plano', 'Adicional')"));
+
         builder.OwnsOne(n => n.Endereco, endereco =>
         {
             endereco.Property(e => e.Bairro).HasColumnName("endereco_bairro").HasMaxLength(120);

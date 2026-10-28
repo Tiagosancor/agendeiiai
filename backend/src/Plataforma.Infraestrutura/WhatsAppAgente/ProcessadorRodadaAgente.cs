@@ -52,13 +52,15 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private readonly ConfirmadorPendenciaAgente _confirmador;
     private readonly ILogger<ProcessadorRodadaAgente> _logger;
     private readonly IServiceScopeFactory _escopos;
+    private readonly PoliticaAgenteIa _politica;
 
     public ProcessadorRodadaAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IRespostaAgente resposta, IClienteEvolution evolution,
         IConsultaSituacaoAssinatura assinatura, LimitadorUsoAgente limitador, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca,
         GerenciadorPendenciasAgente pendencias, ConfirmadorPendenciaAgente confirmador, ILogger<ProcessadorRodadaAgente> logger,
-        IServiceScopeFactory escopos)
+        IServiceScopeFactory escopos, PoliticaAgenteIa politica)
     {
+        _politica = politica;
         _escopos = escopos;
         _pendencias = pendencias;
         _confirmador = confirmador;
@@ -90,6 +92,8 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             if (lease is null)
                 return;
 
+            // O escopo atravessa até duas rodadas: a situação do serviço premium é lida de novo a cada uma.
+            _politica.Invalidar();
             var diagnostico = new DiagnosticoRodada(_opcoes.RegistrarRodadas ? Guid.NewGuid() : null);
             try
             {
@@ -277,11 +281,11 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         var ultima = maisRecente.CriadoEm;
         var agora = DateTimeOffset.UtcNow;
 
-        var silencio = await MotivoDeSilencioAsync(conversa, instancia, cancellationToken);
-        if (silencio is not null)
+        var decisao = await DecidirAsync(conversa, instancia, cancellationToken);
+        if (decisao.Tipo == DecisaoRodada.Silencio)
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.Silencio;
-            diagnostico.MotivoSilencio = silencio;
+            diagnostico.MotivoSilencio = decisao.Motivo;
             if (await RenovarLeaseAsync(lease, cancellationToken))
                 await MarcarProcessadaAsync(lease, ultima, cancellationToken);
             return;
@@ -298,8 +302,24 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             return;
         }
 
+        // Serviço de IA não contratado: nada da IA roda (0 chamadas, 0 usos_ia, 0 escritas). Só a mensagem fixa, com limites.
+        if (decisao.Tipo == DecisaoRodada.Indisponivel)
+        {
+            // Exceção D7: uma confirmação JÁ gravada e ainda não anunciada (envio que falhou, processo que caiu) continua sendo recuperada
+            // mesmo com o serviço desligado — é um fato. Só esses dois tipos de plano; nova confirmação, recusa e aviso de prazo continuam barrados.
+            var recuperacao = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
+            if (recuperacao is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada })
+            {
+                diagnostico.Desfecho = await TratarRespostaAoResumoAsync(lease, conversa, instancia, recuperacao, ultima, cancellationToken);
+                return;
+            }
+
+            diagnostico.Desfecho = await TratarIndisponivelAsync(lease, conversa, instancia, diagnostico, ultima, agora, cancellationToken);
+            return;
+        }
+
         // Resposta ao resumo de um agendamento ("sim"/"não"): decidida pelo servidor, sem chamar a IA e antes dos limites de custo.
-        if (_opcoes.AgendamentoAtivoPara(conversa.NegocioId))
+        if (decisao.Situacao.AgendamentoLiberado)
         {
             var plano = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
             if (plano is not null)
@@ -368,6 +388,19 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         if (!await RenovarLeaseAsync(lease, cancellationToken))
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.LeasePerdido;
+            return;
+        }
+
+        // Serviço desligado enquanto a IA pensava: relê o banco (sem memória) e descarta o que o modelo produziu — não envia nada.
+        // Uma confirmação JÁ gravada antes do desligamento continua sendo anunciada (é fato; está no ramo do confirmador).
+        if (!await _politica.ContratadoAgoraAsync(conversa.NegocioId, cancellationToken))
+        {
+            diagnostico.Desfecho = DesfechoRodadaAgente.Silencio;
+            diagnostico.MotivoSilencio = MotivoSilencioRodada.NaoContratado;
+            _logger.LogInformation("Agente: serviço de IA desligado durante a rodada; resposta descartada (conversa {ConversaId}, negócio {NegocioId}).",
+                conversa.Id, conversa.NegocioId);
+            if (!await MarcarProcessadaAsync(lease, ultima, cancellationToken))
+                diagnostico.Desfecho = DesfechoRodadaAgente.LeasePerdido;
             return;
         }
 
@@ -472,7 +505,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// </summary>
     private async Task<string?> AvisoAutomatizadoPendenteAsync(ConversaWhatsApp conversa, InstanciaWhatsApp instancia, CancellationToken cancellationToken)
     {
-        if (!_opcoes.AgendamentoAtivoPara(conversa.NegocioId))
+        if (!(await _politica.ObterAsync(conversa.NegocioId, cancellationToken)).AgendamentoLiberado)
             return null;
         if (conversa.AvisoAutomatizadoEm is { } ultimo && ultimo > DateTimeOffset.UtcNow.AddDays(-_opcoes.AvisoAutomatizadoDias))
             return null;
@@ -556,25 +589,153 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         return textos.Resumo(dados, pendencia.NomeInformado, (int)Agendamentos.ServicoAgendamentos.DuracaoDaReserva.TotalMinutes);
     }
 
-    /// <summary>Por que o agente deve ficar calado nesta conversa, ou nulo quando deve responder.</summary>
-    private async Task<MotivoSilencioRodada?> MotivoDeSilencioAsync(ConversaWhatsApp conversa, InstanciaWhatsApp instancia, CancellationToken cancellationToken)
+    private enum DecisaoRodada
     {
+        /// <summary>Não responde (e dá o lote como tratado).</summary>
+        Silencio,
+
+        /// <summary>Serviço de IA não contratado com o agente ligado na tela: só a mensagem fixa, com limites.</summary>
+        Indisponivel,
+
+        /// <summary>Provedor Eco (Fase 1): repete o que o cliente disse. Só para negócio que contratou.</summary>
+        Eco,
+
+        /// <summary>Confirmador de pendência, limites de custo e IA.</summary>
+        Agente,
+    }
+
+    private readonly record struct Decisao(DecisaoRodada Tipo, SituacaoAgenteIa Situacao, MotivoSilencioRodada? Motivo = null);
+
+    /// <summary>
+    /// O gate principal do serviço premium, nesta ordem: provedor desligado; conversa com humano ou agente desligado na tela;
+    /// assinatura que não permite operar (vale para o Eco e para a mensagem fixa também); serviço não contratado (mensagem fixa);
+    /// Eco; fora da lista global (piloto); e por fim o agente.
+    /// </summary>
+    private async Task<Decisao> DecidirAsync(ConversaWhatsApp conversa, InstanciaWhatsApp instancia, CancellationToken cancellationToken)
+    {
+        var situacao = await _politica.ObterAsync(conversa.NegocioId, cancellationToken);
+
+        if (_opcoes.Provider == ProvedorIa.Desligado)
+            return new(DecisaoRodada.Silencio, situacao, MotivoSilencioRodada.AgenteDesligado);
+
         if (!conversa.AgenteResponde)
-            return MotivoSilencioRodada.Humano;
+            return new(DecisaoRodada.Silencio, situacao, MotivoSilencioRodada.Humano);
 
-        if (_opcoes.Provider == ProvedorIa.Desligado || !instancia.AgenteAtivo)
-            return MotivoSilencioRodada.AgenteDesligado;
+        if (!instancia.AgenteAtivo)
+            return new(DecisaoRodada.Silencio, situacao, MotivoSilencioRodada.AgenteDesligado);
 
-        // Eco é o comportamento da Fase 1: sem piloto nem checagem de assinatura (não gasta nada).
+        // Assinatura suspensa: silêncio, sem IA (custo) e sem a mensagem fixa (não se fala de pagamento). Sem assinatura cadastrada não bloqueia.
+        var assinatura = await _assinatura.ObterAsync(conversa.NegocioId, cancellationToken);
+        if (assinatura is not null && !assinatura.PermiteOperar)
+            return new(DecisaoRodada.Silencio, situacao, MotivoSilencioRodada.Assinatura);
+
+        if (!situacao.Contratado)
+            return new(DecisaoRodada.Indisponivel, situacao);
+
         if (_opcoes.Provider == ProvedorIa.Eco)
-            return null;
+            return new(DecisaoRodada.Eco, situacao);
 
-        if (!_opcoes.NegocioHabilitado(conversa.NegocioId))
-            return MotivoSilencioRodada.ForaDoPiloto;
+        // A lista global só restringe: contratado e fora dela = silêncio.
+        if (!situacao.IaLiberada)
+            return new(DecisaoRodada.Silencio, situacao, MotivoSilencioRodada.ForaDoPiloto);
 
-        // Assinatura suspensa: silêncio, sem chamar a IA (custo). Sem assinatura cadastrada não bloqueia.
-        var situacao = await _assinatura.ObterAsync(conversa.NegocioId, cancellationToken);
-        return situacao is null || situacao.PermiteOperar ? null : MotivoSilencioRodada.Assinatura;
+        return new(DecisaoRodada.Agente, situacao);
+    }
+
+    // ---------------------------------------------------------------- serviço não contratado (mensagem fixa)
+
+    /// <summary>
+    /// Sem o serviço de IA: no máximo uma mensagem fixa por conversa a cada <c>Ai__Indisponivel__IntervaloHoras</c> e
+    /// <c>Ai__Indisponivel__LimitePorNegocioPorDia</c> por negócio/dia UTC; acima disso, silêncio. Não grava <c>UsoIa</c>, não conta nos
+    /// limites de IA e não leva o aviso de atendimento automatizado. O lote é marcado ANTES do envio (nunca reenvia em laço) e a
+    /// mensagem é reservada no banco antes da chamada externa (é ela que a contagem enxerga).
+    /// </summary>
+    private async Task<DesfechoRodadaAgente> TratarIndisponivelAsync(
+        Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, DiagnosticoRodada diagnostico, DateTimeOffset ultima,
+        DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        if (!await RenovarLeaseAsync(lease, cancellationToken) || !await MarcarProcessadaAsync(lease, ultima, cancellationToken))
+            return DesfechoRodadaAgente.LeasePerdido;
+
+        var negocio = await _dbContext.Negocios.AsNoTracking().Where(n => n.Id == conversa.NegocioId)
+            .Select(n => new { n.NomeExibido, Slug = n.Slug.Valor }).FirstOrDefaultAsync(cancellationToken);
+        if (negocio is null)
+            return DesfechoRodadaAgente.Silencio;
+
+        var link = ConstrutorUrlPublica.Construir(_marca, negocio.Slug, string.Empty);
+        // O nome do negócio é cadastro livre: o texto fixo passa pelo mesmo sanitizador da resposta do modelo.
+        var texto = SanitizadorRespostaAgente.SanitizarTextoFixo(
+            TextosAgendamentoAgente.AtendimentoIndisponivel(negocio.NomeExibido, link), link, instancia.Telefone);
+
+        // Contagem e reserva na MESMA transação, sob trava por negócio/dia: conversas concorrentes do mesmo negócio nunca passam do teto.
+        // A chamada externa vem DEPOIS do commit.
+        var reserva = await ReservarAvisoIndisponivelAsync(conversa, instancia, texto, agora, cancellationToken);
+        if (reserva is null)
+        {
+            diagnostico.MotivoSilencio = MotivoSilencioRodada.NaoContratado;
+            return DesfechoRodadaAgente.Silencio;
+        }
+
+        var envio = await EnviarEGravarAsync(
+            lease, conversa, instancia, texto, PapelMensagemWhatsApp.Sistema, MarcadoresAgente.IndisponivelAviso, cancellationToken,
+            reservaPronta: reserva);
+
+        // Comprovadamente não enviada: a reserva sai (não conta nos limites) e a próxima mensagem do cliente pode tentar de novo.
+        if (envio.Estado is EstadoEnvio.FalhaDefinitiva or EstadoEnvio.SemPrazo && envio.MensagemId is { } mensagemId)
+            await _dbContext.MensagensWhatsApp.Where(m => m.Id == mensagemId).ExecuteDeleteAsync(CancellationToken.None);
+
+        return envio.Estado switch
+        {
+            EstadoEnvio.Enviado => DesfechoRodadaAgente.Indisponivel,
+            EstadoEnvio.Ambiguo => DesfechoRodadaAgente.EnvioAmbiguo,
+            _ => DesfechoRodadaAgente.EnvioFalhou,
+        };
+    }
+
+    /// <summary>
+    /// Decide (intervalo por conversa e teto diário por negócio) e grava a reserva da mensagem numa transação com
+    /// <c>pg_advisory_xact_lock</c> por negócio/dia UTC (lock isolado: nada mais é segurado enquanto ele vale, então não há ciclo com a ordem
+    /// pendência → agendamento → cliente). Nulo = acima de algum limite (silêncio).
+    /// </summary>
+    private async Task<MensagemWhatsApp?> ReservarAvisoIndisponivelAsync(
+        ConversaWhatsApp conversa, InstanciaWhatsApp instancia, string texto, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        var chave = $"indisponivel:{conversa.NegocioId:N}:{agora.UtcDateTime:yyyyMMdd}";
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        return await estrategia.ExecuteAsync(async () =>
+        {
+            _dbContext.ChangeTracker.Clear();
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await _dbContext.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({chave}, 0))", cancellationToken);
+
+            if (!await PodeAvisarIndisponivelAsync(conversa, agora, cancellationToken))
+            {
+                await transacao.RollbackAsync(cancellationToken);
+                return null;
+            }
+
+            var reserva = new MensagemWhatsApp(
+                instancia.NegocioId, instancia.Id, conversa.Id, null, PapelMensagemWhatsApp.Sistema, texto, MarcadoresAgente.IndisponivelAviso);
+            _dbContext.MensagensWhatsApp.Add(reserva);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+            return reserva;
+        });
+    }
+
+    private async Task<bool> PodeAvisarIndisponivelAsync(ConversaWhatsApp conversa, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        var desde = agora.AddHours(-_opcoes.Indisponivel.IntervaloHoras);
+        if (await _dbContext.MensagensWhatsApp.AsNoTracking().AnyAsync(
+                m => m.ConversaId == conversa.Id && m.Papel == PapelMensagemWhatsApp.Sistema
+                    && m.NomeFerramenta == MarcadoresAgente.IndisponivelAviso && m.CriadoEm >= desde, cancellationToken))
+            return false;
+
+        var inicioDoDia = new DateTimeOffset(agora.UtcDateTime.Date, TimeSpan.Zero);
+        var hoje = await _dbContext.MensagensWhatsApp.AsNoTracking().CountAsync(
+            m => m.NegocioId == conversa.NegocioId && m.Papel == PapelMensagemWhatsApp.Sistema
+                && m.NomeFerramenta == MarcadoresAgente.IndisponivelAviso && m.CriadoEm >= inicioDoDia, cancellationToken);
+        return hoje < _opcoes.Indisponivel.LimitePorNegocioPorDia;
     }
 
     private async Task AvisarLimiteAsync(
@@ -601,7 +762,8 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// </summary>
     private async Task<ResultadoEnvio> EnviarEGravarAsync(
         Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, string texto, PapelMensagemWhatsApp papel, string? marcador,
-        CancellationToken cancellationToken, string? textoGravado = null, Action<MensagemWhatsApp>? aoReservar = null)
+        CancellationToken cancellationToken, string? textoGravado = null, Action<MensagemWhatsApp>? aoReservar = null,
+        MensagemWhatsApp? reservaPronta = null)
     {
         var restante = lease.Valor - DateTimeOffset.UtcNow - MargemEnvio;
         if (restante <= TimeSpan.Zero)
@@ -641,11 +803,15 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             // sob a posse do lease. Se a Evolution aceitar e depois vier timeout/falha ao gravar, o resultado é desconhecido e a mensagem
             // fica registrada: um aviso perdido é melhor que um aviso repetido a cada mensagem do cliente na mesma janela.
             // O que vai ao banco pode diferir do que vai ao cliente (a confirmação grava "[link de gestão enviado]", nunca o token).
-            var reserva = new MensagemWhatsApp(instancia.NegocioId, instancia.Id, conversa.Id, null, papel, textoGravado ?? texto, marcador);
+            // reservaPronta: já gravada (e commitada) por quem precisou serializar a decisão antes — não grava de novo.
+            var reserva = reservaPronta ?? new MensagemWhatsApp(instancia.NegocioId, instancia.Id, conversa.Id, null, papel, textoGravado ?? texto, marcador);
             mensagemId = reserva.Id;
-            _dbContext.MensagensWhatsApp.Add(reserva);
-            aoReservar?.Invoke(reserva);
-            await _dbContext.SaveChangesAsync(prazo.Token);
+            if (reservaPronta is null)
+            {
+                _dbContext.MensagensWhatsApp.Add(reserva);
+                aoReservar?.Invoke(reserva);
+                await _dbContext.SaveChangesAsync(prazo.Token);
+            }
 
             string? id;
             try

@@ -185,6 +185,9 @@ public enum MotivoRecusaConfirmacaoAgente
 
     /// <summary>Perdeu o horário para outro agendamento na confirmação (409 com alternativas).</summary>
     Conflito,
+
+    /// <summary>O serviço de IA foi desligado para o negócio (relido no banco): nada é gravado e o agente fica em silêncio.</summary>
+    ServicoNaoContratado,
 }
 
 /// <summary>

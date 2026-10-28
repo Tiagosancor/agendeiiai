@@ -23,6 +23,14 @@ public sealed class TextosAgendamentoAgente
     public const string HorarioIndisponivelNaConfirmacao =
         "Não consegui confirmar: esse horário não está mais disponível. Me diga outro dia ou horário que eu verifico.";
 
+    /// <summary>
+    /// Mensagem fixa de um negócio sem o serviço de IA contratado (e com o agente ligado na tela). Sem nome de produto, sem prometer
+    /// resposta humana e sem falar de pagamento. O chamador ainda a passa pelo <c>SanitizarTextoFixo</c> (o nome é cadastro livre).
+    /// </summary>
+    public static string AtendimentoIndisponivel(string nomeNegocio, string link) =>
+        $"Olá! O atendimento automático de {ConstrutorPromptAgente.LimparNome(nomeNegocio)} não está disponível no momento. " +
+        $"Para ver horários e agendar, acesse: {link}";
+
     /// <summary>Texto gravado no lugar do link de gestão: o token nunca é persistido nem vai à IA.</summary>
     public const string LinkDeGestaoOculto = "[link de gestão enviado]";
 

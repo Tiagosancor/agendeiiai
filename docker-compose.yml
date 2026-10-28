@@ -97,6 +97,8 @@ services:
       Ai__AvisoAutomatizadoDias: ${AI_AVISO_AUTOMATIZADO_DIAS:-90}
       Ai__RegistrarRodadas: ${AI_REGISTRAR_RODADAS:-true}
       Ai__RetencaoRodadasDias: ${AI_RETENCAO_RODADAS_DIAS:-90}
+      Ai__Indisponivel__IntervaloHoras: ${AI_INDISPONIVEL_INTERVALO_HORAS:-24}
+      Ai__Indisponivel__LimitePorNegocioPorDia: ${AI_INDISPONIVEL_LIMITE_NEGOCIO_DIA:-200}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}

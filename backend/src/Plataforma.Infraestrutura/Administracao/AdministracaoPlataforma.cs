@@ -8,6 +8,7 @@ using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Administracao;
 using Plataforma.Dominio.Administracao;
 using Plataforma.Dominio.Assinaturas;
+using Plataforma.Dominio.WhatsAppAgente;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Infraestrutura.Persistencia;
 
@@ -26,9 +27,12 @@ public sealed class AdministracaoPlataforma : IAdministracaoPlataforma
     private readonly PlataformaDbContext _dbContext;
     private readonly ISenhaHasher _senhaHasher;
     private readonly OpcoesJwt _opcoesJwt;
+    private readonly ServicoContratacaoAgenteIa _agenteIa;
 
-    public AdministracaoPlataforma(PlataformaDbContext dbContext, ISenhaHasher senhaHasher, IOptions<OpcoesJwt> opcoesJwt)
+    public AdministracaoPlataforma(
+        PlataformaDbContext dbContext, ISenhaHasher senhaHasher, IOptions<OpcoesJwt> opcoesJwt, ServicoContratacaoAgenteIa agenteIa)
     {
+        _agenteIa = agenteIa;
         _dbContext = dbContext;
         _senhaHasher = senhaHasher;
         _opcoesJwt = opcoesJwt.Value;
@@ -84,7 +88,7 @@ public sealed class AdministracaoPlataforma : IAdministracaoPlataforma
         return true;
     }
 
-    public async Task<IReadOnlyList<NegocioNaPlataforma>> ListarNegociosAsync(EstadoAssinatura? estado, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<NegocioNaPlataforma>> ListarNegociosAsync(EstadoAssinatura? estado, bool? agenteIa = null, CancellationToken cancellationToken = default)
     {
         var linhas = await (
             from n in _dbContext.Negocios.AsNoTracking()
@@ -92,12 +96,19 @@ public sealed class AdministracaoPlataforma : IAdministracaoPlataforma
             from a in assinaturas.DefaultIfEmpty()
             join p in _dbContext.Planos.AsNoTracking() on a.PlanoId equals p.Id into planos
             from p in planos.DefaultIfEmpty()
-            where estado == null || (a != null && a.Estado == estado)
+            where (estado == null || (a != null && a.Estado == estado)) && (agenteIa == null || n.AgenteIaContratado == agenteIa)
             orderby n.CriadoEm descending
-            select new { Negocio = n, Assinatura = a, NomePlano = p != null ? p.Nome : null })
+            select new
+            {
+                Negocio = n,
+                Assinatura = a,
+                NomePlano = p != null ? p.Nome : null,
+                Conectado = _dbContext.InstanciasWhatsApp.IgnoreQueryFilters()
+                    .Any(i => i.NegocioId == n.Id && i.Status == StatusInstanciaWhatsApp.Conectada),
+            })
             .ToListAsync(cancellationToken);
 
-        return linhas.Select(l => Mapear(l.Negocio, l.Assinatura, l.NomePlano)).ToList();
+        return linhas.Select(l => Mapear(l.Negocio, l.Assinatura, l.NomePlano, l.Conectado)).ToList();
     }
 
     public async Task<DetalheNegocioNaPlataforma?> ObterNegocioAsync(Guid negocioId, CancellationToken cancellationToken = default)
@@ -119,13 +130,15 @@ public sealed class AdministracaoPlataforma : IAdministracaoPlataforma
             .ToListAsync(cancellationToken);
         var profissionaisAtivos = await _dbContext.Profissionais.IgnoreQueryFilters()
             .CountAsync(p => p.NegocioId == negocioId && p.Ativo, cancellationToken);
+        var conectado = await _dbContext.InstanciasWhatsApp.IgnoreQueryFilters()
+            .AnyAsync(i => i.NegocioId == negocioId && i.Status == StatusInstanciaWhatsApp.Conectada, cancellationToken);
 
         return new DetalheNegocioNaPlataforma(
-            Mapear(negocio, assinatura, nomePlano), assinatura?.PlanoId, assinatura?.Periodicidade, assinatura?.PrecoMensalTravado,
+            Mapear(negocio, assinatura, nomePlano, conectado), assinatura?.PlanoId, assinatura?.Periodicidade, assinatura?.PrecoMensalTravado,
             assinatura?.ValorDoPeriodo, assinatura?.CarenciaAte, profissionaisAtivos,
             assinatura?.Historico.OrderByDescending(h => h.CriadoEm)
                 .Select(h => new HistoricoAssinaturaDto(h.CriadoEm, h.EstadoAnterior, h.EstadoNovo, h.Autor, h.Motivo)).ToList() ?? [],
-            cobrancas);
+            cobrancas, ServicoContratacaoAgenteIa.Mapear(negocio));
     }
 
     public Task<bool> RegistrarPagamentoAsync(string autor, Guid negocioId, PagamentoManual dados, CancellationToken cancellationToken = default) =>
@@ -186,7 +199,14 @@ public sealed class AdministracaoPlataforma : IAdministracaoPlataforma
         return true;
     }
 
-    private static NegocioNaPlataforma Mapear(Plataforma.Dominio.Negocios.Negocio negocio, Assinatura? assinatura, string? nomePlano) => new(
+    public Task<ServicoAgenteIaNegocio?> DefinirAgenteIaAsync(string autor, Guid negocioId, bool contratado, string? motivo, CancellationToken cancellationToken = default) =>
+        _agenteIa.DefinirAsync(autor, negocioId, contratado, motivo, cancellationToken);
+
+    public Task<IReadOnlyList<HistoricoAgenteIa>?> ListarHistoricoAgenteIaAsync(Guid negocioId, CancellationToken cancellationToken = default) =>
+        _agenteIa.ListarHistoricoAsync(negocioId, cancellationToken);
+
+    private static NegocioNaPlataforma Mapear(Plataforma.Dominio.Negocios.Negocio negocio, Assinatura? assinatura, string? nomePlano, bool whatsAppConectado) => new(
         negocio.Id, negocio.NomeExibido, negocio.Slug.Valor, negocio.Tipo.ToString(), nomePlano, assinatura?.Estado,
-        assinatura?.FimTeste, assinatura?.ProximoVencimento, negocio.CriadoEm);
+        assinatura?.FimTeste, assinatura?.ProximoVencimento, negocio.CriadoEm,
+        negocio.AgenteIaContratado, negocio.AgenteIaOrigem, whatsAppConectado);
 }

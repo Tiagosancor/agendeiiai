@@ -25,6 +25,8 @@ public static class SemeadorDesenvolvimento
             return;
 
         var negocio = Negocio.Criar(Slug.Criar("acme"), "Acme Barbearia (dev)", TipoNegocio.Barbearia);
+        // Agente de IA do WhatsApp contratado (serviço premium): dev e e2e continuam como antes de existir a contratação.
+        negocio.LigarAgenteIa(OrigemAgenteIa.Manual, "semeador", DateTimeOffset.UtcNow);
         dbContext.Negocios.Add(negocio);
 
         var administrador = Usuario.Criar(

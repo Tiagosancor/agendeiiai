@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using FluentAssertions;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -10,6 +11,7 @@ using Plataforma.Aplicacao.WhatsAppAgente;
 using Plataforma.Aplicacao.WhatsAppAgente.Ia;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Negocios;
+using Plataforma.Infraestrutura.Administracao;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.Servicos;
 using Plataforma.Dominio.WhatsAppAgente;
@@ -207,13 +209,17 @@ public sealed class AmbienteAgente : IAsyncDisposable
     /// Negócio com Ana (seg–sex, 9–12 e 13–18; corte 70/60 min próprio e um serviço fora da vitrine), Beto (seg–sex 9–12;
     /// corte e barba) e Caio (inativo, com um serviço só dele), mais a instância conectada e com o agente ligado.
     /// </summary>
-    public async Task<CenarioAgente> SemearAsync(string nome = "Barbearia do Teste", string nomeCorte = "Corte", bool agenteAtivo = true)
+    public async Task<CenarioAgente> SemearAsync(
+        string nome = "Barbearia do Teste", string nomeCorte = "Corte", bool agenteAtivo = true, bool contratado = true)
     {
         using var escopo = Fabrica.Services.CreateScope();
         var db = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
 
         var slug = "ag-" + Guid.NewGuid().ToString("N")[..12];
         var negocio = Negocio.Criar(Slug.Criar(slug), nome, TipoNegocio.Barbearia);
+        // Serviço premium: o padrão dos testes é o negócio CONTRATADO (comportamento das Fases 1–3); os testes do gate passam false.
+        if (contratado)
+            negocio.LigarAgenteIa(OrigemAgenteIa.Manual, "teste", DateTimeOffset.UtcNow);
         db.Negocios.Add(negocio);
 
         var instancia = new InstanciaWhatsApp(negocio.Id, $"neg-{negocio.Id:N}");
@@ -252,6 +258,15 @@ public sealed class AmbienteAgente : IAsyncDisposable
 
         await db.SaveChangesAsync();
         return new CenarioAgente(negocio.Id, slug, instancia.NomeInstancia, ana.Id, beto.Id, caio.Id, corte.Id, barba.Id, tratamento.Id, doInativo.Id, nome);
+    }
+
+    /// <summary>Liga/desliga o serviço de IA do negócio pelo caminho real (administração da plataforma), como o dono faria.</summary>
+    public async Task ContratarAgenteIaAsync(Guid negocioId, bool contratado = true)
+    {
+        using var escopo = Fabrica.Services.CreateScope();
+        var resultado = await escopo.ServiceProvider.GetRequiredService<ServicoContratacaoAgenteIa>()
+            .DefinirAsync("plataforma:teste@teste.com", negocioId, contratado, null);
+        resultado.Should().NotBeNull();
     }
 
     // ---------------------------------------------------------------- webhook

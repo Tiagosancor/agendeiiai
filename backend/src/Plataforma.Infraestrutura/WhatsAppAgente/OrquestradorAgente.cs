@@ -31,6 +31,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
     private readonly ILogger<OrquestradorAgente> _logger;
     private readonly LimitadorUsoAgente _limitador;
     private readonly DisjuntorModeloIa _disjuntor;
+    private readonly PoliticaAgenteIa _politica;
 
     /// <summary>Consultas de ferramenta da rodada (do último modelo que rodou); viram a nota de contexto. O orquestrador é por escopo/rodada.</summary>
     private readonly List<ConsultaDaRodada> _consultasDaRodada = [];
@@ -75,8 +76,10 @@ public sealed class OrquestradorAgente : IRespostaAgente
 
     public OrquestradorAgente(
         PlataformaDbContext dbContext, IAiProvider provedor, IExecutorFerramentasAgente executor, LimitadorUsoAgente limitador,
-        DisjuntorModeloIa disjuntor, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca, ILogger<OrquestradorAgente> logger)
+        DisjuntorModeloIa disjuntor, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca, ILogger<OrquestradorAgente> logger,
+        PoliticaAgenteIa politica)
     {
+        _politica = politica;
         _disjuntor = disjuntor;
         _dbContext = dbContext;
         _provedor = provedor;
@@ -90,6 +93,17 @@ public sealed class OrquestradorAgente : IRespostaAgente
     public async Task<RespostaAgente> ResponderAsync(ContextoRespostaAgente contexto, CancellationToken cancellationToken = default)
     {
         _coleta = new ColetaRodada();
+
+        // Defesa em profundidade do serviço premium: sem a contratação (ou fora do disjuntor global) o provedor NUNCA é chamado.
+        // O processador já decide antes; isto garante 0 chamadas e 0 usos_ia mesmo se outro chamador esquecer o gate.
+        var situacao = await _politica.ObterAsync(contexto.NegocioId, cancellationToken);
+        if (!situacao.IaLiberada)
+        {
+            _logger.LogWarning("Agente: IA não liberada para o negócio {NegocioId}; nenhuma chamada ao provedor (conversa {ConversaId}).",
+                contexto.NegocioId, contexto.ConversaId);
+            return new RespostaAgente(null);
+        }
+
         var negocio = await _dbContext.Negocios.AsNoTracking().FirstOrDefaultAsync(n => n.Id == contexto.NegocioId, cancellationToken);
         if (negocio is null)
             return new RespostaAgente(null);
@@ -105,7 +119,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
         ResultadoModelo? resultado;
         try
         {
-            resultado = await ConversarAsync(contexto, negocio.NomeExibido, negocio.Fuso, link, cancellationToken);
+            resultado = await ConversarAsync(contexto, negocio.NomeExibido, negocio.Fuso, link, situacao.AgendamentoLiberado, cancellationToken);
         }
         catch (Exception excecao) when (excecao is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -132,7 +146,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
         }
 
         // Guarda de promessa falsa: o modelo não agenda nem confirma; se disse que sim sem confirmação recente, o aviso fixo corrige.
-        if (_opcoes.AgendamentoAtivoPara(contexto.NegocioId) && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
+        if (situacao.AgendamentoLiberado && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
             && !await ConfirmouRecentementeAsync(contexto.ConversaId, cancellationToken))
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
 
@@ -188,14 +202,13 @@ public sealed class OrquestradorAgente : IRespostaAgente
     /// (com as assinaturas) não passam para a reserva. Ferramentas são só leitura, então executá-las de novo é seguro.
     /// </summary>
     private async Task<ResultadoModelo?> ConversarAsync(
-        ContextoRespostaAgente contexto, string nomeNegocio, string fuso, string link, CancellationToken cancellationToken)
+        ContextoRespostaAgente contexto, string nomeNegocio, string fuso, string link, bool agendamentoLigado, CancellationToken cancellationToken)
     {
         var relogio = Stopwatch.StartNew();
         var orcamento = TimeSpan.FromSeconds(_opcoes.TempoMaximoProcessamentoSegundos);
         var agoraLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(fuso));
 
         // Agendamento ligado (Gemini + piloto + modo): prompt v2 e a ferramenta de preparar. Desligado: prompt v1 e as 3 de leitura, como na Fase 2.
-        var agendamentoLigado = _opcoes.AgendamentoAtivoPara(contexto.NegocioId);
         var prompt = agendamentoLigado
             ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link)
             : ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link);

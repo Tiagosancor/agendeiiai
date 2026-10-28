@@ -32,6 +32,7 @@ public sealed class FerramentaPrepararAgendamento : IFerramentaDeEscritaAgente
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
     private readonly IOptions<OpcoesIa> _opcoes;
+    private readonly PoliticaAgenteIa _politica;
     private readonly LimitadorUsoAgente _limitador;
     private readonly GerenciadorPendenciasAgente _pendencias;
     private readonly ILogger<FerramentaPrepararAgendamento> _logger;
@@ -39,8 +40,9 @@ public sealed class FerramentaPrepararAgendamento : IFerramentaDeEscritaAgente
     public FerramentaPrepararAgendamento(
         IConsultaCatalogoPublico catalogo, IConsultaHorariosPublicos horarios, IServicoAgendamentos agendamentos, PlataformaDbContext dbContext,
         IContextoNegocio contextoNegocio, IOptions<OpcoesIa> opcoes, LimitadorUsoAgente limitador, GerenciadorPendenciasAgente pendencias,
-        ILogger<FerramentaPrepararAgendamento> logger)
+        PoliticaAgenteIa politica, ILogger<FerramentaPrepararAgendamento> logger)
     {
+        _politica = politica;
         _catalogo = catalogo;
         _horarios = horarios;
         _agendamentos = agendamentos;
@@ -84,7 +86,7 @@ public sealed class FerramentaPrepararAgendamento : IFerramentaDeEscritaAgente
 
         // 2. Modo/piloto: o executor já não oferece a ferramenta fora dele; isto é a segunda barreira (modo desligado durante a rodada).
         var negocioId = _contextoNegocio.NegocioId!.Value;
-        if (!_opcoes.Value.AgendamentoAtivoPara(negocioId))
+        if (!(await _politica.ObterAsync(negocioId, cancellationToken)).AgendamentoLiberado)
             return Erro(ErrosFerramenta.AgendamentoIndisponivel);
 
         // O telefone vem SÓ da conversa (servidor); o modelo nunca o informa nem o recebe.

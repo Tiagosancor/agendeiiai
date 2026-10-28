@@ -4,7 +4,8 @@ namespace Plataforma.Dominio.Assinaturas;
 
 /// <summary>
 /// Faixa de preço por número de profissionais ativos (seção 7). Planos são DADOS: mudar preço
-/// ou nome é editar a tabela, nunca deploy. Todos têm os mesmos recursos — só o limite muda.
+/// ou nome é editar a tabela, nunca deploy. Os planos atuais têm os mesmos recursos — só o limite muda. O agente de IA do
+/// WhatsApp é um serviço à parte, contratado por negócio (<c>Negocio.AgenteIaContratado</c>), e não faz parte de nenhum plano.
 /// </summary>
 public class Plano : EntidadeBase
 {

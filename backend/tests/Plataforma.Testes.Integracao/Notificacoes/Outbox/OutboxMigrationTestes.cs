@@ -58,7 +58,9 @@ public sealed class OutboxMigrationTestes(PostgresContainerFixture postgres)
             // As tabelas do agente de WhatsApp vêm de uma migration POSTERIOR: descer até aqui também as remove.
             var tabelasAntes = await Consultar<string>(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_name <> 'notificacoes_pendentes' AND table_name NOT IN ('instancias_whatsapp', 'conversas_whatsapp', 'mensagens_whatsapp', 'usos_ia', 'pendencias_agendamento_whatsapp', 'rodadas_agente') ORDER BY table_name");
             var colunasAntes = await Consultar<string>(cs,
-                "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name <> 'notificacoes_pendentes' AND table_name NOT IN ('instancias_whatsapp', 'conversas_whatsapp', 'mensagens_whatsapp', 'usos_ia', 'pendencias_agendamento_whatsapp', 'rodadas_agente') ORDER BY 1");
+                "SELECT table_name || '.' || column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name <> 'notificacoes_pendentes' AND table_name NOT IN ('instancias_whatsapp', 'conversas_whatsapp', 'mensagens_whatsapp', 'usos_ia', 'pendencias_agendamento_whatsapp', 'rodadas_agente') " +
+                // As colunas do serviço premium do agente (migration AgenteIaServicoPremium, POSTERIOR) também somem no Down.
+                "AND NOT (table_name = 'negocios' AND column_name LIKE 'agente_ia_%') ORDER BY 1");
 
             // Down: volta para a migration anterior — só a tabela da outbox some.
             using (var escopo = fabrica.Services.CreateScope())
