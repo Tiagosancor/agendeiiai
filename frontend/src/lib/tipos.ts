@@ -966,3 +966,14 @@ export interface ValoresAtendimento {
   podeAjustar: boolean;
   linhas: LinhaValores[];
 }
+
+export interface ConexaoWhatsApp {
+  status: string;
+  qrCode: string | null;
+}
+
+export interface StatusWhatsApp {
+  status: string;
+  agenteAtivo: boolean;
+  telefone: string | null;
+}
