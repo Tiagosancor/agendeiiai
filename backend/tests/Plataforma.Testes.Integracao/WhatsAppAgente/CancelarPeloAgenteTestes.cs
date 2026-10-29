@@ -1395,6 +1395,96 @@ public sealed class CancelarPeloAgenteTestes : IAsyncLifetime
         (await AgendamentoAsync(antiga.AgendamentoId)).Status.Should().Be(StatusAgendamento.Reservado, "e a reserva do horário dela");
     }
 
+    // ---------------------------------------------------------------- o "sim" só vale depois do resumo ENTREGUE (revisão)
+
+    private async Task EsperarAsync(Func<Task<bool>> condicao)
+    {
+        for (var i = 0; i < 200 && !await condicao(); i++)
+            await Task.Delay(50);
+        (await condicao()).Should().BeTrue("a condição esperada não aconteceu a tempo");
+    }
+
+    [Fact]
+    public async Task Sim_que_chega_com_o_resumo_do_cancelamento_ainda_preso_no_transporte_nao_cancela_nada()
+    {
+        var c = await _ambiente.SemearAsync();
+        var id = await AgendarAsync(c, Tel, OrigemAgendamento.LinkPublico, H(10, 0));
+        var liberar = new TaskCompletionSource();
+        _ambiente.Evolution.AoEnviar = async (_, texto, ct) =>
+        {
+            if (texto.Contains("Confira o cancelamento"))
+                await liberar.Task.WaitAsync(ct);
+        };
+        Roteirizar(("preparar_cancelamento", "{}"));
+
+        var primeira = _ambiente.EnviarAsync(c, "quero cancelar");
+        await EsperarAsync(async () => (await _ambiente.MarcadoresAsync(MarcadoresAgente.GestaoResumo)).Count == 1);
+        (await PendenciasGestaoAsync()).Single().ResumoEnviadoEm.Should().BeNull("o resumo ainda não foi entregue: nada habilita o 'sim'");
+
+        // O "sim" (resposta a outra coisa) chega no intervalo entre reservar a mensagem e o envio acontecer.
+        await _ambiente.EnviarAsync(c, "sim");
+        (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Agendado);
+
+        liberar.SetResult();
+        await primeira;
+
+        (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Agendado, "o 'sim' anterior à entrega do resumo nunca cancela");
+        var pendencia = (await PendenciasGestaoAsync()).Single();
+        pendencia.Aguardando.Should().BeTrue();
+        pendencia.ResumoEnviadoEm.Should().NotBeNull("depois do envio comprovado o resumo passa a valer");
+        (await AuditoriaAsync("CancelarPeloWhatsApp")).Should().BeEmpty();
+
+        // Controle: um "sim" DEPOIS do resumo entregue cancela.
+        await _ambiente.EnviarAsync(c, "sim");
+        (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Cancelado);
+    }
+
+    [Fact]
+    public async Task Resumo_com_envio_ambiguo_nao_habilita_o_sim_e_exige_novo_resumo()
+    {
+        var c = await _ambiente.SemearAsync();
+        var id = await AgendarAsync(c, Tel, OrigemAgendamento.LinkPublico, H(10, 0));
+        _ambiente.Evolution.AoEnviar = (_, texto, _) => texto.Contains("Confira o cancelamento")
+            ? throw new FalhaEvolutionException("conexão encerrada após o envio", ambigua: true)
+            : Task.CompletedTask;
+        (await PedirCancelamentoAsync(c)).Should().BeNull();
+        (await PendenciasGestaoAsync()).Single().ResumoEnviadoEm.Should().BeNull();
+
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("Não consegui confirmar o envio; diga se quer cancelar de novo.");
+        await _ambiente.EnviarAsync(c, "sim");
+
+        (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Agendado, "sem resumo comprovadamente entregue o 'sim' não cancela");
+    }
+
+    [Fact]
+    public async Task Sim_que_chega_com_o_resumo_do_agendamento_ainda_preso_no_transporte_nao_confirma()
+    {
+        var c = await _ambiente.SemearAsync();
+        var liberar = new TaskCompletionSource();
+        _ambiente.Evolution.AoEnviar = async (_, texto, ct) =>
+        {
+            if (texto.Contains("Confira o seu agendamento"))
+                await liberar.Task.WaitAsync(ct);
+        };
+        _ambiente.Provedor.Roteiro = (_, n) => n == 1 ? Chama(("preparar_agendamento", Prepara(c, c.Ana, "10:00", "Maria Souza"))) : Texto("Certo!");
+
+        var primeira = _ambiente.EnviarAsync(c, "quero corte as 10h");
+        await EsperarAsync(async () => (await _ambiente.MarcadoresAsync(MarcadoresAgente.Resumo)).Count == 1);
+        (await _ambiente.PendenciasAsync()).Single().ResumoEnviadoEm.Should().BeNull();
+
+        await _ambiente.EnviarAsync(c, "sim");
+        (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Reservado);
+
+        liberar.SetResult();
+        await primeira;
+
+        (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Reservado, "o 'sim' anterior à entrega do resumo nunca confirma");
+        (await _ambiente.PendenciasAsync()).Single().ResumoEnviadoEm.Should().NotBeNull();
+
+        await _ambiente.EnviarAsync(c, "sim");
+        (await _ambiente.AgendamentosAsync()).Single().Status.Should().Be(StatusAgendamento.Agendado);
+    }
+
     [Fact]
     public async Task Logs_nao_levam_nome_telefone_token_nem_texto_das_mensagens()
     {

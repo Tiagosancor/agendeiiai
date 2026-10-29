@@ -736,7 +736,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
         var envio = await EnviarEGravarAsync(
             lease, conversa, instancia, texto, PapelMensagemWhatsApp.Sistema, MarcadoresAgente.GestaoResumo, cancellationToken,
-            aoReservar: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
+            aposEnvio: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
 
         if (aviso is not null && envio.Estado == EstadoEnvio.Enviado)
             await RegistrarAvisoAutomatizadoAsync(conversa.Id);
@@ -833,7 +833,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
         var envio = await EnviarEGravarAsync(
             lease, conversa, instancia, texto, PapelMensagemWhatsApp.Sistema, MarcadoresAgente.Resumo, cancellationToken,
-            aoReservar: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
+            aposEnvio: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
 
         if (aviso is not null && envio.Estado == EstadoEnvio.Enviado)
             await RegistrarAvisoAutomatizadoAsync(conversa.Id);
@@ -1043,7 +1043,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// </summary>
     private async Task<ResultadoEnvio> EnviarEGravarAsync(
         Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, string texto, PapelMensagemWhatsApp papel, string? marcador,
-        CancellationToken cancellationToken, string? textoGravado = null, Action<MensagemWhatsApp>? aoReservar = null,
+        CancellationToken cancellationToken, string? textoGravado = null, Action<MensagemWhatsApp>? aposEnvio = null,
         MensagemWhatsApp? reservaPronta = null, bool exigirAgente = true)
     {
         var restante = lease.Valor - DateTimeOffset.UtcNow - MargemEnvio;
@@ -1098,7 +1098,6 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             if (reservaPronta is null)
             {
                 _dbContext.MensagensWhatsApp.Add(reserva);
-                aoReservar?.Invoke(reserva);
                 await _dbContext.SaveChangesAsync(prazo.Token);
             }
 
@@ -1117,6 +1116,8 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
             enviou = true;
             reserva.DefinirIdExterno(id);
+            // Só agora, com o envio comprovado, o resumo habilita o "sim" (um "sim" que chegou antes disto responde a outra coisa).
+            aposEnvio?.Invoke(reserva);
             await _dbContext.SaveChangesAsync(prazo.Token);
             return new ResultadoEnvio(EstadoEnvio.Enviado, mensagemId);
         }
