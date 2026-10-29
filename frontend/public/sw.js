@@ -14,6 +14,14 @@ function ehGestaoPorToken(requisicao) {
     /^\/(?:agendamentos|api\/publico\/meus-agendamentos)\/[^/]+(?:\/|$)/.test(url.pathname);
 }
 
+function ehRequisicaoSensivel(requisicao) {
+  return ehGestaoPorToken(requisicao) || /^\/(?:painel|api|plataforma)(?:\/|$)/.test(new URL(requisicao.url).pathname);
+}
+
+function ehRecursoDoShell(url) {
+  return RECURSOS_DO_SHELL.includes(url.pathname) || /^\/(?:_next\/static|brand)(?:\/|$)/.test(url.pathname);
+}
+
 self.addEventListener("install", (evento) => {
   evento.waitUntil(
     caches.open(CACHE).then((cache) => cache.addAll(RECURSOS_DO_SHELL)).catch(() => {}),
@@ -28,25 +36,31 @@ self.addEventListener("activate", (evento) => {
     caches.keys().then((chaves) => Promise.all(chaves.map(async (chave) => {
       const cache = await caches.open(chave);
       const requisicoes = await cache.keys();
-      await Promise.all(requisicoes.filter(ehGestaoPorToken).map(requisicao => cache.delete(requisicao)));
+      await Promise.all(requisicoes.filter(requisicao => new URL(requisicao.url).origin !== self.location.origin || ehRequisicaoSensivel(requisicao)).map(requisicao => cache.delete(requisicao)));
     }))).then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener("fetch", (evento) => {
   if (evento.request.method !== "GET") return;
+  const url = new URL(evento.request.url);
+  if (url.origin !== self.location.origin) return;
 
-  if (ehGestaoPorToken(evento.request)) {
+  if (ehRequisicaoSensivel(evento.request)) {
     // Sem CacheStorage, cache HTTP ou fallback: falha de rede chega à aplicação.
     evento.respondWith(fetch(evento.request, { cache: "no-store" }));
     return;
   }
 
+  if (!ehRecursoDoShell(url)) return;
+
   evento.respondWith(
     fetch(evento.request)
       .then((resposta) => {
-        const copia = resposta.clone();
-        caches.open(CACHE).then((cache) => cache.put(evento.request, copia)).catch(() => {});
+        if (resposta.ok && !resposta.redirected) {
+          const copia = resposta.clone();
+          caches.open(CACHE).then((cache) => cache.put(evento.request, copia)).catch(() => {});
+        }
         return resposta;
       })
       .catch(() => caches.match(evento.request).then((resposta) => resposta ?? caches.match("/"))),

@@ -14,6 +14,8 @@ interface OpcoesChamada {
   corpo?: unknown;
   cabecalhos?: Record<string, string>;
   sinal?: AbortSignal;
+  /** Consulta de fundo (ex.: contador do menu): num 401 não renova a sessão, senão manter a aba aberta a prolonga para sempre. */
+  semRenovar?: boolean;
 }
 
 interface ContextoAutenticacao {
@@ -90,7 +92,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
   }, []);
 
   const chamarApi = useCallback(
-    async <T,>(caminho: string, opcoes: OpcoesChamada = {}): Promise<T> => {
+    async <T,>(caminho: string, { semRenovar, ...opcoes }: OpcoesChamada = {}): Promise<T> => {
       try {
         return await requisicaoApi<T>(caminho, { ...opcoes, tokenAcesso });
       } catch (erro) {
@@ -98,7 +100,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
         if (erro instanceof ErroApi && erro.codigo === "assinatura_suspensa" && window.location.pathname !== "/painel/assinatura") {
           roteador.push("/painel/assinatura");
         }
-        if (erro instanceof ErroApi && erro.status === 401) {
+        if (erro instanceof ErroApi && erro.status === 401 && !semRenovar) {
           const novoToken = await renovar();
           if (novoToken) {
             return await requisicaoApi<T>(caminho, { ...opcoes, tokenAcesso: novoToken });

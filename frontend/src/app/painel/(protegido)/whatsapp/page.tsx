@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { ConfiguracoesWhatsApp, UsoWhatsApp } from "@/components/painel/ConfiguracoesWhatsApp";
 import { CabecalhoCadastro } from "@/components/painel/CadastrosVisuais";
 import { classeBotaoPrimario } from "@/components/estilos";
 import { useAutenticacao } from "@/lib/auth-context";
@@ -26,13 +28,14 @@ function mensagemErro(erro: unknown) {
 export default function PaginaWhatsApp() {
   const { temPermissao } = useAutenticacao();
   if (!temPermissao("GerenciarConfiguracoesDoNegocio")) {
+    if (temPermissao("AtenderConversasWhatsApp")) return <div className="painel-cadastro painel-negocio space-y-4"><CabecalhoCadastro titulo="WhatsApp" descricao="Acompanhe e atenda as conversas do seu negócio." /><Link className={classeBotaoPrimario} href="/painel/whatsapp/conversas">Abrir conversas</Link></div>;
     return <p>Sem permissão para gerenciar a conexão do WhatsApp.</p>;
   }
   return <ConexaoDoNegocio />;
 }
 
 function ConexaoDoNegocio() {
-  const { chamarApi } = useAutenticacao();
+  const { chamarApi, temPermissao } = useAutenticacao();
   const [servico, setServico] = useState<ServicoAgenteIaPainel | null>(null);
   const [erroServico, setErroServico] = useState<string | null>(null);
   const [tentativaServico, setTentativaServico] = useState(0);
@@ -131,7 +134,7 @@ function ConexaoDoNegocio() {
         const completo = await chamarApiRef.current<StatusWhatsApp>("/painel/whatsapp/status", { sinal: abortador.signal });
         if (atual === versao.current) setStatus(completo);
       } else {
-        setStatus(anterior => ({ status: dados.status, agenteAtivo: anterior?.agenteAtivo ?? false, agenteIaContratado: anterior?.agenteIaContratado ?? servico?.contratado ?? false, telefone: null }));
+        setStatus(anterior => ({ mensagemTransferencia: anterior?.mensagemTransferencia ?? null, iaAtiva: anterior?.iaAtiva ?? false, agendamentoAtivo: anterior?.agendamentoAtivo ?? false, atendimentoHumanoAtivo: anterior?.atendimentoHumanoAtivo ?? false, gestaoModo: anterior?.gestaoModo ?? "Desligado", status: dados.status, agenteAtivo: anterior?.agenteAtivo ?? false, agenteIaContratado: anterior?.agenteIaContratado ?? servico?.contratado ?? false, telefone: null }));
         setQrCode(dados.qrCode);
         if (aguardando(dados.status) && dados.qrCode) setPrazo(anterior => anterior ?? Date.now() + 120_000);
       }
@@ -170,8 +173,9 @@ function ConexaoDoNegocio() {
   const contratado = servico?.contratado === true && status?.agenteIaContratado === true;
   const naoContratado = servico?.contratado === false || status?.agenteIaContratado === false;
   const estaConectado = conectado(status?.status);
-  return <div className="painel-cadastro painel-negocio">
+  return <div className="painel-cadastro painel-negocio space-y-4">
     <CabecalhoCadastro titulo="WhatsApp" descricao="Conecte o WhatsApp do seu negócio e controle a ativação do agente." />
+    {temPermissao("AtenderConversasWhatsApp") && <Link className={classeBotaoPrimario} href="/painel/whatsapp/conversas">Abrir conversas</Link>}
     <section className="painel-negocio-secao space-y-4" aria-label="Conexão do WhatsApp">
       <p role="status" className="font-semibold">{carregando ? "Carregando…" : estaConectado ? "Conectado" : expirou ? "O código expirou" : aguardando(status?.status) ? qrCode ? "Aguardando leitura do QR Code" : "Gere um novo QR para continuar" : status ? "Desconectado/indisponível" : erro ? "Situação desconhecida" : "Ainda não conectado"}{ocupado && estaConectado ? " — Salvando…" : ""}</p>
       {naoContratado && <p role="note" aria-live="polite">Serviço de agente de IA não contratado. Fale com o suporte para contratar.</p>}
@@ -196,5 +200,7 @@ function ConexaoDoNegocio() {
       </>}
       {erro && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{erro}</p>}
     </section>
+    {status && <ConfiguracoesWhatsApp mensagem={status.mensagemTransferencia} status={status} />}
+    <UsoWhatsApp />
   </div>;
 }

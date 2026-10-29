@@ -11,8 +11,8 @@ const OUTRO = "/api/publico/meus-agendamentos/fixture-b";
 const ICS = `${DETALHE}/ics`;
 const SLOTS = `${DETALHE}/horarios-livres?data=2026-10-09`;
 const DOCUMENTO = "/agendamentos/fixture-a";
-const ASSET = "/fixture-public.css";
-const PUBLICO = "/pagina-publica-fixture";
+const ASSET = "/brand/fixture-public.css";
+const PUBLICO = "/";
 const CACHE = "agendeiiai-shell-v1";
 const detalhe = { id: "reserva-local", nomeNegocio: "Acme", local: "Rua de teste, 10", inicio: "2026-10-05T12:00:00Z", fim: "2026-10-05T12:30:00Z", servicos: ["Corte Teste"], total: 45, status: "Agendado", fuso: "America/Sao_Paulo", acoes: { cancelar: { permitido: true }, remarcar: { permitido: true } } };
 let servidor: Server;
@@ -23,7 +23,7 @@ let falharRefresh = false;
 let posts: string[] = [];
 let leituras = 0;
 const novoSw = readFileSync(resolve("public/sw.js"), "utf8");
-const antigoSw = execFileSync("git", ["-c", "safe.directory=C:/Projetos/Agendeiiai", "show", "8b7a4390cf254fdf8e87e1ffa1e540bb4a1564c1:frontend/public/sw.js"], { cwd: resolve(".."), encoding: "utf8" });
+const antigoSw = execFileSync("git", ["-c", `safe.directory=${resolve("..").replaceAll("\\", "/")}`, "show", "8b7a4390cf254fdf8e87e1ffa1e540bb4a1564c1:frontend/public/sw.js"], { cwd: resolve(".."), encoding: "utf8" });
 
 test.use({ serviceWorkers: "allow" });
 test.beforeAll(async () => {
@@ -186,7 +186,7 @@ test("upgrade do SW real remove somente entradas sensíveis, preservando assets 
   expect(await page.evaluate(() => caches.keys())).toEqual(expect.arrayContaining([CACHE, "fixture-cache-nao-relacionado"]));
 });
 
-test("assets e página pública continuam com fallback offline", async ({ page, context }) => {
+test("assets estáticos e shell continuam com fallback offline", async ({ page, context }) => {
   await registrar(page);
   const asset = await ler(page, ASSET);
   const publico = await ler(page, PUBLICO);

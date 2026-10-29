@@ -9,6 +9,7 @@ test.use({ serviceWorkers: "block" });
 async function sessao(page: Page, permitido = true, aoRenovar?: (token: string) => void) {
   const payload = Buffer.from(JSON.stringify({ permissao: permitido ? ["GerenciarConfiguracoesDoNegocio"] : [] })).toString("base64url");
   await page.route("**/painel/whatsapp/servico-ia", route => route.fulfill({ json: { contratado: true, origem: "Manual" } }));
+  await page.route("**/painel/whatsapp/uso*", route => route.fulfill({ json: { mes: "2026-10", chamadas: 0, chamadasComFalha: 0, tokensEntrada: 0, tokensSaida: 0, cotaMensalTokens: 1500000, percentualCota: 0, chamadasHoje: 0, limiteChamadasPorDia: 250, conversasAtendidas: 0, respostasFallback: 0, agendamentosConfirmados: 0, cancelamentos: 0, remarcacoes: 0, transferenciasHumano: 0, porDia: [] } }));
   let renovacoes = 0;
   await page.route("**/painel/auth/renovar", route => {
     const token = `teste.${payload}.teste${++renovacoes}`;
@@ -61,12 +62,17 @@ test("expira em dois minutos, ignora consulta atrasada e permite novo QR", async
   await sessao(page);
   await page.clock.install();
   let consultas = 0;
+  let conectou = false;
   let liberar!: () => void;
   const pendente = new Promise<void>(resolve => { liberar = resolve; });
   await page.route("**/painel/whatsapp/{status,conectar,agente}", async route => {
-    if (route.request().url().endsWith("/conectar")) return route.fulfill({ json: { status: "connecting", qrCode: QR } });
+    if (route.request().url().endsWith("/conectar")) {
+      conectou = true;
+      return route.fulfill({ json: { status: "connecting", qrCode: QR } });
+    }
+    // A montagem pode consultar mais de uma vez em Strict Mode; conte só o polling do QR.
+    if (!conectou) return route.fulfill({ status: 404 });
     consultas++;
-    if (consultas === 1) return route.fulfill({ status: 404 });
     await pendente;
     await route.fulfill({ json: { status: "open", telefone: null, agenteIaContratado: true, agenteAtivo: true } }).catch(() => {});
   });
@@ -74,7 +80,7 @@ test("expira em dois minutos, ignora consulta atrasada e permite novo QR", async
   await page.getByRole("button", { name: "Conectar WhatsApp" }).click();
   await expect(page.getByAltText(/QR Code para conectar/)).toBeVisible();
   await page.clock.runFor(3000);
-  await expect.poll(() => consultas).toBe(2);
+  await expect.poll(() => consultas).toBe(1);
   await page.clock.runFor(117000);
   await expect(page.getByRole("status")).toHaveText("O código expirou");
   liberar();
@@ -82,6 +88,7 @@ test("expira em dois minutos, ignora consulta atrasada e permite novo QR", async
   await page.getByRole("button", { name: "Gerar novo QR" }).click();
   await expect(page.getByAltText(/QR Code para conectar/)).toBeVisible();
   await page.getByRole("link", { name: "Meu negócio", exact: true }).click();
+  await expect(page).toHaveURL(/\/painel\/negocio$/);
   const total = consultas;
   await page.clock.runFor(6000);
   expect(consultas).toBe(total);
@@ -156,6 +163,9 @@ for (const operacao of ["conectar", "agente"] as const) {
         : route.fulfill({ status: 204 });
     });
     await page.goto(`${BASE}/painel/whatsapp`);
+    await expect(page.getByRole("region", { name: "Conexão do WhatsApp" }).getByRole("status")).toHaveText(operacao === "conectar" ? "Ainda não conectado" : "Conectado");
+    const tokensIniciais = tokens.length;
+    const consultasIniciais = consultas;
     if (operacao === "conectar") {
       await page.getByRole("button", { name: "Conectar WhatsApp" }).click();
       await expect(page.getByAltText(/QR Code para conectar/)).toBeVisible();
@@ -167,9 +177,9 @@ for (const operacao of ["conectar", "agente"] as const) {
       await expect(controle).toBeEnabled();
     }
     expect(tentativas).toBe(2);
-    expect(tokens).toHaveLength(2);
-    expect(tokens[0]).not.toBe(tokens[1]);
-    expect(consultas).toBe(1);
+    expect(tokens).toHaveLength(tokensIniciais + 1);
+    expect(tokens.at(-2)).not.toBe(tokens.at(-1));
+    expect(consultas).toBe(consultasIniciais);
   });
 }
 
@@ -178,20 +188,23 @@ test("renovação durante polling preserva o prazo original do QR", async ({ pag
   await sessao(page, true, token => tokens.push(token));
   await page.clock.install();
   let consultas = 0;
+  let conectou = false;
   await page.route("**/painel/whatsapp/{status,conectar,agente}", route => {
-    if (route.request().url().endsWith("/conectar")) return route.fulfill({ json: { status: "connecting", qrCode: QR } });
+    if (route.request().url().endsWith("/conectar")) { conectou = true; return route.fulfill({ json: { status: "connecting", qrCode: QR } }); }
+    if (!conectou) return route.fulfill({ status: 404 });
     consultas++;
-    if (consultas === 1) return route.fulfill({ status: 404 });
-    if (consultas === 2) return route.fulfill({ status: 401 });
+    if (consultas === 1) return route.fulfill({ status: 401 });
     expect(route.request().headers().authorization).toBe(`Bearer ${tokens.at(-1)}`);
     return route.fulfill({ json: { status: "AguardandoQrCode", agenteIaContratado: true, agenteAtivo: false, telefone: null } });
   });
   await page.goto(`${BASE}/painel/whatsapp`);
+  await expect(page.getByRole("status")).toHaveText("Ainda não conectado");
+  const tokensIniciais = tokens.length;
   await page.getByRole("button", { name: "Conectar WhatsApp" }).click();
   await expect(page.getByAltText(/QR Code para conectar/)).toBeVisible();
   await page.clock.runFor(60000);
-  await expect.poll(() => tokens.length).toBe(2);
-  await expect.poll(() => consultas).toBeGreaterThanOrEqual(3);
+  await expect.poll(() => tokens.length).toBe(tokensIniciais + 1);
+  await expect.poll(() => consultas).toBeGreaterThanOrEqual(2);
   await page.clock.runFor(60000);
   await expect(page.getByRole("status")).toHaveText("O código expirou");
   await expect(page.getByAltText(/QR Code para conectar/)).toHaveCount(0);
@@ -211,18 +224,20 @@ test("carga inicial aguardando QR oferece gerar código sem polling cego", async
   await page.goto(`${BASE}/painel/whatsapp`);
   await expect(page.getByRole("status")).toHaveText("Gere um novo QR para continuar");
   await expect(page.getByRole("button", { name: "Gerar novo QR" })).toBeEnabled();
+  const consultasIniciais = consultas;
   await page.clock.runFor(126000);
-  expect(consultas).toBe(1);
+  expect(consultas).toBe(consultasIniciais);
 });
 
 test("Desconectada durante polling remove QR e encerra consultas", async ({ page }) => {
   await sessao(page);
   await page.clock.install();
   let consultas = 0;
+  let conectou = false;
   await page.route("**/painel/whatsapp/{status,conectar,agente}", route => {
-    if (route.request().url().endsWith("/conectar")) return route.fulfill({ json: { status: "connecting", qrCode: QR } });
+    if (route.request().url().endsWith("/conectar")) { conectou = true; return route.fulfill({ json: { status: "connecting", qrCode: QR } }); }
     consultas++;
-    return consultas === 1 ? route.fulfill({ status: 404 })
+    return !conectou ? route.fulfill({ status: 404 })
       : route.fulfill({ json: { status: "Desconectada", agenteIaContratado: true, agenteAtivo: false, telefone: null } });
   });
   await page.goto(`${BASE}/painel/whatsapp`);

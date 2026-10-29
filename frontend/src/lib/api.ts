@@ -41,6 +41,8 @@ export async function requisicaoApi<T>(caminho: string, opcoes: OpcoesRequisicao
   const resposta = await fetch(`${URL_BASE_API}${caminho}`, {
     method: opcoes.metodo ?? "GET",
     credentials: "include",
+    // Dados autenticados (incluindo exportações e conversas) não vão ao cache HTTP.
+    cache: "no-store",
     headers: {
       ...(opcoes.corpo !== undefined && !formulario ? { "Content-Type": "application/json" } : {}),
       ...(opcoes.tokenAcesso ? { Authorization: `Bearer ${opcoes.tokenAcesso}` } : {}),
