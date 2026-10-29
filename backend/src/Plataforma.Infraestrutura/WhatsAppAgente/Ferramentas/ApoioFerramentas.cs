@@ -34,6 +34,7 @@ public static class ErrosFerramenta
     public const string EscolhaNecessaria = "escolha_necessaria";
     public const string LimiteGestao = "limite_gestao";
     public const string GestaoIndisponivel = "gestao_indisponivel";
+    public const string CancelamentoNaoPermitido = "cancelamento_nao_permitido";
 
     public static string Mensagem(string codigo) => codigo switch
     {
@@ -55,7 +56,8 @@ public static class ErrosFerramenta
         AtendenteIndisponivel => "Não foi possível chamar uma pessoa agora. Envie ao cliente o link para agendar.",
         AgendamentoDesconhecido => "Não há esse agendamento neste número. Diga ao cliente que não encontrou e ofereça o link para agendar.",
         EscolhaNecessaria => "O cliente tem mais de um agendamento. Pergunte qual e chame a ferramenta de novo com agendamento_id.",
-        LimiteGestao => "Limite de links de gestão atingido. Envie ao cliente o link para agendar.",
+        LimiteGestao => "Limite de pedidos de gestão atingido. Envie ao cliente o link para agendar.",
+        CancelamentoNaoPermitido => "Este agendamento não pode ser cancelado por aqui. Explique o motivo ao cliente e ofereça o link para agendar acima ou chamar uma pessoa.",
         GestaoIndisponivel => "Não é possível ver ou alterar agendamentos por aqui agora. Envie ao cliente o link para agendar.",
         _ => "Não foi possível consultar agora.",
     };
@@ -76,6 +78,10 @@ public static class RespostaFerramenta
     /// <summary>Erro com a lista de horários alternativos (<c>HH:mm</c>, até 5, mesmo dia e profissional).</summary>
     public static JsonElement ErroComAlternativas(string codigo, IReadOnlyList<string> alternativas) =>
         De(new { erro = codigo, mensagem = ErrosFerramenta.Mensagem(codigo), alternativas });
+
+    /// <summary>Erro com um <c>motivo</c> de lista fechada (por exemplo, <c>antecedencia_minima</c> em <c>cancelamento_nao_permitido</c>).</summary>
+    public static JsonElement ErroComMotivo(string codigo, string motivo) =>
+        De(new { erro = codigo, mensagem = ErrosFerramenta.Mensagem(codigo), motivo });
 
     public static JsonElement Esquema(string json)
     {

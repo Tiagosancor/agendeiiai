@@ -167,6 +167,43 @@ public static class SanitizadorRespostaAgente
     public const string AvisoGestaoNaoEfetivada =
         "Atenção: não cancelei nem remarquei nada por aqui. Para cancelar ou remarcar, use o link de gestão do seu agendamento.";
 
+    /// <summary>Aviso fixo do modo Cancelar: o cancelamento só vale depois do SIM ao resumo do sistema.</summary>
+    public const string AvisoCancelamentoNaoEfetivado =
+        "Atenção: ainda não cancelei nada por aqui. O cancelamento só vale depois que você responde SIM ao resumo que o sistema envia.";
+
+    /// <summary>Aviso fixo quando o modelo diz que remarcou: remarcar pelo agente não existe (só o link de gestão).</summary>
+    public const string AvisoRemarcacaoNaoEfetivada =
+        "Atenção: não remarquei nada por aqui. Para remarcar, use o link de gestão do seu agendamento.";
+
+    private static readonly Regex PromessaDeRemarcacao = new(
+        @"\b(?:remarquei|remarcad[oa]s?|remarcamos)\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    private static readonly Regex PromessaDeCancelamento = new(
+        @"\b(?:cancelad[oa]s?|cancelei|cancelamos|desmarquei|desmarcad[oa]s?)\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    /// <summary>O texto afirma que algo foi REMARCADO? Sempre vale a proteção enquanto remarcar pelo agente não existe.</summary>
+    public static bool AfirmaRemarcacao(string? texto) => Casa(PromessaDeRemarcacao, texto);
+
+    /// <summary>O texto afirma que algo foi cancelado/desmarcado?</summary>
+    public static bool AfirmaCancelamento(string? texto) => Casa(PromessaDeCancelamento, texto);
+
+    private static bool Casa(Regex regex, string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+            return false;
+
+        try
+        {
+            return regex.IsMatch(SemAcento(texto));
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return true;
+        }
+    }
+
     /// <summary>O texto afirma que algo foi cancelado/remarcado/desmarcado? Heurística de palavras (sem acento também).</summary>
     public static bool AfirmaGestaoEfetivada(string? texto)
     {

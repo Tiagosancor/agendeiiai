@@ -31,6 +31,12 @@ public sealed class TextosAgendamentoAgente
         $"Olá! O atendimento automático de {ConstrutorPromptAgente.LimparNome(nomeNegocio)} não está disponível no momento. " +
         $"Para ver horários e agendar, acesse: {link}";
 
+    // Gestão (Fase 4, Fatia 7): textos do servidor para o cancelamento. Nunca nome, e-mail ou telefone do cliente.
+    public const string CancelamentoNaoEfetivado = "Tudo bem, não cancelei nada. O seu agendamento continua marcado.";
+
+    public const string CancelamentoPrazoPassou =
+        "O prazo para confirmar o cancelamento terminou e nada foi cancelado. Se ainda quiser cancelar, me diga de novo.";
+
     /// <summary>Texto gravado no lugar do link de gestão: o token nunca é persistido nem vai à IA.</summary>
     public const string LinkDeGestaoOculto = "[link de gestão enviado]";
 
@@ -134,4 +140,40 @@ public sealed class TextosAgendamentoAgente
     /// <summary>Quando nada mais pode ser feito por aqui: leva o cliente ao link público.</summary>
     public string NaoConsegui() =>
         $"Não consegui concluir o agendamento por aqui. Para agendar, acesse: {_linkPublico}";
+
+    /// <summary>Resumo do cancelamento que pede o "SIM" (o servidor o envia; o texto do modelo é descartado).</summary>
+    public string ResumoCancelamento(DadosDoAgendamentoParaTexto dados, int minutosDeValidade)
+    {
+        DiaEHora(dados.Inicio, dados.Fuso, out var dia, out var hora);
+        var negocio = Fragmento(dados.NomeNegocio, "o estabelecimento");
+        var servico = Fragmento(dados.NomeServico, "serviço");
+        var profissional = Fragmento(dados.NomeProfissional, "profissional");
+
+        return string.Join('\n',
+            $"Confira o cancelamento em {negocio}:",
+            $"- Serviço: {servico}",
+            $"- Profissional: {profissional}",
+            $"- Quando: {dia} às {hora}",
+            string.Empty,
+            $"Para CANCELAR este agendamento, responda SIM. Para manter, responda NÃO. Este pedido vale por {minutosDeValidade} minutos.");
+    }
+
+    /// <summary>O cancelamento foi gravado (o servidor anuncia; o modelo nunca).</summary>
+    public string CancelamentoEfetivado(DadosDoAgendamentoParaTexto dados)
+    {
+        DiaEHora(dados.Inicio, dados.Fuso, out var dia, out var hora);
+        var servico = Fragmento(dados.NomeServico, "serviço");
+        var profissional = Fragmento(dados.NomeProfissional, "profissional");
+
+        return $"Pronto, cancelei o seu agendamento de {servico} com {profissional}, {dia} às {hora}. Para marcar outro horário, é só me dizer ou acessar: {_linkPublico}";
+    }
+
+    /// <summary>
+    /// O servidor recusou o cancelamento na hora de efetivar. Texto neutro: não revela pagamento, quinzena nem regra interna, só que não
+    /// é possível por aqui e que o estabelecimento resolve.
+    /// </summary>
+    public string CancelamentoRecusado(Plataforma.Aplicacao.Agendamentos.MotivoRecusaGestaoAgente motivo) =>
+        motivo == Plataforma.Aplicacao.Agendamentos.MotivoRecusaGestaoAgente.AntecedenciaMinima
+            ? "Não consegui cancelar por aqui: o prazo mínimo para cancelar esse horário já passou. Fale com o estabelecimento."
+            : "Não consegui cancelar esse agendamento por aqui. Fale com o estabelecimento.";
 }

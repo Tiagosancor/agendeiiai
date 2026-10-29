@@ -58,9 +58,16 @@ public sealed class ExecutorFerramentasAgente : IExecutorFerramentasAgente
             ? _politica.Memorizada(negocioId)?.Gestao >= ModoGestaoAgente.Link
             : _opcoes?.AgendamentoAtivoPara(negocioId) == true && _opcoes.Gestao.ModoEfetivo >= ModoGestaoAgente.Link;
 
+    /// <summary>Cancelar pelo agente (Fatia 7): além da gestão ligada, o modo precisa ser <c>Cancelar</c> ou acima; sem leitura, fechado.</summary>
+    private bool CancelarLigado(Guid negocioId) =>
+        _politica is not null
+            ? _politica.Memorizada(negocioId)?.Gestao >= ModoGestaoAgente.Cancelar
+            : _opcoes?.AgendamentoAtivoPara(negocioId) == true && _opcoes.Gestao.ModoEfetivo >= ModoGestaoAgente.Cancelar;
+
     private bool Disponivel(IFerramentaAgente ferramenta, Guid negocioId) => ferramenta switch
     {
         IFerramentaDeAtendimentoHumano => HumanoLigado(negocioId),
+        IFerramentaDeCancelamentoAgente => CancelarLigado(negocioId),
         IFerramentaDeGestaoAgente => GestaoLigada(negocioId),
         IFerramentaDeEscritaAgente => EscritaLigada(negocioId),
         _ => true,

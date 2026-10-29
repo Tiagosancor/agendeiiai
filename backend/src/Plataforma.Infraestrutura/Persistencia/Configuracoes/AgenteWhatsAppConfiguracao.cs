@@ -153,6 +153,36 @@ public sealed class PendenciaAgendamentoWhatsAppConfiguracao : IEntityTypeConfig
     }
 }
 
+public sealed class PendenciaGestaoWhatsAppConfiguracao : IEntityTypeConfiguration<PendenciaGestaoWhatsApp>
+{
+    public void Configure(EntityTypeBuilder<PendenciaGestaoWhatsApp> builder)
+    {
+        builder.ToTable("pendencias_gestao_whatsapp");
+
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Property(p => p.Tipo).HasConversion<string>().HasMaxLength(20).IsRequired();
+        builder.Ignore(p => p.Aguardando);
+
+        // xmin: dois "sim" ou um "sim" e um assumir ao mesmo tempo - só a primeira transição grava.
+        builder.Property<uint>("Versao").IsRowVersion();
+
+        builder.HasOne<Negocio>().WithMany().HasForeignKey(p => p.NegocioId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ConversaWhatsApp>().WithMany().HasForeignKey(p => p.ConversaId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<Agendamento>().WithMany().HasForeignKey(p => p.AgendamentoId).OnDelete(DeleteBehavior.Restrict);
+
+        // Uma pendência de gestão aguardando por conversa (a nova substitui a anterior antes de ser criada).
+        builder.HasIndex(p => p.ConversaId).IsUnique().HasFilter("status = 'Aguardando'");
+        // Busca de pendências vencidas do job: só as abertas, que são poucas.
+        builder.HasIndex(p => new { p.ExpiraEm, p.NegocioId }).HasFilter("status = 'Aguardando'");
+        // Histórico por conversa (pendência mais recente do confirmador e contagens do dia dos limites): inclui as encerradas, que o parcial não cobre.
+        builder.HasIndex(p => new { p.NegocioId, p.ConversaId, p.CriadoEm });
+        builder.HasIndex(p => new { p.NegocioId, p.CriadoEm });
+        builder.HasIndex(p => p.AgendamentoId);
+    }
+}
+
 public sealed class AvisoAtendenteWhatsAppConfiguracao : IEntityTypeConfiguration<AvisoAtendenteWhatsApp>
 {
     public void Configure(EntityTypeBuilder<AvisoAtendenteWhatsApp> builder)

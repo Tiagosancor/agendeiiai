@@ -116,15 +116,24 @@ public sealed class GestaoPublicaAgendamento : IGestaoPublicaAgendamento
             : Temporal(agendamento, agora, $"Remarque com pelo menos {_opcoes.AntecedenciaMinimaCancelamentoHoras}h de antecedência.");
 
     /// <summary>Mesma conta que o POST sempre fez: início menos agora precisa ser ao menos a antecedência mínima.</summary>
-    private AcaoGestaoPublica Temporal(Agendamento agendamento, DateTimeOffset agora, string mensagemAntecedencia)
+    private AcaoGestaoPublica Temporal(Agendamento agendamento, DateTimeOffset agora, string mensagemAntecedencia) =>
+        MotivoTemporal(agendamento.Inicio, agora, _opcoes.AntecedenciaMinimaCancelamentoHoras) switch
+        {
+            MotivosGestaoPublica.AgendamentoPassado => AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.AgendamentoPassado, "Este horário já passou."),
+            MotivosGestaoPublica.AntecedenciaMinima => AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.AntecedenciaMinima, mensagemAntecedencia),
+            _ => AcaoGestaoPublica.Liberada,
+        };
+
+    /// <summary>
+    /// FONTE ÚNICA da regra de tempo (link público e agente de WhatsApp): início menos agora precisa ser ao menos a antecedência mínima.
+    /// Devolve o código do bloqueio (<c>agendamento_passado</c> | <c>antecedencia_minima</c>) ou nulo se está liberado.
+    /// </summary>
+    public static string? MotivoTemporal(DateTimeOffset inicio, DateTimeOffset agora, int antecedenciaMinimaHoras)
     {
-        var faltam = agendamento.Inicio - agora;
-
+        var faltam = inicio - agora;
         if (faltam < TimeSpan.Zero)
-            return AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.AgendamentoPassado, "Este horário já passou.");
+            return MotivosGestaoPublica.AgendamentoPassado;
 
-        return faltam < TimeSpan.FromHours(_opcoes.AntecedenciaMinimaCancelamentoHoras)
-            ? AcaoGestaoPublica.Bloqueada(MotivosGestaoPublica.AntecedenciaMinima, mensagemAntecedencia)
-            : AcaoGestaoPublica.Liberada;
+        return faltam < TimeSpan.FromHours(antecedenciaMinimaHoras) ? MotivosGestaoPublica.AntecedenciaMinima : null;
     }
 }

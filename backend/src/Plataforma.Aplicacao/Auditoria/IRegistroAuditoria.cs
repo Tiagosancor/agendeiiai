@@ -49,6 +49,9 @@ public static class AcoesAuditoria
     public const string ApagarConversaWhatsApp = "ApagarConversaWhatsApp";
     public const string AtenderConversaPeloAgente = "AtenderConversaPeloAgente";
 
+    /// <summary>Agendamento cancelado pelo agente depois do "SIM" do cliente (Fase 4). Autor "sistema"; detalhes sem nome nem telefone. O painel de uso conta por este nome exato.</summary>
+    public const string CancelarPeloWhatsApp = "CancelarPeloWhatsApp";
+
     /// <summary>Texto de transferência do WhatsApp alterado. Detalhes sem o conteúdo do texto (só o tamanho antes/depois).</summary>
     public const string AlterarMensagemTransferenciaWhatsApp = "AlterarMensagemTransferenciaWhatsApp";
 }

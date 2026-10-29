@@ -137,8 +137,7 @@ public sealed class OpcoesHumanoAgente
 
 /// <summary>
 /// Quanto o agente pode fazer com os agendamentos que o cliente já tem (<c>Ai__Gestao__Modo</c>). Cada degrau inclui o anterior.
-/// Hoje só <see cref="Link"/> tem efeito: <c>Cancelar</c> e <c>Completo</c> são aceitos na validação (as Fatias 7 e 8 os ativam) e
-/// se comportam como <c>Link</c> até lá.
+/// <see cref="Link"/> e <see cref="Cancelar"/> têm efeito; <c>Completo</c> é aceito na validação e vale como <c>Cancelar</c> até a Fatia 8.
 /// </summary>
 public enum ModoGestaoAgente
 {
@@ -147,12 +146,13 @@ public enum ModoGestaoAgente
     /// <summary>Lista os agendamentos do número e envia o link de gestão (a página que já existe).</summary>
     Link = 1,
 
+    /// <summary>Além do link: prepara o cancelamento (duas etapas, o servidor efetiva depois do "SIM").</summary>
     Cancelar = 2,
 
     Completo = 3,
 }
 
-/// <summary>Seção <c>Ai:Gestao</c> (<c>Ai__Gestao__Modo</c>, <c>Ai__Gestao__LimiteLinksPorTelefonePorDia</c>).</summary>
+/// <summary>Seção <c>Ai:Gestao</c> (<c>Ai__Gestao__Modo</c> e <c>Ai__Gestao__Limite*</c>).</summary>
 public sealed class OpcoesGestaoAgente
 {
     public ModoGestaoAgente Modo { get; set; } = ModoGestaoAgente.Desligado;
@@ -160,11 +160,31 @@ public sealed class OpcoesGestaoAgente
     /// <summary>Links de gestão que o servidor envia por telefone (conversa) por dia UTC (1–100).</summary>
     public int LimiteLinksPorTelefonePorDia { get; set; } = 3;
 
+    /// <summary>Pedidos de gestão preparados (pendências criadas, cancelar e remarcar) por telefone por dia UTC (1–100).</summary>
+    public int LimitePreparosPorTelefonePorDia { get; set; } = 6;
+
+    /// <summary>Cancelamentos efetivados pelo agente por telefone por dia UTC (1–100).</summary>
+    public int LimiteCancelamentosPorTelefonePorDia { get; set; } = 2;
+
+    /// <summary>Remarcações efetivadas pelo agente por telefone por dia UTC (1–100). Consumido pela Fatia 8 (remarcar).</summary>
+    public int LimiteRemarcacoesPorTelefonePorDia { get; set; } = 2;
+
+    /// <summary>Remarcações efetivadas pelo agente no total para o mesmo agendamento (1–100). Consumido pela Fatia 8 (remarcar).</summary>
+    public int LimiteRemarcacoesPorAgendamento { get; set; } = 2;
+
+    /// <summary>Operações efetivadas (cancelar + remarcar) pelo agente por negócio por dia UTC (1–1000).</summary>
+    public int LimiteOperacoesPorNegocioPorDia { get; set; } = 30;
+
     /// <summary>
-    /// O que o agente de fato faz neste momento: <c>Cancelar</c>/<c>Completo</c> ainda não têm ferramenta própria (Fatias 7 e 8),
-    /// então valem como <c>Link</c>. Fonte única para a política, o status do painel e o executor de ferramentas.
+    /// O que o agente de fato faz neste momento: <c>Completo</c> ainda não tem ferramenta de remarcar (Fatia 8), então vale como
+    /// <c>Cancelar</c>. Fonte única para a política, o status do painel e o executor de ferramentas.
     /// </summary>
-    public ModoGestaoAgente ModoEfetivo => Modo == ModoGestaoAgente.Desligado ? ModoGestaoAgente.Desligado : ModoGestaoAgente.Link;
+    public ModoGestaoAgente ModoEfetivo => Modo switch
+    {
+        ModoGestaoAgente.Desligado => ModoGestaoAgente.Desligado,
+        ModoGestaoAgente.Link => ModoGestaoAgente.Link,
+        _ => ModoGestaoAgente.Cancelar,
+    };
 }
 
 public enum ModoAgendamentoAgente
@@ -281,6 +301,11 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
         if (!Enum.IsDefined(o.Gestao.Modo))
             erros.Add("Ai__Gestao__Modo deve ser Desligado, Link, Cancelar ou Completo.");
         Faixa(erros, "Gestao.LimiteLinksPorTelefonePorDia", o.Gestao.LimiteLinksPorTelefonePorDia, 1, 100);
+        Faixa(erros, "Gestao.LimitePreparosPorTelefonePorDia", o.Gestao.LimitePreparosPorTelefonePorDia, 1, 100);
+        Faixa(erros, "Gestao.LimiteCancelamentosPorTelefonePorDia", o.Gestao.LimiteCancelamentosPorTelefonePorDia, 1, 100);
+        Faixa(erros, "Gestao.LimiteRemarcacoesPorTelefonePorDia", o.Gestao.LimiteRemarcacoesPorTelefonePorDia, 1, 100);
+        Faixa(erros, "Gestao.LimiteRemarcacoesPorAgendamento", o.Gestao.LimiteRemarcacoesPorAgendamento, 1, 100);
+        Faixa(erros, "Gestao.LimiteOperacoesPorNegocioPorDia", o.Gestao.LimiteOperacoesPorNegocioPorDia, 1, 1000);
         Faixa(erros, nameof(o.RetencaoRodadasDias), o.RetencaoRodadasDias, 7, 365);
         if (o.RetencaoMensagensDias != 0)
             Faixa(erros, nameof(o.RetencaoMensagensDias), o.RetencaoMensagensDias, 30, 730);

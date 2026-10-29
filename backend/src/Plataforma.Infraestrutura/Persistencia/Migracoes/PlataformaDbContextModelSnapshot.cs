@@ -3500,6 +3500,102 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.ToTable("pendencias_agendamento_whatsapp", (string)null);
                 });
 
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.PendenciaGestaoWhatsApp", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("AgendamentoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("agendamento_id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset?>("ConcluidaEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("concluida_em");
+
+                    b.Property<Guid?>("ConfirmacaoMensagemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("confirmacao_mensagem_id");
+
+                    b.Property<Guid>("ConversaId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversa_id");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<DateTimeOffset>("ExpiraEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_em");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<DateTimeOffset?>("NovoInicio")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("novo_inicio");
+
+                    b.Property<Guid?>("OperacaoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("operacao_id");
+
+                    b.Property<DateTimeOffset?>("ResumoEnviadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resumo_enviado_em");
+
+                    b.Property<Guid?>("ResumoMensagemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resumo_mensagem_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("tipo");
+
+                    b.Property<uint>("Versao")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_pendencias_gestao_whatsapp");
+
+                    b.HasIndex("AgendamentoId")
+                        .HasDatabaseName("ix_pendencias_gestao_whatsapp_agendamento_id");
+
+                    b.HasIndex("ConversaId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_pendencias_gestao_whatsapp_conversa_id")
+                        .HasFilter("status = 'Aguardando'");
+
+                    b.HasIndex("ExpiraEm", "NegocioId")
+                        .HasDatabaseName("ix_pendencias_gestao_whatsapp_expira_em_negocio_id")
+                        .HasFilter("status = 'Aguardando'");
+
+                    b.HasIndex("NegocioId", "CriadoEm")
+                        .HasDatabaseName("ix_pendencias_gestao_whatsapp_negocio_id_criado_em");
+
+                    b.HasIndex("NegocioId", "ConversaId", "CriadoEm")
+                        .HasDatabaseName("ix_pendencias_gestao_whatsapp_negocio_id_conversa_id_criado_em");
+
+                    b.ToTable("pendencias_gestao_whatsapp", (string)null);
+                });
+
             modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.RodadaAgente", b =>
                 {
                     b.Property<Guid>("Id")
@@ -4266,6 +4362,30 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_pendencias_agendamento_whatsapp_negocios_negocio_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.PendenciaGestaoWhatsApp", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Agendamentos.Agendamento", null)
+                        .WithMany()
+                        .HasForeignKey("AgendamentoId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_pendencias_gestao_whatsapp_agendamentos_agendamento_id");
+
+                    b.HasOne("Plataforma.Dominio.WhatsAppAgente.ConversaWhatsApp", null)
+                        .WithMany()
+                        .HasForeignKey("ConversaId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pendencias_gestao_whatsapp_conversas_whatsapp_conversa_id");
+
+                    b.HasOne("Plataforma.Dominio.Negocios.Negocio", null)
+                        .WithMany()
+                        .HasForeignKey("NegocioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_pendencias_gestao_whatsapp_negocios_negocio_id");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.RodadaAgente", b =>

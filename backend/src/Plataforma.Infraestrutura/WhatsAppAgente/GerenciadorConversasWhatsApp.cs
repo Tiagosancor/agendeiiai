@@ -223,5 +223,12 @@ public sealed class GerenciadorConversasWhatsApp : IGerenciadorConversasWhatsApp
             .Select(p => p.Id).ToListAsync(cancellationToken);
         foreach (var id in ids)
             await _pendencias.EncerrarAsync(id, DesfechoPendenciaAgente.Falhou, cancellationToken);
+
+        // Pedidos de gestão (cancelar) aguardando o "sim": o dono assumiu, então nada será efetivado (ou a confirmação ganhou a trava e é anunciada).
+        var idsGestao = await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking()
+            .Where(p => p.ConversaId == conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando)
+            .Select(p => p.Id).ToListAsync(cancellationToken);
+        foreach (var id in idsGestao)
+            await _pendencias.EncerrarGestaoAsync(id, DesfechoPendenciaAgente.Falhou, cancellationToken);
     }
 }

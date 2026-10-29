@@ -48,7 +48,54 @@ public sealed class ExpiradorPendenciasAgenteDoNegocio
             }
         }
 
+        // Pedidos de gestão (cancelar): nada a liberar, só encerra o pedido (um "sim" tardio recebe o aviso de prazo, nunca cancela).
+        var idsGestao = await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking()
+            .Where(p => p.NegocioId == negocioId && p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando && p.ExpiraEm <= agora)
+            .OrderBy(p => p.ExpiraEm).Select(p => p.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var id in idsGestao)
+        {
+            var estrategia = _dbContext.Database.CreateExecutionStrategy();
+            try
+            {
+                if (await estrategia.ExecuteAsync(() => ExpirarGestaoUmaAsync(id, agora, cancellationToken)))
+                    expiradas++;
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                _dbContext.ChangeTracker.Clear();
+            }
+        }
+
         return expiradas;
+    }
+
+    private async Task<bool> ExpirarGestaoUmaAsync(Guid id, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        _dbContext.ChangeTracker.Clear();
+        await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+        var pendencia = await _dbContext.PendenciasGestaoWhatsApp.FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        if (pendencia is null)
+        {
+            await transacao.RollbackAsync(cancellationToken);
+            return false;
+        }
+
+        await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM pendencias_gestao_whatsapp WHERE id = {id} AND negocio_id = {_contextoNegocio.NegocioId!.Value} FOR UPDATE", cancellationToken);
+        await _dbContext.Entry(pendencia).ReloadAsync(cancellationToken);
+
+        if (!pendencia.Aguardando || pendencia.ExpiraEm > agora)
+        {
+            await transacao.RollbackAsync(cancellationToken);
+            return false;
+        }
+
+        pendencia.Expirar(agora);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await transacao.CommitAsync(cancellationToken);
+        return true;
     }
 
     private async Task<bool> ExpirarUmaAsync(Guid id, DateTimeOffset agora, CancellationToken cancellationToken)

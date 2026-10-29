@@ -43,8 +43,9 @@ public static class ApoioGestaoAgente
     public const int MaximoAgendamentos = 5;
 
     /// <summary>Modo ligado para o negócio (segunda barreira: o executor já não oferece a ferramenta fora dele) e serviço contratado AGORA.</summary>
-    public static async Task<bool> GestaoDisponivelAsync(PoliticaAgenteIa politica, Guid negocioId, CancellationToken cancellationToken) =>
-        (await politica.ObterAsync(negocioId, cancellationToken)).Gestao >= ModoGestaoAgente.Link
+    public static async Task<bool> GestaoDisponivelAsync(
+        PoliticaAgenteIa politica, Guid negocioId, CancellationToken cancellationToken, ModoGestaoAgente minimo = ModoGestaoAgente.Link) =>
+        (await politica.ObterAsync(negocioId, cancellationToken)).Gestao >= minimo
         && await politica.ContratadoAgoraAsync(negocioId, cancellationToken);
 
     public static (string Data, string Hora, string DiaSemana) DataEHora(DateTimeOffset inicio, TimeZoneInfo fuso)

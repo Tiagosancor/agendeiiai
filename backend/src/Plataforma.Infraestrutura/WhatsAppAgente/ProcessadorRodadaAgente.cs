@@ -326,7 +326,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
                 // Em atendimento humano nada é respondido nem marcado (quem devolve leva o "processado até" à frente). Única exceção: uma
                 // confirmação JÁ gravada e ainda não anunciada é fato e sai mesmo assim (G12-c).
                 var anuncio = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
-                if (anuncio is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada })
+                if (anuncio is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.AnunciarGestaoEfetivada })
                     diagnostico.Desfecho = await TratarRespostaAoResumoAsync(lease, conversa, instancia, anuncio, ultima, cancellationToken);
                 return;
             }
@@ -334,6 +334,19 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             if (await RenovarLeaseAsync(lease, cancellationToken))
                 await MarcarProcessadaAsync(lease, ultima, cancellationToken);
             return;
+        }
+
+        // FATO já efetivado e ainda não anunciado (agendamento confirmado ou cancelamento feito pelo agente) é comunicado de qualquer jeito, mesmo
+        // que o "sim" tenha mais de 10 min (indisponibilidade prolongada): o descarte por idade abaixo vale só para conversa nova. Em Humano
+        // isso já foi tratado acima.
+        {
+            var fatoEfetivado = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
+            if (fatoEfetivado is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada
+                    or TipoPlanoConfirmacao.AnunciarGestaoEfetivada or TipoPlanoConfirmacao.JaAnunciadaGestao })
+            {
+                diagnostico.Desfecho = await TratarRespostaAoResumoAsync(lease, conversa, instancia, fatoEfetivado, ultima, cancellationToken);
+                return;
+            }
         }
 
         // Só responde o que é recente; o resto (ex.: pendente antes de um deploy) é dado como tratado.
@@ -353,7 +366,8 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             // Exceção D7: uma confirmação JÁ gravada e ainda não anunciada (envio que falhou, processo que caiu) continua sendo recuperada
             // mesmo com o serviço desligado — é um fato. Só esses dois tipos de plano; nova confirmação, recusa e aviso de prazo continuam barrados.
             var recuperacao = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
-            if (recuperacao is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada })
+            if (recuperacao is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada
+                or TipoPlanoConfirmacao.AnunciarGestaoEfetivada or TipoPlanoConfirmacao.JaAnunciadaGestao })
             {
                 diagnostico.Desfecho = await TratarRespostaAoResumoAsync(lease, conversa, instancia, recuperacao, ultima, cancellationToken);
                 return;
@@ -439,6 +453,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         {
             diagnostico.Desfecho = DesfechoRodadaAgente.LeasePerdido;
             await LiberarReservaDeConversaAssumidaAsync(conversa.Id, lease.Epoca, resposta.PendenciaPreparadaId);
+            await EncerrarGestaoDeConversaAssumidaAsync(conversa.Id, lease.Epoca, resposta.Acao);
             return;
         }
 
@@ -473,6 +488,18 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         {
             var estadoResumo = await EnviarResumoAsync(lease, conversa, instancia, pendenciaId, cancellationToken);
             diagnostico.Desfecho = estadoResumo switch
+            {
+                null => DesfechoRodadaAgente.Silencio,
+                EstadoEnvio.Enviado => DesfechoRodadaAgente.ResumoEnviado,
+                EstadoEnvio.Ambiguo => DesfechoRodadaAgente.EnvioAmbiguo,
+                _ => DesfechoRodadaAgente.EnvioFalhou,
+            };
+        }
+        else if (resposta.Acao is { Tipo: TipoAcaoServidor.ResumoGestao } pedidoResumoGestao)
+        {
+            // Preparou um cancelamento (Fase 4, Fatia 7): o texto do modelo é descartado e o servidor envia o resumo pedindo o "SIM".
+            var estadoGestao = await EnviarResumoGestaoAsync(lease, conversa, instancia, pedidoResumoGestao.Id, cancellationToken);
+            diagnostico.Desfecho = estadoGestao switch
             {
                 null => DesfechoRodadaAgente.Silencio,
                 EstadoEnvio.Enviado => DesfechoRodadaAgente.ResumoEnviado,
@@ -520,7 +547,8 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, PlanoConfirmacao plano, DateTimeOffset ultima, CancellationToken cancellationToken)
     {
         // Anunciar uma confirmação que já estava gravada é fato: sai mesmo que a conversa tenha ido para Humano no meio (G12-c).
-        var fatoPendente = plano.Tipo is TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada;
+        var fatoPendente = plano.Tipo is TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada
+            or TipoPlanoConfirmacao.AnunciarGestaoEfetivada or TipoPlanoConfirmacao.JaAnunciadaGestao;
         if (!await RenovarLeaseAsync(lease, cancellationToken, exigirAgente: !fatoPendente))
             return DesfechoRodadaAgente.LeasePerdido;
 
@@ -529,7 +557,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         // Se ESTA execução gravou a confirmação, quem assumiu a conversa logo depois não a impede de ser anunciada (nunca um agendamento
         // confirmado sem anúncio). Qualquer outro texto (recusa, prazo, "não consegui") exige a conversa ainda com o agente: se o
         // assumir ganhou a pendência, nada disso é enviado.
-        var fato = fatoPendente || mensagem?.Marcador == MarcadoresAgente.Confirmado;
+        var fato = fatoPendente || mensagem?.Marcador is MarcadoresAgente.Confirmado or MarcadoresAgente.GestaoEfetivada;
         if (!await RenovarLeaseAsync(lease, cancellationToken, exigirAgente: !fato))
             return DesfechoRodadaAgente.LeasePerdido;
 
@@ -543,7 +571,9 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         // do envio. Queda no meio => o lote continua pendente e a recuperação acha a pendência Confirmada sem a mensagem anunciada.
         // Ambíguo (timeout) mantém a reserva gravada (supressão: nunca duplica) e marca o lote; falha definitiva comprovada apaga a
         // reserva e deixa o lote pendente para a recuperação reenviar. Os demais textos fixos mantêm "marca antes de enviar".
-        var confirmacao = mensagem.Marcador == MarcadoresAgente.Confirmado;
+        // O mesmo vale para o cancelamento efetivado pelo agente (Fase 4, Fatia 7): o anúncio de um fato gravado não se perde.
+        var gestaoEfetivada = mensagem.Marcador == MarcadoresAgente.GestaoEfetivada;
+        var confirmacao = mensagem.Marcador == MarcadoresAgente.Confirmado || gestaoEfetivada;
         if (!confirmacao && !await MarcarProcessadaAsync(lease, ultima, cancellationToken))
             return DesfechoRodadaAgente.LeasePerdido;
 
@@ -552,7 +582,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             exigirAgente: !fato);
         var desfecho = envio.Estado switch
         {
-            EstadoEnvio.Enviado => DesfechoRodadaAgente.Confirmacao,
+            EstadoEnvio.Enviado => gestaoEfetivada ? DesfechoRodadaAgente.GestaoEfetivada : DesfechoRodadaAgente.Confirmacao,
             EstadoEnvio.Ambiguo => DesfechoRodadaAgente.EnvioAmbiguo,
             _ => DesfechoRodadaAgente.EnvioFalhou,
         };
@@ -655,6 +685,99 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         }
     }
 
+    /// <summary>
+    /// Rodada que perdeu a conversa para quem a assumiu e tinha acabado de preparar um cancelamento: o resumo nunca sairá, então o pedido
+    /// é encerrado na hora (um "sim" tardio não pode cancelar nada).
+    /// </summary>
+    private async Task EncerrarGestaoDeConversaAssumidaAsync(Guid conversaId, int epoca, AcaoServidor? acao)
+    {
+        if (acao is not { Tipo: TipoAcaoServidor.ResumoGestao } pedido)
+            return;
+
+        try
+        {
+            var assumida = await _dbContext.ConversasWhatsApp.AsNoTracking()
+                .AnyAsync(c => c.Id == conversaId && (c.Status == StatusConversaWhatsApp.Humano || c.EpocaAtendimento != epoca), CancellationToken.None);
+            if (assumida)
+                await _pendencias.EncerrarGestaoAsync(pedido.Id, DesfechoPendenciaAgente.Falhou, CancellationToken.None);
+        }
+        catch (Exception excecao) when (excecao is not OperationCanceledException)
+        {
+            _logger.LogWarning("Agente: não foi possível encerrar o pedido de gestão da conversa assumida (conversa {ConversaId}): {Tipo}.",
+                conversaId, excecao.GetType().Name);
+        }
+    }
+
+    // ---------------------------------------------------------------- resumo do cancelamento (Fase 4, Fatia 7)
+
+    /// <summary>
+    /// Envia o resumo do cancelamento montado pelo SERVIDOR (nunca pelo modelo). Gravado como <c>Sistema</c> (marcador
+    /// <c>gestao_resumo</c>) ANTES do envio, junto com o <c>ResumoEnviadoEm</c> da pendência: o "SIM" só vale para mensagens recebidas
+    /// depois dele. Falha definitiva da Evolution (ou sem prazo de lease) encerra o pedido; timeout, que é ambíguo, mantém a pendência.
+    /// </summary>
+    private async Task<EstadoEnvio?> EnviarResumoGestaoAsync(
+        Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, Guid pendenciaId, CancellationToken cancellationToken)
+    {
+        var pendencia = await _dbContext.PendenciasGestaoWhatsApp.FirstOrDefaultAsync(
+            p => p.Id == pendenciaId && p.ConversaId == conversa.Id, cancellationToken);
+        if (pendencia is null || !pendencia.Aguardando)
+            return null;
+
+        var texto = await MontarResumoCancelamentoAsync(pendencia, instancia, cancellationToken);
+        if (texto is null)
+        {
+            await _pendencias.EncerrarGestaoAsync(pendenciaId, DesfechoPendenciaAgente.Falhou, cancellationToken);
+            return null;
+        }
+
+        var aviso = await AvisoAutomatizadoPendenteAsync(conversa, instancia, cancellationToken);
+        if (aviso is not null)
+            texto = aviso + "\n\n" + texto;
+
+        var envio = await EnviarEGravarAsync(
+            lease, conversa, instancia, texto, PapelMensagemWhatsApp.Sistema, MarcadoresAgente.GestaoResumo, cancellationToken,
+            aposEnvio: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
+
+        if (aviso is not null && envio.Estado == EstadoEnvio.Enviado)
+            await RegistrarAvisoAutomatizadoAsync(conversa.Id);
+
+        if (envio.Estado is EstadoEnvio.FalhaDefinitiva or EstadoEnvio.SemPrazo)
+        {
+            // O cliente não recebeu o resumo: a mensagem reservada sai do histórico e o pedido é encerrado (um "sim" nunca cancelaria).
+            if (envio.MensagemId is { } mensagemId)
+                await _dbContext.MensagensWhatsApp.Where(m => m.Id == mensagemId).ExecuteDeleteAsync(CancellationToken.None);
+            await _pendencias.EncerrarGestaoAsync(pendenciaId, DesfechoPendenciaAgente.Falhou, CancellationToken.None);
+        }
+
+        return envio.Estado;
+    }
+
+    /// <summary>
+    /// Nulo quando o agendamento já não pode ser cancelado por este pedido (status mudou, passou, não é mais do cliente do número...):
+    /// nesse caso nenhum resumo é enviado. A decisão que vale é a da confirmação, dentro da transação.
+    /// </summary>
+    private async Task<string?> MontarResumoCancelamentoAsync(PendenciaGestaoWhatsApp pendencia, InstanciaWhatsApp instancia, CancellationToken cancellationToken)
+    {
+        var agendamento = await _dbContext.Agendamentos.AsNoTracking().Include(a => a.Servicos)
+            .FirstOrDefaultAsync(a => a.Id == pendencia.AgendamentoId, cancellationToken);
+        if (agendamento is null || agendamento.Servicos.Count == 0 || agendamento.Status != StatusAgendamento.Agendado
+            || agendamento.Inicio <= DateTimeOffset.UtcNow)
+            return null;
+
+        var profissional = await _dbContext.Profissionais.AsNoTracking().Where(p => p.Id == agendamento.ProfissionalId)
+            .Select(p => p.Nome).FirstOrDefaultAsync(cancellationToken);
+        var negocio = await _dbContext.Negocios.AsNoTracking().Where(n => n.Id == pendencia.NegocioId)
+            .Select(n => new { n.NomeExibido, n.Fuso, Slug = n.Slug.Valor }).FirstOrDefaultAsync(cancellationToken);
+        if (profissional is null || negocio is null)
+            return null;
+
+        var textos = new TextosAgendamentoAgente(ConstrutorUrlPublica.Construir(_marca, negocio.Slug, string.Empty), instancia.Telefone);
+        var dados = new DadosDoAgendamentoParaTexto(
+            negocio.NomeExibido, string.Join(", ", agendamento.Servicos.Select(s => s.Nome)), 0m, agendamento.Servicos.Sum(s => s.DuracaoMinutos),
+            profissional, agendamento.Inicio, negocio.Fuso);
+        return textos.ResumoCancelamento(dados, (int)Ferramentas.FerramentaPrepararCancelamento.Validade.TotalMinutes);
+    }
+
     // ---------------------------------------------------------------- aviso de atendimento automatizado (Fase 3)
 
     /// <summary>
@@ -710,7 +833,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
         var envio = await EnviarEGravarAsync(
             lease, conversa, instancia, texto, PapelMensagemWhatsApp.Sistema, MarcadoresAgente.Resumo, cancellationToken,
-            aoReservar: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
+            aposEnvio: reserva => pendencia.RegistrarResumoEnviado(reserva.Id, DateTimeOffset.UtcNow));
 
         if (aviso is not null && envio.Estado == EstadoEnvio.Enviado)
             await RegistrarAvisoAutomatizadoAsync(conversa.Id);
@@ -920,7 +1043,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// </summary>
     private async Task<ResultadoEnvio> EnviarEGravarAsync(
         Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, string texto, PapelMensagemWhatsApp papel, string? marcador,
-        CancellationToken cancellationToken, string? textoGravado = null, Action<MensagemWhatsApp>? aoReservar = null,
+        CancellationToken cancellationToken, string? textoGravado = null, Action<MensagemWhatsApp>? aposEnvio = null,
         MensagemWhatsApp? reservaPronta = null, bool exigirAgente = true)
     {
         var restante = lease.Valor - DateTimeOffset.UtcNow - MargemEnvio;
@@ -975,7 +1098,6 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             if (reservaPronta is null)
             {
                 _dbContext.MensagensWhatsApp.Add(reserva);
-                aoReservar?.Invoke(reserva);
                 await _dbContext.SaveChangesAsync(prazo.Token);
             }
 
@@ -994,6 +1116,8 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
             enviou = true;
             reserva.DefinirIdExterno(id);
+            // Só agora, com o envio comprovado, o resumo habilita o "sim" (um "sim" que chegou antes disto responde a outra coisa).
+            aposEnvio?.Invoke(reserva);
             await _dbContext.SaveChangesAsync(prazo.Token);
             return new ResultadoEnvio(EstadoEnvio.Enviado, mensagemId);
         }
