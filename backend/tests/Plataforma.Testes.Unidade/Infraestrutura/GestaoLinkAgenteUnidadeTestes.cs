@@ -72,14 +72,14 @@ public sealed class GestaoLinkAgenteUnidadeTestes
     // ---------------------------------------------------------------- política e validação
 
     [Fact]
-    public void A_gestao_so_vale_com_o_agendamento_liberado_e_Cancelar_Completo_valem_como_Cancelar()
+    public void A_gestao_so_vale_com_o_agendamento_liberado_e_cada_modo_tem_efeito_proprio()
     {
         OpcoesIa Opcoes(ModoGestaoAgente modo, ModoAgendamentoAgente agendamento = ModoAgendamentoAgente.Todos, ProvedorIa provedor = ProvedorIa.Gemini) =>
             new() { Provider = provedor, Agendamento = { Modo = agendamento }, Gestao = { Modo = modo } };
 
         PoliticaAgenteIa.Calcular(Opcoes(ModoGestaoAgente.Link), NegocioId, true).Gestao.Should().Be(ModoGestaoAgente.Link);
         PoliticaAgenteIa.Calcular(Opcoes(ModoGestaoAgente.Cancelar), NegocioId, true).Gestao.Should().Be(ModoGestaoAgente.Cancelar);
-        PoliticaAgenteIa.Calcular(Opcoes(ModoGestaoAgente.Completo), NegocioId, true).Gestao.Should().Be(ModoGestaoAgente.Cancelar);
+        PoliticaAgenteIa.Calcular(Opcoes(ModoGestaoAgente.Completo), NegocioId, true).Gestao.Should().Be(ModoGestaoAgente.Completo);
         PoliticaAgenteIa.Calcular(Opcoes(ModoGestaoAgente.Desligado), NegocioId, true).Gestao.Should().Be(ModoGestaoAgente.Desligado);
         // Fail-closed: sem contratação, sem agendamento ou sem Gemini a gestão nunca liga.
         PoliticaAgenteIa.Calcular(Opcoes(ModoGestaoAgente.Link), NegocioId, false).Gestao.Should().Be(ModoGestaoAgente.Desligado);

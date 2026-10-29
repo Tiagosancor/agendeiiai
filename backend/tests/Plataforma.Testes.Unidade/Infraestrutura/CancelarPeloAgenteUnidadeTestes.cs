@@ -235,11 +235,11 @@ public sealed class CancelarPeloAgenteUnidadeTestes
     // ---------------------------------------------------------------- política e validação
 
     [Fact]
-    public void Completo_vale_como_Cancelar_e_o_status_e_o_executor_usam_o_modo_efetivo()
+    public void Cada_modo_tem_efeito_proprio_e_o_status_e_o_executor_usam_o_modo_efetivo()
     {
         new OpcoesGestaoAgente { Modo = ModoGestaoAgente.Link }.ModoEfetivo.Should().Be(ModoGestaoAgente.Link);
         new OpcoesGestaoAgente { Modo = ModoGestaoAgente.Cancelar }.ModoEfetivo.Should().Be(ModoGestaoAgente.Cancelar);
-        new OpcoesGestaoAgente { Modo = ModoGestaoAgente.Completo }.ModoEfetivo.Should().Be(ModoGestaoAgente.Cancelar);
+        new OpcoesGestaoAgente { Modo = ModoGestaoAgente.Completo }.ModoEfetivo.Should().Be(ModoGestaoAgente.Completo);
         new OpcoesGestaoAgente().ModoEfetivo.Should().Be(ModoGestaoAgente.Desligado);
     }
 

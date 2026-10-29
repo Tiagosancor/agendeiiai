@@ -175,6 +175,10 @@ public static class SanitizadorRespostaAgente
     public const string AvisoRemarcacaoNaoEfetivada =
         "Atenção: não remarquei nada por aqui. Para remarcar, use o link de gestão do seu agendamento.";
 
+    /// <summary>Aviso fixo do modo Completo: a remarcação só vale depois do SIM ao resumo do sistema.</summary>
+    public const string AvisoRemarcacaoNaoEfetivadaCompleto =
+        "Atenção: ainda não remarquei nada por aqui. A remarcação só vale depois que você responde SIM ao resumo que o sistema envia.";
+
     private static readonly Regex PromessaDeRemarcacao = new(
         @"\b(?:remarquei|remarcad[oa]s?|remarcamos)\b",
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));

@@ -723,7 +723,7 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         if (pendencia is null || !pendencia.Aguardando)
             return null;
 
-        var texto = await MontarResumoCancelamentoAsync(pendencia, instancia, cancellationToken);
+        var texto = await MontarResumoGestaoAsync(pendencia, instancia, cancellationToken);
         if (texto is null)
         {
             await _pendencias.EncerrarGestaoAsync(pendenciaId, DesfechoPendenciaAgente.Falhou, cancellationToken);
@@ -756,12 +756,18 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     /// Nulo quando o agendamento já não pode ser cancelado por este pedido (status mudou, passou, não é mais do cliente do número...):
     /// nesse caso nenhum resumo é enviado. A decisão que vale é a da confirmação, dentro da transação.
     /// </summary>
-    private async Task<string?> MontarResumoCancelamentoAsync(PendenciaGestaoWhatsApp pendencia, InstanciaWhatsApp instancia, CancellationToken cancellationToken)
+    private async Task<string?> MontarResumoGestaoAsync(PendenciaGestaoWhatsApp pendencia, InstanciaWhatsApp instancia, CancellationToken cancellationToken)
     {
         var agendamento = await _dbContext.Agendamentos.AsNoTracking().Include(a => a.Servicos)
             .FirstOrDefaultAsync(a => a.Id == pendencia.AgendamentoId, cancellationToken);
         if (agendamento is null || agendamento.Servicos.Count == 0 || agendamento.Status != StatusAgendamento.Agendado
             || agendamento.Inicio <= DateTimeOffset.UtcNow)
+            return null;
+
+        // Remarcação: o resumo só sai se o agendamento continua como na hora do preparo (mesmo profissional, início e duração).
+        if (pendencia.Tipo == TipoGestaoWhatsApp.Remarcar
+            && (pendencia.NovoInicio is null || pendencia.ProfissionalId != agendamento.ProfissionalId || pendencia.InicioAnterior != agendamento.Inicio
+                || pendencia.DuracaoMinutos != agendamento.Servicos.Sum(s => s.DuracaoMinutos) || pendencia.NovoInicio <= DateTimeOffset.UtcNow))
             return null;
 
         var profissional = await _dbContext.Profissionais.AsNoTracking().Where(p => p.Id == agendamento.ProfissionalId)
@@ -775,7 +781,9 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
         var dados = new DadosDoAgendamentoParaTexto(
             negocio.NomeExibido, string.Join(", ", agendamento.Servicos.Select(s => s.Nome)), 0m, agendamento.Servicos.Sum(s => s.DuracaoMinutos),
             profissional, agendamento.Inicio, negocio.Fuso);
-        return textos.ResumoCancelamento(dados, (int)Ferramentas.FerramentaPrepararCancelamento.Validade.TotalMinutes);
+        return pendencia.Tipo == TipoGestaoWhatsApp.Remarcar
+            ? textos.ResumoRemarcacao(dados, pendencia.NovoInicio!.Value, (int)Ferramentas.FerramentaPrepararRemarcacao.Validade.TotalMinutes)
+            : textos.ResumoCancelamento(dados, (int)Ferramentas.FerramentaPrepararCancelamento.Validade.TotalMinutes);
     }
 
     // ---------------------------------------------------------------- aviso de atendimento automatizado (Fase 3)

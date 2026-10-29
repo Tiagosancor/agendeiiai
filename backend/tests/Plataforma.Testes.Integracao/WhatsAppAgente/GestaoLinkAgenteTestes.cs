@@ -525,7 +525,7 @@ public sealed class GestaoLinkAgenteTestes : IAsyncLifetime
         var c2 = await _ambiente.SemearAsync();
         var admin2 = await _ambiente.AdminAsync(c2);
         Json(await (await admin2.GetAsync("/painel/whatsapp/status")).Content.ReadAsStringAsync())
-            .GetProperty("gestaoModo").GetString().Should().Be("Cancelar", "Completo vale como Cancelar até a Fatia 8");
+            .GetProperty("gestaoModo").GetString().Should().Be("Completo");
 
         await IniciarAsync(new() { ["Ai:Gestao:Modo"] = "Desligado" });
         var c3 = await _ambiente.SemearAsync();

@@ -35,6 +35,8 @@ public static class ErrosFerramenta
     public const string LimiteGestao = "limite_gestao";
     public const string GestaoIndisponivel = "gestao_indisponivel";
     public const string CancelamentoNaoPermitido = "cancelamento_nao_permitido";
+    public const string RemarcacaoNaoPermitida = "remarcacao_nao_permitida";
+    public const string MesmoHorario = "mesmo_horario";
 
     public static string Mensagem(string codigo) => codigo switch
     {
@@ -58,6 +60,8 @@ public static class ErrosFerramenta
         EscolhaNecessaria => "O cliente tem mais de um agendamento. Pergunte qual e chame a ferramenta de novo com agendamento_id.",
         LimiteGestao => "Limite de pedidos de gestão atingido. Envie ao cliente o link para agendar.",
         CancelamentoNaoPermitido => "Este agendamento não pode ser cancelado por aqui. Explique o motivo ao cliente e ofereça o link para agendar acima ou chamar uma pessoa.",
+        RemarcacaoNaoPermitida => "Este agendamento não pode ser remarcado por aqui. Explique o motivo ao cliente e ofereça o link para agendar acima ou chamar uma pessoa.",
+        MesmoHorario => "Esse já é o horário do agendamento. Pergunte ao cliente para qual outro horário quer remarcar.",
         GestaoIndisponivel => "Não é possível ver ou alterar agendamentos por aqui agora. Envie ao cliente o link para agendar.",
         _ => "Não foi possível consultar agora.",
     };

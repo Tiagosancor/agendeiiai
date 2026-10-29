@@ -43,6 +43,11 @@ public enum TipoPlanoConfirmacao
 
     /// <summary>O cancelamento já foi anunciado (entregue ou de resultado ambíguo): só falta dar o lote como tratado, sem chamar a IA.</summary>
     JaAnunciadaGestao = 10,
+
+    // ---- Gestão (Fase 4, Fatia 8): remarcar pelo agente. Recusar, prazo e anúncio reaproveitam os planos de gestão (o texto sai pelo tipo da pendência).
+
+    /// <summary>Lote só de "sim" (lista estrita) depois do resumo da remarcação: remarca.</summary>
+    ConfirmarRemarcacao = 11,
 }
 
 public sealed record PlanoConfirmacao(TipoPlanoConfirmacao Tipo, Guid PendenciaId, Guid UltimaMensagemId);
@@ -185,13 +190,15 @@ public sealed class ConfirmadorPendenciaAgente
         ConversaWhatsApp conversa, PendenciaGestaoWhatsApp pendencia, IReadOnlyList<(Guid Id, DateTimeOffset CriadoEm)> lote,
         DateTimeOffset ultima, DateTimeOffset agora, Guid ultimaMensagemId, CancellationToken cancellationToken)
     {
-        var modoLigado = (await _politica.ObterAsync(conversa.NegocioId, cancellationToken)).Gestao >= ModoGestaoAgente.Cancelar;
+        var modo = (await _politica.ObterAsync(conversa.NegocioId, cancellationToken)).Gestao;
 
         switch (pendencia.Status)
         {
             case StatusPendenciaAgendamentoWhatsApp.Aguardando:
             {
-                if (!modoLigado || pendencia.Tipo != TipoGestaoWhatsApp.Cancelar)
+                // Cancelar vale com o modo Cancelar (ou acima); remarcar, só com Completo. Modo rebaixado: o pedido apenas expira.
+                var remarcar = pendencia.Tipo == TipoGestaoWhatsApp.Remarcar;
+                if (!ModoPermite(modo, pendencia.Tipo))
                     return null;
                 if (pendencia.ResumoEnviadoEm is not { } resumoEm || lote.Any(m => m.CriadoEm <= resumoEm))
                     return null;
@@ -200,9 +207,13 @@ public sealed class ConfirmadorPendenciaAgente
                 if (desdeOResumo is null)
                     return null;
 
-                return ClassificadorConfirmacaoAgente.ClassificarLoteCancelamento(desdeOResumo) switch
+                var resposta = remarcar
+                    ? ClassificadorConfirmacaoAgente.ClassificarLoteRemarcacao(desdeOResumo)
+                    : ClassificadorConfirmacaoAgente.ClassificarLoteCancelamento(desdeOResumo);
+                return resposta switch
                 {
-                    RespostaDoCliente.Afirmativa => new PlanoConfirmacao(TipoPlanoConfirmacao.ConfirmarCancelamento, pendencia.Id, ultimaMensagemId),
+                    RespostaDoCliente.Afirmativa => new PlanoConfirmacao(
+                        remarcar ? TipoPlanoConfirmacao.ConfirmarRemarcacao : TipoPlanoConfirmacao.ConfirmarCancelamento, pendencia.Id, ultimaMensagemId),
                     RespostaDoCliente.Negativa => new PlanoConfirmacao(TipoPlanoConfirmacao.RecusarGestao, pendencia.Id, ultimaMensagemId),
                     _ => null,
                 };
@@ -224,11 +235,15 @@ public sealed class ConfirmadorPendenciaAgente
             case StatusPendenciaAgendamentoWhatsApp.Expirada:
             {
                 // O job já expirou o pedido e o cliente responde "sim" tarde: um aviso só ("nada foi cancelado"), nunca um cancelamento.
-                if (!modoLigado || pendencia.ResumoEnviadoEm is not { } resumoEm || resumoEm < agora - JanelaDoAvisoDePrazo
+                if (!ModoPermite(modo, pendencia.Tipo) || pendencia.ResumoEnviadoEm is not { } resumoEm || resumoEm < agora - JanelaDoAvisoDePrazo
                     || lote.Any(m => m.CriadoEm <= resumoEm))
                     return null;
                 var desdeOResumo = await MensagensDesdeOResumoAsync(conversa.Id, resumoEm, ultima, cancellationToken);
-                if (desdeOResumo is null || ClassificadorConfirmacaoAgente.ClassificarLoteCancelamento(desdeOResumo) != RespostaDoCliente.Afirmativa)
+                var classificada = desdeOResumo is null ? RespostaDoCliente.Outra
+                    : pendencia.Tipo == TipoGestaoWhatsApp.Remarcar
+                        ? ClassificadorConfirmacaoAgente.ClassificarLoteRemarcacao(desdeOResumo)
+                        : ClassificadorConfirmacaoAgente.ClassificarLoteCancelamento(desdeOResumo);
+                if (classificada != RespostaDoCliente.Afirmativa)
                     return null;
 
                 var jaAvisou = await _dbContext.MensagensWhatsApp.AsNoTracking().AnyAsync(
@@ -241,6 +256,10 @@ public sealed class ConfirmadorPendenciaAgente
                 return null;
         }
     }
+
+    /// <summary>Confirmar, recusar e avisar o prazo de um pedido de gestão só valem com o modo do tipo dele ligado (rebaixou: o pedido só expira).</summary>
+    private static bool ModoPermite(ModoGestaoAgente modo, TipoGestaoWhatsApp tipo) =>
+        tipo == TipoGestaoWhatsApp.Remarcar ? modo >= ModoGestaoAgente.Completo : modo >= ModoGestaoAgente.Cancelar;
 
     /// <summary>Todas as mensagens do cliente depois do resumo e até <paramref name="ultima"/>; nulo se passam do máximo (não confirma).</summary>
     private async Task<IReadOnlyCollection<string?>?> MensagensDesdeOResumoAsync(Guid conversaId, DateTimeOffset resumoEm, DateTimeOffset ultima, CancellationToken cancellationToken)
@@ -278,19 +297,33 @@ public sealed class ConfirmadorPendenciaAgente
             case TipoPlanoConfirmacao.ConfirmarCancelamento:
                 return await ConfirmarCancelamentoAsync(plano, conversa, negocio.NomeExibido, negocio.Fuso, textos, cancellationToken);
 
+            case TipoPlanoConfirmacao.ConfirmarRemarcacao:
+                return await ConfirmarRemarcacaoAsync(plano, conversa, negocio.NomeExibido, negocio.Fuso, textos, cancellationToken);
+
             case TipoPlanoConfirmacao.RecusarGestao:
+            {
+                var remarcacao = await TipoDaGestaoAsync(plano.PendenciaId, cancellationToken) == TipoGestaoWhatsApp.Remarcar;
                 if (!await _pendencias.EncerrarGestaoAsync(plano.PendenciaId, DesfechoPendenciaAgente.Recusada, cancellationToken))
                     return null;
-                _logger.LogInformation("Agente: cancelamento recusado pelo cliente (conversa {ConversaId}, pendência {PendenciaId}).", conversa.Id, plano.PendenciaId);
-                return Fixa(TextosAgendamentoAgente.CancelamentoNaoEfetivado, MarcadoresAgente.GestaoNaoEfetivada);
+                _logger.LogInformation("Agente: {Tipo} recusado pelo cliente (conversa {ConversaId}, pendência {PendenciaId}).",
+                    remarcacao ? "remarcação" : "cancelamento", conversa.Id, plano.PendenciaId);
+                return Fixa(remarcacao ? TextosAgendamentoAgente.RemarcacaoNaoEfetivada : TextosAgendamentoAgente.CancelamentoNaoEfetivado, MarcadoresAgente.GestaoNaoEfetivada);
+            }
 
             case TipoPlanoConfirmacao.PrazoPassouGestao:
-                return Fixa(TextosAgendamentoAgente.CancelamentoPrazoPassou, MarcadoresAgente.GestaoPrazoPassou);
+                return Fixa(
+                    await TipoDaGestaoAsync(plano.PendenciaId, cancellationToken) == TipoGestaoWhatsApp.Remarcar
+                        ? TextosAgendamentoAgente.RemarcacaoPrazoPassou : TextosAgendamentoAgente.CancelamentoPrazoPassou,
+                    MarcadoresAgente.GestaoPrazoPassou);
 
             case TipoPlanoConfirmacao.AnunciarGestaoEfetivada:
             {
                 var gestao = await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().FirstOrDefaultAsync(p => p.Id == plano.PendenciaId, cancellationToken);
-                return gestao is null ? null : await MontarCancelamentoEfetivadoAsync(gestao.AgendamentoId, negocio.NomeExibido, negocio.Fuso, textos, cancellationToken);
+                if (gestao is null)
+                    return null;
+                return gestao.Tipo == TipoGestaoWhatsApp.Remarcar
+                    ? await MontarRemarcacaoEfetivadaAsync(gestao, negocio.NomeExibido, negocio.Fuso, textos, cancellationToken)
+                    : await MontarCancelamentoEfetivadoAsync(gestao.AgendamentoId, negocio.NomeExibido, negocio.Fuso, textos, cancellationToken);
             }
 
             case TipoPlanoConfirmacao.PrazoPassou:
@@ -392,6 +425,87 @@ public sealed class ConfirmadorPendenciaAgente
                 // (o próprio serviço já encerrou a pendência na mesma transação).
                 return Fixa(textos.CancelamentoRecusado(resultado.Motivo), MarcadoresAgente.GestaoNaoEfetivada);
         }
+    }
+
+    private Task<TipoGestaoWhatsApp> TipoDaGestaoAsync(Guid pendenciaId, CancellationToken cancellationToken) =>
+        _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().Where(p => p.Id == pendenciaId).Select(p => p.Tipo).FirstOrDefaultAsync(cancellationToken);
+
+    private async Task<MensagemDoServidor?> ConfirmarRemarcacaoAsync(
+        PlanoConfirmacao plano, ConversaWhatsApp conversa, string nomeNegocio, string fuso, TextosAgendamentoAgente textos, CancellationToken cancellationToken)
+    {
+        // Barreira do modo (o rebaixamento no meio de uma conversa não deixa um "sim" velho remarcar): sem efeito, a pendência expira pelo job.
+        if ((await _politica.ObterAsync(conversa.NegocioId, cancellationToken)).Gestao < ModoGestaoAgente.Completo)
+            return null;
+
+        // O telefone é o da conversa (do webhook); o modelo não participa. A operação é um Guid aleatório, nunca um instante.
+        var resultado = await _agendamentos.RemarcarPeloAgenteAsync(
+            new RemarcarPeloAgente(plano.PendenciaId, conversa.TelefoneCliente, Guid.NewGuid(), plano.UltimaMensagemId), cancellationToken);
+
+        if (resultado.Sucesso)
+        {
+            // Só quem gravou a remarcação a anuncia: o "sim" repetido e a segunda rodada ficam em silêncio.
+            if (!resultado.EfetivadaAgora)
+                return null;
+
+            var gestao = await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().FirstOrDefaultAsync(p => p.Id == plano.PendenciaId, cancellationToken);
+            if (gestao is null)
+                return null;
+
+            _logger.LogInformation("Agente: remarcação efetivada pelo cliente (conversa {ConversaId}, pendência {PendenciaId}).", conversa.Id, plano.PendenciaId);
+            return await MontarRemarcacaoEfetivadaAsync(gestao, nomeNegocio, fuso, textos, cancellationToken);
+        }
+
+        _logger.LogInformation("Agente: remarcação recusada ({Motivo}; conversa {ConversaId}, pendência {PendenciaId}).", resultado.Motivo, conversa.Id, plano.PendenciaId);
+
+        switch (resultado.Motivo)
+        {
+            case MotivoRecusaGestaoAgente.AssinaturaSuspensa:
+            case MotivoRecusaGestaoAgente.ServicoNaoContratado:
+                // Silêncio: nada gravado; o pedido expira pelo job.
+                return null;
+
+            case MotivoRecusaGestaoAgente.Expirada:
+                return Fixa(TextosAgendamentoAgente.RemarcacaoPrazoPassou, MarcadoresAgente.GestaoPrazoPassou);
+
+            case MotivoRecusaGestaoAgente.NaoEncontrada:
+                await _pendencias.EncerrarGestaoAsync(plano.PendenciaId, DesfechoPendenciaAgente.Falhou, cancellationToken);
+                return Fixa(textos.RemarcacaoRecusada(resultado.Motivo), MarcadoresAgente.GestaoNaoEfetivada);
+
+            case MotivoRecusaGestaoAgente.HorarioIndisponivel:
+                // O horário foi tomado (ou saiu da oferta): o serviço já encerrou o pedido; o texto traz horários livres do dia.
+                return Fixa(textos.RemarcacaoHorarioIndisponivel(resultado.ProximosHorariosLivres, fuso), MarcadoresAgente.GestaoNaoEfetivada);
+
+            default:
+                // Antecedência, status, agendamento alterado, vínculo perdido ou pedido já encerrado: texto neutro e nada remarcado
+                // (o próprio serviço já encerrou a pendência na mesma transação).
+                return Fixa(textos.RemarcacaoRecusada(resultado.Motivo), MarcadoresAgente.GestaoNaoEfetivada);
+        }
+    }
+
+    /// <summary>
+    /// Anúncio da remarcação gravada. O horário do texto é o <c>NovoInicio</c> da PENDÊNCIA (o que foi efetivado), não o atual do
+    /// agendamento, que pode ter mudado de novo antes de uma recuperação tardia.
+    /// </summary>
+    private async Task<MensagemDoServidor?> MontarRemarcacaoEfetivadaAsync(
+        PendenciaGestaoWhatsApp gestao, string nomeNegocio, string fuso, TextosAgendamentoAgente textos, CancellationToken cancellationToken)
+    {
+        if (gestao.NovoInicio is not { } novoInicio)
+            return null;
+
+        var agendamento = await _dbContext.Agendamentos.AsNoTracking().Include(a => a.Servicos).FirstOrDefaultAsync(a => a.Id == gestao.AgendamentoId, cancellationToken);
+        if (agendamento is null || agendamento.Servicos.Count == 0)
+            return null;
+
+        var profissional = await _dbContext.Profissionais.AsNoTracking().Where(p => p.Id == agendamento.ProfissionalId)
+            .Select(p => p.Nome).FirstOrDefaultAsync(cancellationToken);
+        if (profissional is null)
+            return null;
+
+        var dados = new DadosDoAgendamentoParaTexto(
+            nomeNegocio, string.Join(", ", agendamento.Servicos.Select(s => s.Nome)), 0m, agendamento.Servicos.Sum(s => s.DuracaoMinutos),
+            profissional, novoInicio, fuso);
+        var texto = textos.RemarcacaoEfetivada(dados);
+        return new MensagemDoServidor(texto, texto, MarcadoresAgente.GestaoEfetivada);
     }
 
     private async Task<MensagemDoServidor?> MontarCancelamentoEfetivadoAsync(

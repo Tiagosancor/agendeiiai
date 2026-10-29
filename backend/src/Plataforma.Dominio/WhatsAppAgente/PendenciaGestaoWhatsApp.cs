@@ -7,12 +7,12 @@ public enum TipoGestaoWhatsApp
     /// <summary>Cancelar um agendamento do cliente (Fase 4, Fatia 7).</summary>
     Cancelar = 1,
 
-    /// <summary>Remarcar um agendamento do cliente (Fatia 8; o tipo já existe para a tabela não mudar).</summary>
+    /// <summary>Remarcar um agendamento do cliente (Fatia 8): move o MESMO agendamento no lugar, sem segurar o novo horário.</summary>
     Remarcar = 2,
 }
 
 /// <summary>
-/// Pedido de CANCELAR (ou, na Fatia 8, remarcar) um agendamento do cliente pelo agente de WhatsApp (Fase 4). Só o servidor o efetiva,
+/// Pedido de CANCELAR ou REMARCAR (Fatia 8) um agendamento do cliente pelo agente de WhatsApp (Fase 4). Só o servidor o efetiva,
 /// depois do "SIM" do cliente ao resumo que o próprio servidor montou — o modelo só prepara. Não segura nenhum horário (diferente da
 /// pendência de agendamento): quem expira só encerra o pedido. Tabela própria de propósito: a versão anterior do código não a enxerga,
 /// então um rollback nunca trata um pedido de cancelamento como reserva a confirmar. No máximo uma <c>Aguardando</c> por conversa.
@@ -30,6 +30,16 @@ public class PendenciaGestaoWhatsApp : EntidadeBase, IEntidadeDoNegocio
 
     /// <summary>Novo horário (UTC) pedido; só na remarcação.</summary>
     public DateTimeOffset? NovoInicio { get; private set; }
+
+    /// <summary>
+    /// Retrato do que o cliente VIU no resumo da remarcação (Fatia 8): profissional, início atual e duração do agendamento. Se algum deles
+    /// mudou até o "SIM" (transferência, remarcação pelo link ou pelo painel, serviço trocado) a remarcação é recusada. Só na remarcação.
+    /// </summary>
+    public Guid? ProfissionalId { get; private set; }
+
+    public DateTimeOffset? InicioAnterior { get; private set; }
+
+    public int? DuracaoMinutos { get; private set; }
 
     public StatusPendenciaAgendamentoWhatsApp Status { get; private set; } = StatusPendenciaAgendamentoWhatsApp.Aguardando;
 
@@ -57,18 +67,23 @@ public class PendenciaGestaoWhatsApp : EntidadeBase, IEntidadeDoNegocio
 
     public PendenciaGestaoWhatsApp(
         Guid negocioId, Guid conversaId, Guid agendamentoId, TipoGestaoWhatsApp tipo, DateTimeOffset agora, DateTimeOffset expiraEm,
-        DateTimeOffset? novoInicio = null)
+        DateTimeOffset? novoInicio = null, Guid? profissionalId = null, DateTimeOffset? inicioAnterior = null, int? duracaoMinutos = null)
     {
         if (expiraEm <= agora)
             throw new ArgumentException("A pendência precisa expirar depois de criada.", nameof(expiraEm));
         if (tipo == TipoGestaoWhatsApp.Remarcar && novoInicio is null)
             throw new ArgumentException("A remarcação precisa do novo horário.", nameof(novoInicio));
+        if (tipo == TipoGestaoWhatsApp.Remarcar && (profissionalId is null || inicioAnterior is null || duracaoMinutos is null or <= 0))
+            throw new ArgumentException("A remarcação precisa do retrato do agendamento (profissional, início e duração).", nameof(profissionalId));
 
         NegocioId = negocioId;
         ConversaId = conversaId;
         AgendamentoId = agendamentoId;
         Tipo = tipo;
         NovoInicio = tipo == TipoGestaoWhatsApp.Remarcar ? novoInicio : null;
+        ProfissionalId = tipo == TipoGestaoWhatsApp.Remarcar ? profissionalId : null;
+        InicioAnterior = tipo == TipoGestaoWhatsApp.Remarcar ? inicioAnterior : null;
+        DuracaoMinutos = tipo == TipoGestaoWhatsApp.Remarcar ? duracaoMinutos : null;
         CriadoEm = agora;
         ExpiraEm = expiraEm;
     }

@@ -143,7 +143,7 @@ public sealed class GerenciadorPendenciasAgente
     /// </summary>
     public async Task<PendenciaGestaoWhatsApp?> CriarGestaoAsync(
         Guid conversaId, Guid agendamentoId, TipoGestaoWhatsApp tipo, DateTimeOffset agora, DateTimeOffset expiraEm, DateTimeOffset? novoInicio = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, Guid? profissionalId = null, DateTimeOffset? inicioAnterior = null, int? duracaoMinutos = null)
     {
         var negocioId = _contextoNegocio.NegocioId!.Value;
         PendenciaGestaoWhatsApp? criada = null;
@@ -196,7 +196,7 @@ public sealed class GerenciadorPendenciasAgente
                 // As substituições gravam antes do insert: o índice único parcial (uma Aguardando por conversa) não pode ver as duas.
                 await _dbContext.SaveChangesAsync(cancellationToken);
 
-                var nova = new PendenciaGestaoWhatsApp(negocioId, conversaId, agendamentoId, tipo, agora, expiraEm, novoInicio);
+                var nova = new PendenciaGestaoWhatsApp(negocioId, conversaId, agendamentoId, tipo, agora, expiraEm, novoInicio, profissionalId, inicioAnterior, duracaoMinutos);
                 _dbContext.PendenciasGestaoWhatsApp.Add(nova);
                 try
                 {

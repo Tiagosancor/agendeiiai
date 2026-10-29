@@ -60,6 +60,15 @@ public interface IServicoAgendamentos
     /// </summary>
     Task<ResultadoGestaoAgente> CancelarPeloAgenteAsync(CancelarPeloAgente dados, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Remarca o agendamento do cliente pelo agente de WhatsApp (Fase 4, Fatia 8) depois do "SIM" avaliado pelo servidor: move o MESMO
+    /// agendamento, no lugar (mesmo profissional), sem ter segurado o novo horário. Trava do profissional, depois pendência -> agendamento
+    /// -> cliente; revalida DENTRO da transação o vínculo com o telefone, o status, a antecedência mínima, que profissional/início/duração
+    /// continuam os do resumo e que o novo início está na oferta pública; confere forçado e a exclusion constraint (conflito devolve horários
+    /// livres). Repetir a mesma operação não duplica nada. Não toca em dinheiro, então não usa a trava de quinzenas.
+    /// </summary>
+    Task<ResultadoGestaoAgente> RemarcarPeloAgenteAsync(RemarcarPeloAgente dados, CancellationToken cancellationToken = default);
+
     /// <summary>Só para feedback imediato do botão "Aplicar" (seção 6.2.4) — não grava nada; a revalidação que vale é a de <see cref="ConfirmarReservaPublicaAsync"/>.</summary>
     Task<ResultadoPreVisualizacaoCupom> PreVisualizarCupomAsync(
         Guid agendamentoId, string codigoCupom, CancellationToken cancellationToken = default);
@@ -210,6 +219,12 @@ public enum MotivoRecusaConfirmacaoAgente
 
     /// <summary>O serviço de IA foi desligado para o negócio (relido no banco): nada é gravado e o agente fica em silêncio.</summary>
     ServicoNaoContratado,
+
+    /// <summary>Remarcação: o novo horário não está mais na oferta (alguém o tomou, forçado, bloqueio); traz horários livres.</summary>
+    HorarioIndisponivel,
+
+    /// <summary>Remarcação: o profissional, o início ou a duração do agendamento já não são os do resumo (transferência, remarcação por outro caminho).</summary>
+    AgendamentoAlterado,
 }
 
 /// <summary>
@@ -233,6 +248,9 @@ public sealed record ResultadoConfirmacaoAgente(
 /// <c>OperacaoId</c> é aleatório, criado uma vez por quem confirma e igual em todas as novas tentativas da mesma operação.
 /// </summary>
 public sealed record CancelarPeloAgente(Guid PendenciaGestaoId, string TelefoneConversa, Guid OperacaoId, Guid? MensagemConfirmacaoId = null);
+
+/// <summary>Mesma regra de <see cref="CancelarPeloAgente"/>: telefone do webhook, operação aleatória.</summary>
+public sealed record RemarcarPeloAgente(Guid PendenciaGestaoId, string TelefoneConversa, Guid OperacaoId, Guid? MensagemConfirmacaoId = null);
 
 public enum MotivoRecusaGestaoAgente
 {
@@ -267,6 +285,12 @@ public enum MotivoRecusaGestaoAgente
 
     /// <summary>O serviço de IA foi desligado para o negócio: nada é gravado e o agente fica em silêncio.</summary>
     ServicoNaoContratado,
+
+    /// <summary>Remarcação: o novo horário não está mais na oferta (alguém o tomou, forçado, bloqueio); traz horários livres.</summary>
+    HorarioIndisponivel,
+
+    /// <summary>Remarcação: o profissional, o início ou a duração do agendamento já não são os do resumo (transferência, remarcação por outro caminho).</summary>
+    AgendamentoAlterado,
 }
 
 /// <summary>
@@ -274,11 +298,13 @@ public enum MotivoRecusaGestaoAgente
 /// devolve sucesso com <c>EfetivadaAgora = false</c>.
 /// </summary>
 public sealed record ResultadoGestaoAgente(
-    bool Sucesso, bool EfetivadaAgora, MotivoRecusaGestaoAgente Motivo = MotivoRecusaGestaoAgente.Nenhum, Guid? AgendamentoId = null)
+    bool Sucesso, bool EfetivadaAgora, MotivoRecusaGestaoAgente Motivo = MotivoRecusaGestaoAgente.Nenhum, Guid? AgendamentoId = null,
+    IReadOnlyList<DateTimeOffset>? ProximosHorariosLivres = null)
 {
     public static ResultadoGestaoAgente Efetivada(Guid agendamentoId, bool agora) => new(true, agora, MotivoRecusaGestaoAgente.Nenhum, agendamentoId);
 
-    public static ResultadoGestaoAgente Recusada(MotivoRecusaGestaoAgente motivo, Guid? agendamentoId = null) => new(false, false, motivo, agendamentoId);
+    public static ResultadoGestaoAgente Recusada(MotivoRecusaGestaoAgente motivo, Guid? agendamentoId = null, IReadOnlyList<DateTimeOffset>? proximos = null) =>
+        new(false, false, motivo, agendamentoId, proximos);
 }
 
 public sealed record ConfirmarReservaPublica(
