@@ -8,11 +8,12 @@ namespace Plataforma.Api.Controllers.Painel;
 /// <summary>
 /// Atendimento humano das conversas do WhatsApp (agente, Fase 4). Sempre no negócio do token — nenhuma rota recebe negócio, e conversa
 /// de outro negócio, inexistente ou anonimizada responde 404 (igual). Lista, detalhe e resumo são só leitura; nenhum texto de conversa
-/// vai para log.
+/// vai para log. Respostas trazem texto de conversa: <c>Cache-Control: no-store</c> (nunca em cache de navegador, proxy ou CDN).
 /// </summary>
 [ApiController]
 [Route("painel/whatsapp/conversas")]
 [Authorize(Policy = nameof(Permissao.AtenderConversasWhatsApp))]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public sealed class ConversasWhatsAppController : ControllerBase
 {
     private readonly IGerenciadorConversasWhatsApp _conversas;

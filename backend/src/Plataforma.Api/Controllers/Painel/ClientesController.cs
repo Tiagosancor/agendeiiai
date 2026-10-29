@@ -49,9 +49,10 @@ public sealed class ClientesController : ControllerBase
     public async Task<IActionResult> Atualizar(Guid id, AtualizarCliente dados, CancellationToken cancellationToken) =>
         await _gerenciador.AtualizarAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
 
-    /// <summary>Exportação de dados sob demanda (LGPD, seção 8.4).</summary>
+    /// <summary>Exportação de dados sob demanda (LGPD, seção 8.4). Dado pessoal: <c>Cache-Control: no-store</c>.</summary>
     [HttpGet("{id:guid}/exportar")]
     [PermitirComAssinaturaSuspensa]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public async Task<ActionResult<ExportacaoCliente>> Exportar(Guid id, CancellationToken cancellationToken)
     {
         var exportacao = await _gerenciador.ExportarAsync(id, cancellationToken);

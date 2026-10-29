@@ -685,4 +685,44 @@ public sealed class PainelLeituraWhatsAppTestes : IAsyncLifetime
         confirmado.Origem.Should().Be("WhatsApp");
         confirmado.ReservadoAte.Should().BeNull("depois de confirmado não há mais prazo");
     }
+
+    // ---------------------------------------------------------------- cache (no-store)
+
+    /// <summary>Texto de conversa nunca pode ficar em cache de navegador, proxy ou CDN.</summary>
+    private static void AfirmarNoStore(HttpResponseMessage resposta)
+    {
+        resposta.StatusCode.Should().Be(HttpStatusCode.OK);
+        string.Join(",", resposta.Headers.GetValues("Cache-Control")).Should().Contain("no-store");
+    }
+
+    [Fact]
+    public async Task Lista_de_conversas_responde_com_no_store()
+    {
+        var c = await _ambiente.SemearAsync();
+        await _ambiente.EnviarAsync(c, SegredoTexto);
+        var admin = await LogarAsync(c);
+
+        AfirmarNoStore(await admin.GetAsync("/painel/whatsapp/conversas"));
+    }
+
+    [Fact]
+    public async Task Resumo_de_conversas_responde_com_no_store()
+    {
+        var c = await _ambiente.SemearAsync();
+        await _ambiente.EnviarAsync(c, SegredoTexto);
+        var admin = await LogarAsync(c);
+
+        AfirmarNoStore(await admin.GetAsync("/painel/whatsapp/conversas/resumo"));
+    }
+
+    [Fact]
+    public async Task Detalhe_de_conversa_responde_com_no_store()
+    {
+        var c = await _ambiente.SemearAsync();
+        await _ambiente.EnviarAsync(c, SegredoTexto);
+        var conversa = await ConversaAsync(c);
+        var admin = await LogarAsync(c);
+
+        AfirmarNoStore(await admin.GetAsync($"/painel/whatsapp/conversas/{conversa.Id}"));
+    }
 }
