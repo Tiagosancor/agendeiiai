@@ -54,6 +54,18 @@ public sealed class LgpdClienteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Exportar_cliente_responde_com_no_store_porque_traz_dado_pessoal()
+    {
+        var (cliente, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador, Permissao.GerenciarClientes);
+        var cenario = await _fabrica.CriarCenarioPadraoAsync(negocioId);
+
+        var resposta = await cliente.GetAsync($"/painel/clientes/{cenario.ClienteId}/exportar");
+
+        resposta.StatusCode.Should().Be(HttpStatusCode.OK);
+        string.Join(",", resposta.Headers.GetValues("Cache-Control")).Should().Contain("no-store");
+    }
+
+    [Fact]
     public async Task Excluir_cliente_anonimiza_sem_apagar_o_historico()
     {
         var (cliente, negocioId, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador, Permissao.GerenciarClientes);
