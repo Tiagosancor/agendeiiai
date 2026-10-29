@@ -39,11 +39,10 @@ public sealed class EmissorLinkGestaoAgente
         var linkPublico = ConstrutorUrlPublica.Construir(_marca, slug, string.Empty);
         var textos = new TextosAgendamentoAgente(linkPublico, telefoneInstancia);
 
-        // G1 refeito no envio: se deixou de ser elegível (cancelado, concluído, telefone trocado no painel...), nada de token.
-        var detalhe = await _consulta.ElegivelAsync(conversaId, agendamentoId, cancellationToken)
-            ? await _gestao.ObterAsync(agendamentoId, cancellationToken)
-            : null;
-        if (detalhe is null)
+        // G1 refeito no envio: lê o detalhe e RECONFERE o vínculo (telefone, cliente não excluído, negócio, origem, status) numa única
+        // consulta imediatamente antes de gerar o token, sem I/O externo entre a conferência e a emissão.
+        var detalhe = await _gestao.ObterAsync(agendamentoId, cancellationToken);
+        if (detalhe is null || !await _consulta.ElegivelAsync(conversaId, agendamentoId, cancellationToken))
         {
             var texto = textos.LinkIndisponivel();
             return new MensagemDoServidor(texto, texto, MarcadoresAgente.GestaoNaoEnviada);

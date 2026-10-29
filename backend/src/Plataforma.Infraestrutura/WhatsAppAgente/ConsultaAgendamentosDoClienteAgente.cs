@@ -44,26 +44,23 @@ public sealed class ConsultaAgendamentosDoClienteAgente
         if (telefoneConversa is null || !TelefoneE164.TentarCriar(telefoneConversa, out var telefone) || telefone is null)
             return [];
 
+        // Identidade e agendamento na MESMA consulta SQL: troca de telefone ou exclusão do cliente pelo painel entre duas leituras
+        // não deixa um id de cliente "velho" autorizar o resultado.
         var formas = telefone.FormasEquivalentes();
-        var clienteIds = new List<Guid>();
-        foreach (var forma in formas)
-        {
-            clienteIds.AddRange(await _dbContext.Clientes.AsNoTracking()
-                .Where(c => c.NegocioId == negocioId && !c.Excluido && c.Telefone == forma)
-                .Select(c => c.Id).ToListAsync(cancellationToken));
-        }
-
-        if (clienteIds.Count == 0)
-            return [];
+        var forma1 = formas[0];
+        var forma2 = formas.Count > 1 ? formas[1] : formas[0];
 
         var agora = DateTimeOffset.UtcNow;
         var limite = agora.AddDays(_opcoes.DiasMaximosConsulta);
-        var consulta = _dbContext.Agendamentos.AsNoTracking()
-            .Where(a => a.NegocioId == negocioId
+        var consulta =
+            from a in _dbContext.Agendamentos.AsNoTracking()
+            join c in _dbContext.Clientes.AsNoTracking() on a.ClienteId equals c.Id
+            where a.NegocioId == negocioId && c.NegocioId == negocioId
+                && !c.Excluido && (c.Telefone == forma1 || c.Telefone == forma2)
                 && a.Status == StatusAgendamento.Agendado
                 && a.Inicio > agora && a.Inicio <= limite
                 && (a.Origem == OrigemAgendamento.LinkPublico || a.Origem == OrigemAgendamento.WhatsApp)
-                && a.ClienteId != null && clienteIds.Contains(a.ClienteId.Value));
+            select a;
         if (agendamentoId is { } id)
             consulta = consulta.Where(a => a.Id == id);
 

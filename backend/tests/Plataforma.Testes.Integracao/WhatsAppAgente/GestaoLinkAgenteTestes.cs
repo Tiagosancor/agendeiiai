@@ -588,4 +588,47 @@ public sealed class GestaoLinkAgenteTestes : IAsyncLifetime
         var texto = _ambiente.UltimaEntrega()!;
         texto.Should().Contain("não cancelei nem remarquei nada").And.NotContain("/agendamentos/").And.NotContain("eyJ");
     }
+
+    [Fact]
+    public async Task Afirmacoes_simultaneas_de_agendamento_e_cancelamento_recebem_os_dois_avisos()
+    {
+        var c = await _ambiente.SemearAsync();
+
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("Cancelei o anterior e agendei outro para sexta.");
+        await _ambiente.EnviarAsync(c, "troca meu horário");
+
+        var texto = _ambiente.UltimaEntrega()!;
+        texto.Should().Contain("ainda não há agendamento feito").And.Contain("não cancelei nem remarquei nada");
+    }
+
+    [Theory]
+    [InlineData("telefone")]
+    [InlineData("excluido")]
+    public async Task Vinculo_alterado_entre_a_listagem_e_a_emissao_nao_gera_token(string alteracao)
+    {
+        var c = await _ambiente.SemearAsync();
+        var id = await AgendarAsync(c, Tel, OrigemAgendamento.LinkPublico, H(10, 0));
+        var antes = Roteirizar(("listar_meus_agendamentos", "{}"));
+        await _ambiente.EnviarAsync(c, "meus horários");
+        (await ResultadoAsync(antes)).GetProperty("agendamentos").GetArrayLength().Should().Be(1);
+        var conversa = (await _ambiente.ConversasAsync()).Single();
+
+        // O painel muda o cadastro depois de o modelo listar e antes de o servidor emitir o link.
+        await _ambiente.NoBancoAsync(async db =>
+        {
+            if (alteracao == "telefone")
+                await db.Database.ExecuteSqlRawAsync("UPDATE clientes SET telefone = '+5571911112222'");
+            else
+                await db.Database.ExecuteSqlRawAsync("UPDATE clientes SET excluido = true");
+            return 0;
+        });
+
+        using var escopo = _ambiente.Fabrica.Services.CreateScope();
+        escopo.ServiceProvider.GetRequiredService<IContextoNegocio>().Definir(c.NegocioId);
+        var mensagem = await escopo.ServiceProvider.GetRequiredService<Plataforma.Infraestrutura.WhatsAppAgente.EmissorLinkGestaoAgente>()
+            .MontarAsync(conversa.Id, id, c.Slug, null, CancellationToken.None);
+
+        mensagem.Texto.Should().NotContain("/agendamentos/");
+        mensagem.Marcador.Should().Be("gestao_nao_enviada");
+    }
 }

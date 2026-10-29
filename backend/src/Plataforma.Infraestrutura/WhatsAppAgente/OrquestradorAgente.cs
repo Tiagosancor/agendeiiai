@@ -155,8 +155,8 @@ public sealed class OrquestradorAgente : IRespostaAgente
         if (situacao.AgendamentoLiberado && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
             && !await ConfirmouRecentementeAsync(contexto.ConversaId, cancellationToken))
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
-        // Gestão (Fase 4, modo Link): o agente NUNCA cancela nem remarca; quem altera é o cliente, na página do link.
-        else if (situacao.Gestao >= ModoGestaoAgente.Link && SanitizadorRespostaAgente.AfirmaGestaoEfetivada(texto))
+        // Gestão (Fase 4, modo Link): o agente NUNCA cancela nem remarca; quem altera é o cliente, na página do link. Guarda independente da anterior ("cancelei o anterior e agendei outro" recebe os dois avisos).
+        if (situacao.Gestao >= ModoGestaoAgente.Link && SanitizadorRespostaAgente.AfirmaGestaoEfetivada(texto))
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoGestaoNaoEfetivada;
 
         return new RespostaAgente(texto, null, Telemetria(false));
