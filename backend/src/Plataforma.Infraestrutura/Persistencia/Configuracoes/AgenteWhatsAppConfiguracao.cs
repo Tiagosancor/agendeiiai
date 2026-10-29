@@ -176,6 +176,8 @@ public sealed class PendenciaGestaoWhatsAppConfiguracao : IEntityTypeConfigurati
         builder.HasIndex(p => p.ConversaId).IsUnique().HasFilter("status = 'Aguardando'");
         // Busca de pendências vencidas do job: só as abertas, que são poucas.
         builder.HasIndex(p => new { p.ExpiraEm, p.NegocioId }).HasFilter("status = 'Aguardando'");
+        // Histórico por conversa (pendência mais recente do confirmador e contagens do dia dos limites): inclui as encerradas, que o parcial não cobre.
+        builder.HasIndex(p => new { p.NegocioId, p.ConversaId, p.CriadoEm });
         builder.HasIndex(p => new { p.NegocioId, p.CriadoEm });
         builder.HasIndex(p => p.AgendamentoId);
     }

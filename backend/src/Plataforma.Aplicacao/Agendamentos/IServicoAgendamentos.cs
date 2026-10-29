@@ -158,7 +158,21 @@ public sealed record ResultadoEncaixe(ResultadoAgendamento Agendamento, Guid? Cl
 public sealed record CriarReservaPublica(Guid ProfissionalId, IReadOnlyList<Guid> ServicoIds, DateTimeOffset Inicio);
 
 /// <summary>Reserva pedida pelo agente de WhatsApp: um serviço só, no horário (UTC) que o servidor validou na oferta pública.</summary>
-public sealed record CriarReservaAgente(Guid ProfissionalId, Guid ServicoId, DateTimeOffset Inicio);
+public sealed record CriarReservaAgente(Guid ProfissionalId, Guid ServicoId, DateTimeOffset Inicio, IPreparoReservaAgente? Preparo = null);
+
+/// <summary>
+/// Trabalho da conversa que precisa acontecer NA MESMA transação da reserva do agente (Fase 4): liberar o que a conversa tinha aberto
+/// (pendência de agendamento, sua reserva e o pedido de gestão) e registrar a nova pendência. Se a reserva falhar por qualquer motivo
+/// (conflito, exclusion constraint, erro), a transação inteira desfaz e nada do que a conversa tinha aberto é perdido.
+/// </summary>
+public interface IPreparoReservaAgente
+{
+    /// <summary>Roda dentro da transação, já com a trava do profissional e ANTES de inserir a reserva (libera o horário que a conversa segurava).</summary>
+    Task AntesDeInserirAsync(CancellationToken cancellationToken);
+
+    /// <summary>Roda dentro da transação, com a reserva já adicionada ao contexto; só adiciona a nova pendência (o <c>SaveChanges</c> é de quem chama).</summary>
+    void DepoisDeAdicionar(Guid agendamentoId, DateTimeOffset reservadoAte);
+}
 
 /// <summary>
 /// <c>TelefoneConversa</c> é o número do webhook (nunca do modelo) e precisa ser o da conversa dona da pendência.

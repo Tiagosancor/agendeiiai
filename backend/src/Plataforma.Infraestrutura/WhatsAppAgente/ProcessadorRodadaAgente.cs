@@ -336,6 +336,19 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
             return;
         }
 
+        // FATO já efetivado e ainda não anunciado (agendamento confirmado ou cancelamento feito pelo agente) é comunicado de qualquer jeito, mesmo
+        // que o "sim" tenha mais de 10 min (indisponibilidade prolongada): o descarte por idade abaixo vale só para conversa nova. Em Humano
+        // isso já foi tratado acima.
+        {
+            var fatoEfetivado = await _confirmador.PlanejarAsync(conversa, ultima, agora, cancellationToken);
+            if (fatoEfetivado is { Tipo: TipoPlanoConfirmacao.AnunciarConfirmada or TipoPlanoConfirmacao.JaAnunciada
+                    or TipoPlanoConfirmacao.AnunciarGestaoEfetivada or TipoPlanoConfirmacao.JaAnunciadaGestao })
+            {
+                diagnostico.Desfecho = await TratarRespostaAoResumoAsync(lease, conversa, instancia, fatoEfetivado, ultima, cancellationToken);
+                return;
+            }
+        }
+
         // Só responde o que é recente; o resto (ex.: pendente antes de um deploy) é dado como tratado.
         // Se a mais recente já é velha, todas as pendentes são.
         if (maisRecente.CriadoEm < agora - IdadeMaximaParaResponder)

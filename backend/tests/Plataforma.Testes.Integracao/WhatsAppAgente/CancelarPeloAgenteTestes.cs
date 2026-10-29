@@ -12,6 +12,7 @@ using Plataforma.Dominio.Clientes;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Financeiro;
 using Plataforma.Dominio.WhatsAppAgente;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Plataforma.Infraestrutura.Opcoes;
 using Plataforma.Dominio.Comissoes;
@@ -1182,12 +1183,12 @@ public sealed class CancelarPeloAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Depois_de_um_cancelamento_real_o_modelo_pode_falar_em_cancelado_sem_o_aviso()
+    public async Task Depois_de_um_cancelamento_real_o_modelo_pode_citar_aquele_cancelamento_sem_o_aviso()
     {
         var (c, id, _) = await PreparadoAsync();
         await _ambiente.EnviarAsync(c, "sim");
         (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Cancelado);
-        _ambiente.Provedor.Roteiro = (_, _) => Texto("Como seu agendamento foi cancelado, posso marcar outro horário?");
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("Como o seu agendamento das 10:00 foi cancelado, posso marcar outro horário?");
 
         await _ambiente.EnviarAsync(c, "obrigado");
 
@@ -1204,6 +1205,194 @@ public sealed class CancelarPeloAgenteTestes : IAsyncLifetime
         var resumo = Resumos().Should().ContainSingle().Subject;
         resumo.Should().NotContain("golpe.com").And.NotContain("71988887777");
         (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Agendado);
+    }
+
+    [Fact]
+    public async Task Depois_de_um_cancelamento_real_o_modelo_ainda_leva_aviso_se_diz_remarquei_ou_cita_outro_horario()
+    {
+        var (c, id, _) = await PreparadoAsync();
+        await _ambiente.EnviarAsync(c, "sim");
+        (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Cancelado);
+
+        // Remarcar pelo agente não existe: a proteção fica ligada mesmo com um cancelamento real há pouco.
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("Cancelado! E já remarquei o seu outro horário para sexta.");
+        await _ambiente.EnviarAsync(c, "e o outro?");
+        _ambiente.UltimaEntrega().Should().Contain(SanitizadorRespostaAgente.AvisoRemarcacaoNaoEfetivada);
+
+        // Afirmar um cancelamento que o servidor NÃO fez (outro horário) também leva o aviso.
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("Pronto, cancelei também o das 15:30.");
+        await _ambiente.EnviarAsync(c, "cancela o das 15:30 também");
+        _ambiente.UltimaEntrega().Should().Contain(SanitizadorRespostaAgente.AvisoCancelamentoNaoEfetivado)
+            .And.NotContain(SanitizadorRespostaAgente.AvisoRemarcacaoNaoEfetivada);
+    }
+
+    // ---------------------------------------------------------------- recuperação do anúncio de fato efetivado
+
+    private async Task<(CenarioAgente C, Guid Agendamento, Guid Conversa)> CanceladoSemAnuncioAsync()
+    {
+        var (c, id, pendencia) = await PreparadoSemFilaAsync();
+        await _ambiente.EnviarAsync(c, "sim");
+        var mensagemSim = await IdDaMensagemDoClienteAsync("sim");
+        using (var escopo = Escopo(c.NegocioId))
+            (await escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>()
+                .CancelarPeloAgenteAsync(new CancelarPeloAgente(pendencia.Id, TelComMais, Guid.NewGuid(), mensagemSim))).EfetivadaAgora.Should().BeTrue();
+        return (c, id, (await _ambiente.ConversasAsync()).Single().Id);
+    }
+
+    private async Task<IReadOnlyList<Guid>> PendentesDaVarreduraAsync()
+    {
+        using var escopo = _ambiente.Fabrica.Services.CreateScope();
+        return await escopo.ServiceProvider.GetRequiredService<RecuperadorRespostasAgente>().ListarPendentesAsync(DateTimeOffset.UtcNow, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task A_varredura_recupera_o_anuncio_com_a_conversa_em_Humano_e_a_rodada_anuncia_uma_vez()
+    {
+        var (c, _, conversa) = await CanceladoSemAnuncioAsync();
+        using (var escopo = Escopo(c.NegocioId))
+            await escopo.ServiceProvider.GetRequiredService<IGerenciadorConversasWhatsApp>().AssumirAsync(conversa);
+
+        (await PendentesDaVarreduraAsync()).Should().Contain(conversa, "fato efetivado e não anunciado entra mesmo em atendimento humano");
+
+        // Pela fila real: a varredura enfileira e o consumidor processa.
+        var fila = new FilaRespostaAgenteEmMemoria(NullLogger<FilaRespostaAgenteEmMemoria>.Instance);
+        var processador = new ProcessadorFilaAgente(fila, _ambiente.Fabrica.Services.GetRequiredService<IServiceScopeFactory>(), NullLogger<ProcessadorFilaAgente>.Instance);
+        await processador.RecuperarAsync(CancellationToken.None);
+        fila.Leitor.TryRead(out var enfileirada).Should().BeTrue();
+        enfileirada.Should().Be(conversa);
+        await _ambiente.ProcessarConversaAsync();
+
+        _ambiente.Evolution.Envios.Count(e => e.Texto.Contains("Pronto, cancelei")).Should().Be(1);
+        (await PendentesDaVarreduraAsync()).Should().NotContain(conversa, "depois de anunciado não volta");
+        await _ambiente.ProcessarConversaAsync();
+        _ambiente.Evolution.Envios.Count(e => e.Texto.Contains("Pronto, cancelei")).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_varredura_recupera_o_anuncio_mesmo_depois_de_mais_de_10_minutos_de_indisponibilidade()
+    {
+        var (c, id, conversa) = await CanceladoSemAnuncioAsync();
+        // O "sim" tem 20 min: para uma conversa nova seria descartado como antigo; para um fato efetivado, não.
+        await SqlAsync("UPDATE mensagens_whatsapp SET criado_em = now() - interval '20 minutes' WHERE conteudo = 'sim'; "
+            + "UPDATE conversas_whatsapp SET processada_ate = now() - interval '30 minutes'");
+        var chamadas = _ambiente.Provedor.Chamadas;
+
+        (await PendentesDaVarreduraAsync()).Should().Contain(conversa);
+        await _ambiente.ProcessarConversaAsync();
+
+        _ambiente.Evolution.Envios.Count(e => e.Texto.Contains("Pronto, cancelei")).Should().Be(1);
+        (await _ambiente.MarcadoresAsync(MarcadoresAgente.GestaoEfetivada)).Should().ContainSingle();
+        _ambiente.Provedor.Chamadas.Should().Be(chamadas);
+        (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Cancelado);
+        c.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Mensagem_nova_antiga_continua_descartada_sem_resposta()
+    {
+        await IniciarAsync(fila: typeof(FilaQuePerde));
+        var c = await _ambiente.SemearAsync();
+        _ambiente.Provedor.Roteiro = (_, _) => Texto("não deveria sair");
+        await _ambiente.EnviarAsync(c, "oi, tudo bem?");
+        await SqlAsync("UPDATE mensagens_whatsapp SET criado_em = now() - interval '20 minutes'");
+
+        await _ambiente.ProcessarConversaAsync();
+
+        _ambiente.Evolution.Envios.Should().BeEmpty("resposta atrasada de conversa nova confunde: segue descartada");
+        _ambiente.Provedor.Chamadas.Should().Be(0);
+    }
+
+    // ---------------------------------------------------------------- preparar_agendamento atômico (reserva + pendência + substituição)
+
+    private sealed class PreparoDuplo : IPreparoReservaAgente
+    {
+        private readonly IPreparoReservaAgente _real;
+
+        public PreparoDuplo(IPreparoReservaAgente real) => _real = real;
+
+        public Func<Task>? AposAntes { get; set; }
+
+        public bool FalharDepoisDeAdicionar { get; set; }
+
+        public async Task AntesDeInserirAsync(CancellationToken cancellationToken)
+        {
+            await _real.AntesDeInserirAsync(cancellationToken);
+            if (AposAntes is not null)
+                await AposAntes();
+        }
+
+        public void DepoisDeAdicionar(Guid agendamentoId, DateTimeOffset reservadoAte)
+        {
+            _real.DepoisDeAdicionar(agendamentoId, reservadoAte);
+            if (FalharDepoisDeAdicionar)
+                throw new InvalidOperationException("falha simulada depois de montar a pendência");
+        }
+    }
+
+    private async Task<ResultadoAgendamento> ReservarComPreparoAsync(CenarioAgente c, Guid conversa, Func<PreparoDuplo, Task>? ajustar = null, bool falhar = false)
+    {
+        using var escopo = Escopo(c.NegocioId);
+        var db = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
+        var duplo = new PreparoDuplo(new PreparoReservaAgente(db, c.NegocioId, conversa, "Maria Souza")) { FalharDepoisDeAdicionar = falhar };
+        if (ajustar is not null)
+            await ajustar(duplo);
+        return await escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>()
+            .CriarReservaAgenteAsync(new CriarReservaAgente(c.Ana, c.Corte, H(11, 0), duplo));
+    }
+
+    [Fact]
+    public async Task Falha_depois_de_montar_a_pendencia_desfaz_tudo_e_o_cancelamento_continua_aguardando()
+    {
+        var (c, id, pendencia) = await PreparadoAsync();
+        var conversa = (await _ambiente.ConversasAsync()).Single().Id;
+        var reservasAntes = (await _ambiente.AgendamentosAsync()).Count;
+
+        var acao = () => ReservarComPreparoAsync(c, conversa, falhar: true);
+        await acao.Should().ThrowAsync<InvalidOperationException>();
+
+        (await PendenciasGestaoAsync()).Single(p => p.Id == pendencia.Id).Aguardando.Should().BeTrue("o rollback devolve o pedido de cancelamento");
+        (await _ambiente.PendenciasAsync()).Should().BeEmpty();
+        (await _ambiente.AgendamentosAsync()).Should().HaveCount(reservasAntes);
+        (await AgendamentoAsync(id)).Status.Should().Be(StatusAgendamento.Agendado);
+    }
+
+    [Fact]
+    public async Task Conflito_de_horario_na_transacao_desfaz_tudo_e_a_pendencia_e_a_reserva_antigas_continuam()
+    {
+        var (c, _, pendencia) = await PreparadoAsync();
+        var conversa = (await _ambiente.ConversasAsync()).Single().Id;
+
+        // Perde a corrida: alguém ocupa as 11:00 de Ana depois da checagem de disponibilidade e antes do insert.
+        var resultado = await ReservarComPreparoAsync(c, conversa, duplo =>
+        {
+            duplo.AposAntes = async () => await AgendarAsync(c, Tel2, OrigemAgendamento.Painel, H(11, 0));
+            return Task.CompletedTask;
+        });
+
+        resultado.Sucesso.Should().BeFalse();
+        resultado.Conflito.Should().BeTrue();
+        (await PendenciasGestaoAsync()).Single(p => p.Id == pendencia.Id).Aguardando.Should().BeTrue();
+        (await _ambiente.PendenciasAsync()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Conflito_na_troca_de_reserva_mantem_a_reserva_anterior_e_a_pendencia_aguardando()
+    {
+        var c = await _ambiente.SemearAsync();
+        (await _ambiente.PrepararAsync(c, Prepara(c, c.Ana, "14:00", "Maria Souza"))).Should().BeNull();
+        var antiga = (await _ambiente.PendenciasAsync()).Single();
+        var conversa = (await _ambiente.ConversasAsync()).Single().Id;
+
+        var resultado = await ReservarComPreparoAsync(c, conversa, duplo =>
+        {
+            duplo.AposAntes = async () => await AgendarAsync(c, Tel2, OrigemAgendamento.Painel, H(11, 0));
+            return Task.CompletedTask;
+        });
+
+        resultado.Conflito.Should().BeTrue();
+        var depois = (await _ambiente.PendenciasAsync()).Single(p => p.Id == antiga.Id);
+        depois.Aguardando.Should().BeTrue("o rollback desfez a substituição");
+        (await AgendamentoAsync(antiga.AgendamentoId)).Status.Should().Be(StatusAgendamento.Reservado, "e a reserva do horário dela");
     }
 
     [Fact]

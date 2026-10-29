@@ -62,7 +62,7 @@ public sealed partial class ServicoAgendamentos
         return await CriarInternoAsync(
             new CriarAgendamento(dados.ProfissionalId, null, [dados.ServicoId], dados.Inicio),
             confirmarDeImediato: false, cancellationToken,
-            new OpcoesCriacao(OrigemAgendamento.WhatsApp, IniciarAtendimento: false, ClienteAutorizouMensagens: false));
+            new OpcoesCriacao(OrigemAgendamento.WhatsApp, IniciarAtendimento: false, ClienteAutorizouMensagens: false, Preparo: dados.Preparo));
     }
 
     public async Task<ResultadoConfirmacaoAgente> ConfirmarReservaAgenteAsync(

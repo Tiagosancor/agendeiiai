@@ -12,7 +12,7 @@ using Plataforma.Infraestrutura.Persistencia;
 namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 {
     [DbContext(typeof(PlataformaDbContext))]
-    [Migration("20261029081546_AgenteWhatsAppGestao")]
+    [Migration("20261029092507_AgenteWhatsAppGestao")]
     partial class AgenteWhatsAppGestao
     {
         /// <inheritdoc />
@@ -3592,6 +3592,9 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
 
                     b.HasIndex("NegocioId", "CriadoEm")
                         .HasDatabaseName("ix_pendencias_gestao_whatsapp_negocio_id_criado_em");
+
+                    b.HasIndex("NegocioId", "ConversaId", "CriadoEm")
+                        .HasDatabaseName("ix_pendencias_gestao_whatsapp_negocio_id_conversa_id_criado_em");
 
                     b.ToTable("pendencias_gestao_whatsapp", (string)null);
                 });

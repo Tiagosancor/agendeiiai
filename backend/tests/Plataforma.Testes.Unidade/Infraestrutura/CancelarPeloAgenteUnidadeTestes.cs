@@ -290,6 +290,20 @@ public sealed class CancelarPeloAgenteUnidadeTestes
         SanitizadorRespostaAgente.AfirmaGestaoEfetivada("Pronto, cancelei seu horário.").Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("Pronto, remarquei para sexta", true, false)]
+    [InlineData("Ficou remarcada para as 14h", true, false)]
+    [InlineData("Seu agendamento foi cancelado", false, true)]
+    [InlineData("Cancelei e desmarquei", false, true)]
+    [InlineData("Para remarcar ou cancelar use o link", false, false)]
+    [InlineData("Cancelado! E já remarquei o outro.", true, true)]
+    public void As_protecoes_de_remarcacao_e_de_cancelamento_sao_independentes(string texto, bool remarcou, bool cancelou)
+    {
+        SanitizadorRespostaAgente.AfirmaRemarcacao(texto).Should().Be(remarcou);
+        SanitizadorRespostaAgente.AfirmaCancelamento(texto).Should().Be(cancelou);
+        SanitizadorRespostaAgente.AvisoRemarcacaoNaoEfetivada.Should().NotContain("cancel");
+    }
+
     // ---------------------------------------------------------------- regra de tempo compartilhada com o link
 
     [Theory]

@@ -155,14 +155,19 @@ public sealed class OrquestradorAgente : IRespostaAgente
         if (situacao.AgendamentoLiberado && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
             && !await ConfirmouRecentementeAsync(contexto.ConversaId, cancellationToken))
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
-        // Gestão (Fase 4): no modo Link o agente NUNCA cancela nem remarca (quem altera é o cliente, na página do link); no modo Cancelar o
-        // cancelamento só vale depois do "SIM" avaliado pelo servidor, e o modelo só pode falar nele se um foi efetivado há pouco.
-        // Guarda independente da anterior ("cancelei o anterior e agendei outro" recebe os dois avisos).
-        if (situacao.Gestao >= ModoGestaoAgente.Link && SanitizadorRespostaAgente.AfirmaGestaoEfetivada(texto)
-            && !(situacao.Gestao >= ModoGestaoAgente.Cancelar && await CanceladoRecentementeAsync(contexto.ConversaId, cancellationToken)))
-            texto += "\n\n" + (situacao.Gestao >= ModoGestaoAgente.Cancelar
-                ? SanitizadorRespostaAgente.AvisoCancelamentoNaoEfetivado
-                : SanitizadorRespostaAgente.AvisoGestaoNaoEfetivada);
+        // Gestão (Fase 4). Modo Link: o agente NUNCA cancela nem remarca (quem altera é o cliente, na página do link). Modo Cancelar: a
+        // proteção contra "remarquei" falso fica SEMPRE ligada (remarcar pelo agente não existe até a Fatia 8) e a de cancelamento só é
+        // liberada quando o texto cita o dia ou a hora de um cancelamento que o SERVIDOR efetivou há pouco (resultado específico, não só
+        // uma janela de tempo). Guardas independentes da de agendamento ("cancelei o anterior e agendei outro" recebe os dois avisos).
+        if (situacao.Gestao >= ModoGestaoAgente.Cancelar)
+        {
+            if (SanitizadorRespostaAgente.AfirmaRemarcacao(texto))
+                texto += "\n\n" + SanitizadorRespostaAgente.AvisoRemarcacaoNaoEfetivada;
+            if (SanitizadorRespostaAgente.AfirmaCancelamento(texto) && !await CancelamentoEfetivadoCitadoAsync(contexto.ConversaId, texto, negocio.Fuso, cancellationToken))
+                texto += "\n\n" + SanitizadorRespostaAgente.AvisoCancelamentoNaoEfetivado;
+        }
+        else if (situacao.Gestao >= ModoGestaoAgente.Link && SanitizadorRespostaAgente.AfirmaGestaoEfetivada(texto))
+            texto += "\n\n" + SanitizadorRespostaAgente.AvisoGestaoNaoEfetivada;
 
         return new RespostaAgente(texto, null, Telemetria(false));
     }
@@ -204,13 +209,30 @@ public sealed class OrquestradorAgente : IRespostaAgente
             p => p.ConversaId == conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde, cancellationToken);
     }
 
-    /// <summary>Um cancelamento foi de fato efetivado nesta conversa na janela recente? Só então o modelo pode falar em "cancelado".</summary>
-    private Task<bool> CanceladoRecentementeAsync(Guid conversaId, CancellationToken cancellationToken)
+    /// <summary>
+    /// O texto cita o dia (dd/MM) ou a hora (HH:mm) de um agendamento cujo cancelamento o servidor efetivou nesta conversa na janela recente?
+    /// Só então o modelo pode falar em "cancelado" sem o aviso: a afirmação fica ligada ao resultado específico do servidor.
+    /// </summary>
+    private async Task<bool> CancelamentoEfetivadoCitadoAsync(Guid conversaId, string texto, string fuso, CancellationToken cancellationToken)
     {
         var desde = DateTimeOffset.UtcNow - JanelaConfirmacaoRecente;
-        return _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().AnyAsync(
-            p => p.ConversaId == conversaId && p.Tipo == TipoGestaoWhatsApp.Cancelar
-                && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde, cancellationToken);
+        var inicios = await (
+            from p in _dbContext.PendenciasGestaoWhatsApp.AsNoTracking()
+            join a in _dbContext.Agendamentos.AsNoTracking() on p.AgendamentoId equals a.Id
+            where p.ConversaId == conversaId && p.Tipo == TipoGestaoWhatsApp.Cancelar
+                && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde
+            select a.Inicio).ToListAsync(cancellationToken);
+
+        var zona = TimeZoneInfo.FindSystemTimeZoneById(fuso);
+        foreach (var inicio in inicios)
+        {
+            var local = TimeZoneInfo.ConvertTime(inicio, zona);
+            if (texto.Contains(local.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                || texto.Contains(local.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>Texto fixo (nosso, não do modelo) para qualquer falha: leva o cliente ao link público.</summary>

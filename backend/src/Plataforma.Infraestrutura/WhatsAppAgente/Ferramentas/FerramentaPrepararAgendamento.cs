@@ -147,17 +147,22 @@ public sealed class FerramentaPrepararAgendamento : IFerramentaDeEscritaAgente
             nomeParaPendencia = nome;
         }
 
-        // 7. Libera a pendência anterior desta conversa (ordem de travas: pendência, depois agendamento), reserva e cria a nova.
-        if (existente is not null)
-            await _pendencias.EncerrarAsync(existente.Id, DesfechoPendenciaAgente.Substituida, cancellationToken);
+        // 7. Reserva e pendência numa transação só: o que a conversa tinha aberto (pendência de agendamento e sua reserva, pedido de
+        // cancelamento) é liberado DENTRO dela, depois da trava do profissional e antes do insert. Conflito ou falha = rollback total.
+        var preparo = new PreparoReservaAgente(_dbContext, negocioId, conversa.Id, nomeParaPendencia);
+        ResultadoAgendamento reserva;
+        try
+        {
+            reserva = await _agendamentos.CriarReservaAgenteAsync(
+                new CriarReservaAgente(profissional.Id, servico.Id, inicio, preparo), cancellationToken);
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            // Outra pendência aberta apareceu na conversa no meio (índice único parcial): a transação inteira foi desfeita.
+            _dbContext.ChangeTracker.Clear();
+            return Erro(ErrosFerramenta.AgendamentoIndisponivel);
+        }
 
-        // Um pedido de cancelamento aguardando o "SIM" deixa de valer: o cliente mudou de assunto (substituição cruzada, Fatia 7).
-        var gestaoAberta = await _pendencias.ObterGestaoAguardandoAsync(conversa.Id, cancellationToken);
-        if (gestaoAberta is not null)
-            await _pendencias.EncerrarGestaoAsync(gestaoAberta.Id, DesfechoPendenciaAgente.Substituida, cancellationToken);
-
-        var reserva = await _agendamentos.CriarReservaAgenteAsync(
-            new CriarReservaAgente(profissional.Id, servico.Id, inicio), cancellationToken);
         if (!reserva.Sucesso || reserva.AgendamentoId is null)
         {
             // O DbContext é o MESMO da rodada: a reserva que perdeu a corrida (exclusion constraint) deixaria o agendamento rejeitado
@@ -178,10 +183,7 @@ public sealed class FerramentaPrepararAgendamento : IFerramentaDeEscritaAgente
             return Erro(ErrosFerramenta.AgendamentoIndisponivel);
         }
 
-        var expiraEm = await _dbContext.Agendamentos.AsNoTracking().Where(a => a.Id == reserva.AgendamentoId)
-            .Select(a => a.ReservadoAte).FirstOrDefaultAsync(cancellationToken) ?? agora.AddMinutes(10);
-
-        var pendencia = await _pendencias.CriarAsync(conversa.Id, reserva.AgendamentoId.Value, DateTimeOffset.UtcNow, expiraEm, nomeParaPendencia, cancellationToken);
+        var pendencia = preparo.Pendencia;
         if (pendencia is null)
             return Erro(ErrosFerramenta.AgendamentoIndisponivel);
 

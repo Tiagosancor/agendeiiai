@@ -51,15 +51,22 @@ public sealed class RecuperadorRespostasAgente
 
     public RecuperadorRespostasAgente(PlataformaDbContext dbContext) => _dbContext = dbContext;
 
+    /// <summary>Quanto tempo para trás a varredura procura anúncios de fatos efetivados que nunca saíram.</summary>
+    public static readonly TimeSpan JanelaDosAnuncios = TimeSpan.FromDays(7);
+
     /// <summary>
-    /// Conversas com mensagem de usuário pendente criada há mais de 30 s, sem lease ativo e com agente ativo. Só IDs.
-    /// Mensagens com mais de 10 min entram também: a rodada as descarta sem responder (resposta atrasada confunde).
+    /// Conversas a retomar. Só IDs. Duas listas, separadas de propósito:
+    /// (1) mensagem de usuário pendente criada há mais de 30 s, sem lease ativo e com agente ativo e fora de atendimento humano — a rodada
+    /// descarta sem responder as que têm mais de 10 min (resposta atrasada confunde);
+    /// (2) FATOS já efetivados e ainda não anunciados (agendamento confirmado ou cancelamento feito pelo agente, sem a mensagem do servidor
+    /// depois do commit e com o lote do "sim" ainda não tratado), em QUALQUER estado da conversa (inclusive Humano) e de QUALQUER idade:
+    /// o cliente tem que saber o que foi feito. Quem decide o que enviar é o processador.
     /// Única consulta, além do webhook, que ignora o filtro de negócio — por isso devolve apenas IDs.
     /// </summary>
     public async Task<IReadOnlyList<Guid>> ListarPendentesAsync(DateTimeOffset agora, CancellationToken cancellationToken)
     {
         var limite = agora - IdadeMinima;
-        return await _dbContext.ConversasWhatsApp.IgnoreQueryFilters().AsNoTracking()
+        var novas = await _dbContext.ConversasWhatsApp.IgnoreQueryFilters().AsNoTracking()
             .Where(c => (c.ProcessandoAte == null || c.ProcessandoAte < agora)
                 && c.Status == StatusConversaWhatsApp.Agente
                 && _dbContext.InstanciasWhatsApp.IgnoreQueryFilters().Any(i => i.Id == c.InstanciaId && i.AgenteAtivo)
@@ -69,6 +76,38 @@ public sealed class RecuperadorRespostasAgente
             .Select(c => c.Id)
             .Take(200)
             .ToListAsync(cancellationToken);
+
+        var desde = agora - JanelaDosAnuncios;
+
+        // Cancelamento efetivado: pendência de gestão Confirmada, sem a mensagem gestao_efetivada depois do commit, com o lote do "sim" aberto.
+        var cancelamentos = await (
+            from p in _dbContext.PendenciasGestaoWhatsApp.IgnoreQueryFilters().AsNoTracking()
+            join c in _dbContext.ConversasWhatsApp.IgnoreQueryFilters().AsNoTracking() on p.ConversaId equals c.Id
+            join m in _dbContext.MensagensWhatsApp.IgnoreQueryFilters().AsNoTracking() on p.ConfirmacaoMensagemId equals (Guid?)m.Id
+            where p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde
+                && (c.ProcessandoAte == null || c.ProcessandoAte < agora)
+                && (c.ProcessadaAte == null || c.ProcessadaAte < m.CriadoEm)
+                && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado)
+                && !_dbContext.MensagensWhatsApp.IgnoreQueryFilters().Any(x =>
+                    x.ConversaId == c.Id && x.Papel == PapelMensagemWhatsApp.Sistema && x.NomeFerramenta == MarcadoresAgente.GestaoEfetivada
+                    && x.CriadoEm >= p.ConcluidaEm)
+            select c.Id).Take(200).ToListAsync(cancellationToken);
+
+        // Agendamento confirmado: mesma ideia, com o marcador agendamento_confirmado.
+        var confirmacoes = await (
+            from p in _dbContext.PendenciasAgendamentoWhatsApp.IgnoreQueryFilters().AsNoTracking()
+            join c in _dbContext.ConversasWhatsApp.IgnoreQueryFilters().AsNoTracking() on p.ConversaId equals c.Id
+            join m in _dbContext.MensagensWhatsApp.IgnoreQueryFilters().AsNoTracking() on p.ConfirmacaoMensagemId equals (Guid?)m.Id
+            where p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde
+                && (c.ProcessandoAte == null || c.ProcessandoAte < agora)
+                && (c.ProcessadaAte == null || c.ProcessadaAte < m.CriadoEm)
+                && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado)
+                && !_dbContext.MensagensWhatsApp.IgnoreQueryFilters().Any(x =>
+                    x.ConversaId == c.Id && x.Papel == PapelMensagemWhatsApp.Sistema && x.NomeFerramenta == MarcadoresAgente.Confirmado
+                    && x.CriadoEm >= p.ConcluidaEm)
+            select c.Id).Take(200).ToListAsync(cancellationToken);
+
+        return novas.Concat(cancelamentos).Concat(confirmacoes).Distinct().ToList();
     }
 }
 

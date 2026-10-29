@@ -210,7 +210,8 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
     }
 
     private sealed record OpcoesCriacao(
-        OrigemAgendamento Origem, bool IniciarAtendimento, bool ClienteAutorizouMensagens, string? MotivoForcar = null);
+        OrigemAgendamento Origem, bool IniciarAtendimento, bool ClienteAutorizouMensagens, string? MotivoForcar = null,
+        IPreparoReservaAgente? Preparo = null);
 
     /// <summary>Serviços do agendamento com preço e duração do profissional (personalização por profissional, seção 7).</summary>
     private async Task<(List<ItemServicoAgendamento> Itens, string? Erro)> MontarItensAsync(
@@ -300,6 +301,10 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
                 return ResultadoAgendamento.ComErro("Este profissional não atende mais.");
             }
 
+            // Preparo do agente de WhatsApp: libera o que a conversa tinha aberto NESTA transação (rollback total se algo abaixo falhar).
+            if (opcoes?.Preparo is { } preparo)
+                await preparo.AntesDeInserirAsync(cancellationToken);
+
             // 1) Expira reservas vencidas deste profissional ANTES de checar disponibilidade
             // e inserir (seção 8.2.2) — a exclusion constraint não enxerga now().
             var agora = DateTimeOffset.UtcNow;
@@ -388,6 +393,7 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
                 RegistrarForcado(agendamento, motivoForcar!, regrasQuebradas, agora, detalheAntes: null);
 
             _dbContext.Agendamentos.Add(agendamento);
+            opcoes?.Preparo?.DepoisDeAdicionar(agendamento.Id, agendamento.ReservadoAte ?? agora.Add(DuracaoDaReserva));
 
             // Outbox: as mensagens confirmam ou desfazem junto com o agendamento (a rede só é chamada depois, pelo despachante).
             if (notificacao != NotificacaoNaCriacao.Nenhuma && _outbox.Usa(FamiliaNotificacao.Operacional))
