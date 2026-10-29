@@ -17,6 +17,16 @@ public interface IGerenciadorInstanciaWhatsApp
 
     /// <summary>Situação do serviço de IA do negócio do token. Responde mesmo sem instância conectada.</summary>
     Task<ServicoAgenteIaPainel> ObterServicoIaAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Texto que o negócio acrescenta ao aviso de transferência (vazio tira). Inválido → <see cref="ResultadoMensagemTransferencia.Invalida"/>.</summary>
+    Task<ResultadoMensagemTransferencia> DefinirMensagemTransferenciaAsync(string? mensagem, CancellationToken cancellationToken = default);
+}
+
+public enum ResultadoMensagemTransferencia
+{
+    Ok = 0,
+    SemInstancia = 1,
+    Invalida = 2,
 }
 
 public enum ResultadoDefinirAgente
@@ -37,4 +47,11 @@ public sealed record ServicoAgenteIaPainel(bool Contratado, string? Origem);
 public sealed record ConexaoWhatsApp(string Status, string? QrCode);
 
 /// <param name="AgenteIaContratado">Serviço de IA contratado para o negócio; sem ele o agente não responde e não pode ser ligado.</param>
-public sealed record StatusWhatsApp(string Status, bool AgenteAtivo, string? Telefone, bool AgenteIaContratado = false);
+/// <param name="MensagemTransferencia">Texto do negócio acrescentado ao aviso de transferência para atendimento humano.</param>
+/// <param name="IaAtiva">IA liberada para o negócio (Gemini, piloto e serviço contratado).</param>
+/// <param name="AgendamentoAtivo">Agendamento pelo agente (Fase 3) ligado para o negócio.</param>
+/// <param name="GestaoModo">Cancelar/remarcar pelo agente: "Desligado", "Link", "Cancelar" ou "Completo" (por ora sempre "Desligado").</param>
+/// <param name="AtendimentoHumanoAtivo">A ferramenta <c>chamar_atendente</c> é oferecida ao modelo para o negócio.</param>
+public sealed record StatusWhatsApp(
+    string Status, bool AgenteAtivo, string? Telefone, bool AgenteIaContratado = false, string? MensagemTransferencia = null,
+    bool IaAtiva = false, bool AgendamentoAtivo = false, string GestaoModo = "Desligado", bool AtendimentoHumanoAtivo = false);

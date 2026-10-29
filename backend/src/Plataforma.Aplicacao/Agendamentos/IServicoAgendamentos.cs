@@ -221,11 +221,16 @@ public static class VersaoTermos
 
 public sealed record ResultadoPreVisualizacaoCupom(bool Sucesso, decimal Desconto = 0m, string? MensagemErro = null);
 
-/// <summary>Os campos <c>Forcado*</c> vêm do "Forçar agendamento" (seção 7): marca na agenda, motivo, quem autorizou e as regras quebradas.</summary>
+/// <summary>
+/// Os campos <c>Forcado*</c> vêm do "Forçar agendamento" (seção 7): marca na agenda, motivo, quem autorizou e as regras quebradas.
+/// <c>Origem</c> (LinkPublico | Painel | Encaixe | WhatsApp) e <c>ReservadoAte</c> (só em <c>Reservado</c>: até quando o horário está segurado,
+/// por exemplo à espera do "sim" no WhatsApp) são aditivos (Fase 4).
+/// </summary>
 public sealed record AgendamentoResumo(
     Guid Id, Guid ProfissionalId, Guid? ClienteId, string ClienteNome, DateTimeOffset Inicio, DateTimeOffset Fim,
     string Status, string? Observacoes, IReadOnlyList<string> Servicos, decimal Total,
-    bool Forcado = false, string? ForcadoMotivo = null, string? ForcadoPor = null, IReadOnlyList<string>? ForcadoRegras = null);
+    bool Forcado = false, string? ForcadoMotivo = null, string? ForcadoPor = null, IReadOnlyList<string>? ForcadoRegras = null,
+    string Origem = "Painel", DateTimeOffset? ReservadoAte = null);
 
 public sealed record ResultadoAgendamento(
     bool Sucesso, Guid? AgendamentoId = null, string? MensagemErro = null,

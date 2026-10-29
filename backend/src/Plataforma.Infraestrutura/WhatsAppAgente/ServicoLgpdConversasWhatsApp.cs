@@ -41,7 +41,8 @@ public sealed class ServicoLgpdConversasWhatsApp : IServicoLgpdConversasWhatsApp
         {
             await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
             var existe = await _dbContext.ConversasWhatsApp.AsNoTracking()
-                .AnyAsync(c => c.Id == conversaId && c.NegocioId == negocioId, cancellationToken);
+                .AnyAsync(c => c.Id == conversaId && c.NegocioId == negocioId
+                    && !c.TelefoneCliente.StartsWith(ConversaWhatsApp.PrefixoTelefoneAnonimizado), cancellationToken);
             if (!existe)
             {
                 await transacao.RollbackAsync(cancellationToken);

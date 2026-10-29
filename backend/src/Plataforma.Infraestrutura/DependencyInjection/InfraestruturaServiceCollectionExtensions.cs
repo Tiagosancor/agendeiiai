@@ -345,6 +345,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IGerenciadorInstanciaWhatsApp, GerenciadorInstanciaWhatsApp>();
         servicos.AddScoped<Plataforma.Aplicacao.WhatsAppAgente.IGerenciadorConversasWhatsApp, GerenciadorConversasWhatsApp>();
         servicos.AddScoped<AvisadorAtendimentoHumano>();
+        servicos.AddScoped<Plataforma.Aplicacao.WhatsAppAgente.IConsultaConversasWhatsApp, ConsultaConversasWhatsApp>();
+        servicos.AddScoped<Plataforma.Aplicacao.WhatsAppAgente.IConsultaUsoIaWhatsApp, ConsultaUsoIaWhatsApp>();
 
         servicos
             .AddHealthChecks()

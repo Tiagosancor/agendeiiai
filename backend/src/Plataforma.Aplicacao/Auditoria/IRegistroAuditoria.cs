@@ -48,4 +48,7 @@ public static class AcoesAuditoria
     public const string DevolverConversaWhatsApp = "DevolverConversaWhatsApp";
     public const string ApagarConversaWhatsApp = "ApagarConversaWhatsApp";
     public const string AtenderConversaPeloAgente = "AtenderConversaPeloAgente";
+
+    /// <summary>Texto de transferência do WhatsApp alterado. Detalhes sem o conteúdo do texto (só o tamanho antes/depois).</summary>
+    public const string AlterarMensagemTransferenciaWhatsApp = "AlterarMensagemTransferenciaWhatsApp";
 }
