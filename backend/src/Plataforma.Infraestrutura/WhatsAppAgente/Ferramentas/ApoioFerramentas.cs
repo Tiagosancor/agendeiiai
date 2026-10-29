@@ -29,6 +29,12 @@ public static class ErrosFerramenta
     // Fase 4 (chamar_atendente).
     public const string AtendenteIndisponivel = "atendente_indisponivel";
 
+    // Fase 4 (gestão dos agendamentos do cliente).
+    public const string AgendamentoDesconhecido = "agendamento_desconhecido";
+    public const string EscolhaNecessaria = "escolha_necessaria";
+    public const string LimiteGestao = "limite_gestao";
+    public const string GestaoIndisponivel = "gestao_indisponivel";
+
     public static string Mensagem(string codigo) => codigo switch
     {
         ArgumentosInvalidos => "Argumentos inválidos para esta ferramenta.",
@@ -47,6 +53,10 @@ public static class ErrosFerramenta
         AgendamentoIndisponivel => "Não é possível agendar por aqui agora. Envie ao cliente o link para agendar.",
         ResumoJaEnviado => "O resumo desse agendamento já foi enviado. Peça ao cliente que responda SIM para confirmar.",
         AtendenteIndisponivel => "Não foi possível chamar uma pessoa agora. Envie ao cliente o link para agendar.",
+        AgendamentoDesconhecido => "Não há esse agendamento neste número. Diga ao cliente que não encontrou e ofereça o link para agendar.",
+        EscolhaNecessaria => "O cliente tem mais de um agendamento. Pergunte qual e chame a ferramenta de novo com agendamento_id.",
+        LimiteGestao => "Limite de links de gestão atingido. Envie ao cliente o link para agendar.",
+        GestaoIndisponivel => "Não é possível ver ou alterar agendamentos por aqui agora. Envie ao cliente o link para agendar.",
         _ => "Não foi possível consultar agora.",
     };
 }
@@ -72,6 +82,10 @@ public static class RespostaFerramenta
         using var documento = JsonDocument.Parse(json);
         return documento.RootElement.Clone();
     }
+
+    /// <summary>Erro <c>escolha_necessaria</c> com a lista (id, data, hora) para o modelo perguntar qual.</summary>
+    public static JsonElement ErroComAgendamentos<T>(string codigo, IReadOnlyList<T> agendamentos) =>
+        De(new { erro = codigo, mensagem = ErrosFerramenta.Mensagem(codigo), agendamentos });
 
     /// <summary>Texto de cadastro do tenant como DADO: sem caracteres de controle e com tamanho limitado.</summary>
     public static string Limpar(string? texto, int maximo = 100)

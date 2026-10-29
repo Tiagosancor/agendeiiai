@@ -52,9 +52,16 @@ public sealed class ExecutorFerramentasAgente : IExecutorFerramentasAgente
             ? _politica.Memorizada(negocioId)?.IaLiberada == true
             : _opcoes.Provider == ProvedorIa.Gemini && _opcoes.NegocioHabilitado(negocioId));
 
+    /// <summary>Gestão dos agendamentos do cliente (Fase 4): precisa do agendamento liberado e de <c>Ai__Gestao__Modo</c> ligado; sem leitura, fechado.</summary>
+    private bool GestaoLigada(Guid negocioId) =>
+        _politica is not null
+            ? _politica.Memorizada(negocioId)?.Gestao >= ModoGestaoAgente.Link
+            : _opcoes?.AgendamentoAtivoPara(negocioId) == true && _opcoes.Gestao.ModoEfetivo >= ModoGestaoAgente.Link;
+
     private bool Disponivel(IFerramentaAgente ferramenta, Guid negocioId) => ferramenta switch
     {
         IFerramentaDeAtendimentoHumano => HumanoLigado(negocioId),
+        IFerramentaDeGestaoAgente => GestaoLigada(negocioId),
         IFerramentaDeEscritaAgente => EscritaLigada(negocioId),
         _ => true,
     };

@@ -120,7 +120,8 @@ public sealed class OrquestradorAgente : IRespostaAgente
         try
         {
             resultado = await ConversarAsync(
-                contexto, negocio.NomeExibido, negocio.Fuso, link, situacao.AgendamentoLiberado, _opcoes.Humano.FerramentaAtiva, cancellationToken);
+                contexto, negocio.NomeExibido, negocio.Fuso, link, situacao.AgendamentoLiberado, _opcoes.Humano.FerramentaAtiva,
+                situacao.Gestao >= ModoGestaoAgente.Link, cancellationToken);
         }
         catch (Exception excecao) when (excecao is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -154,6 +155,9 @@ public sealed class OrquestradorAgente : IRespostaAgente
         if (situacao.AgendamentoLiberado && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
             && !await ConfirmouRecentementeAsync(contexto.ConversaId, cancellationToken))
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
+        // Gestão (Fase 4, modo Link): o agente NUNCA cancela nem remarca; quem altera é o cliente, na página do link.
+        else if (situacao.Gestao >= ModoGestaoAgente.Link && SanitizadorRespostaAgente.AfirmaGestaoEfetivada(texto))
+            texto += "\n\n" + SanitizadorRespostaAgente.AvisoGestaoNaoEfetivada;
 
         return new RespostaAgente(texto, null, Telemetria(false));
     }
@@ -208,7 +212,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
     /// </summary>
     private async Task<ResultadoModelo?> ConversarAsync(
         ContextoRespostaAgente contexto, string nomeNegocio, string fuso, string link, bool agendamentoLigado, bool humanoLigado,
-        CancellationToken cancellationToken)
+        bool gestaoLigada, CancellationToken cancellationToken)
     {
         var relogio = Stopwatch.StartNew();
         var orcamento = TimeSpan.FromSeconds(_opcoes.TempoMaximoProcessamentoSegundos);
@@ -216,12 +220,15 @@ public sealed class OrquestradorAgente : IRespostaAgente
 
         // Agendamento ligado (Gemini + piloto + modo): prompt v2 e a ferramenta de preparar. Desligado: prompt v1 e as 3 de leitura, como na Fase 2.
         // Com a ferramenta de atendente humano oferecida (Ai__Humano__FerramentaAtiva) o prompt ganha a regra dela e vira v3.
+        // A gestão dos agendamentos do cliente (Fase 4) só existe com o agendamento ligado: o prompt é o v2 com as regras dela (v4).
         var prompt = agendamentoLigado
-            ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link, humanoLigado)
+            ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link, humanoLigado, gestaoLigada)
             : ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link, humanoLigado);
-        _coleta.PromptVersao = humanoLigado
-            ? ConstrutorPromptAgente.VersaoHumano
-            : agendamentoLigado ? ConstrutorPromptAgente.VersaoAgendamento : ConstrutorPromptAgente.Versao;
+        _coleta.PromptVersao = agendamentoLigado && gestaoLigada
+            ? ConstrutorPromptAgente.VersaoGestao
+            : humanoLigado
+                ? ConstrutorPromptAgente.VersaoHumano
+                : agendamentoLigado ? ConstrutorPromptAgente.VersaoAgendamento : ConstrutorPromptAgente.Versao;
         var historico = await MontarHistoricoAsync(contexto.ConversaId, contexto.LimiteHistorico, agendamentoLigado, cancellationToken);
         if (historico.Count == 0)
             return null;

@@ -98,6 +98,24 @@ public sealed class TextosAgendamentoAgente
                $"Para cancelar ou remarcar: {linkDeGestao ?? LinkDeGestaoOculto}";
     }
 
+    /// <summary>
+    /// Texto do link de gestão (Fase 4, modo Link): o servidor envia, o texto do modelo é descartado. Com <paramref name="linkDeGestao"/> nulo
+    /// sai o marcador que vai ao banco (o token nunca é persistido nem vai à IA).
+    /// </summary>
+    public string LinkGestao(DadosDoAgendamentoParaTexto dados, string? linkDeGestao)
+    {
+        DiaEHora(dados.Inicio, dados.Fuso, out var dia, out var hora);
+        var servico = Fragmento(dados.NomeServico, "serviço");
+        var profissional = Fragmento(dados.NomeProfissional, "profissional");
+
+        return $"Aqui está o link para ver, cancelar ou remarcar o seu agendamento de {servico} com {profissional}, {dia} às {hora}: " +
+               $"{linkDeGestao ?? LinkDeGestaoOculto}";
+    }
+
+    /// <summary>O agendamento deixou de poder receber o link entre o pedido do modelo e o envio (cancelado, concluído, telefone trocado...).</summary>
+    public string LinkIndisponivel() =>
+        $"Não consegui encontrar esse agendamento por aqui. Para agendar, acesse: {_linkPublico}";
+
     /// <summary>Aviso fixo de atendimento automatizado (uma vez por conversa a cada N dias).</summary>
     public string AvisoAutomatizado(string nomeNegocio) =>
         $"Olá! Aqui é o assistente virtual (atendimento automatizado) de {Fragmento(nomeNegocio, "nosso estabelecimento")}. " +

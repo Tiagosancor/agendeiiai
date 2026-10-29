@@ -9,9 +9,10 @@ namespace Plataforma.Infraestrutura.WhatsAppAgente;
 /// O que o agente de IA pode fazer para um negócio. <c>Contratado</c> é o serviço premium (<c>Negocio.AgenteIaContratado</c>);
 /// <c>IaLiberada</c> = Gemini + lista global (<c>Ai__NegociosHabilitados</c>) E contratado; <c>AgendamentoLiberado</c> = IaLiberada E
 /// modo/lista de agendamento (<c>Ai__Agendamento__*</c>). As variáveis <c>Ai__*</c> são só o disjuntor global: restringem, nunca ligam
-/// nada sem a contratação.
+/// nada sem a contratação. <c>Gestao</c> = modo EFETIVO de gestão dos agendamentos do cliente (Fase 4): só sai de Desligado onde o
+/// agendamento está liberado (mesmo piloto da Fase 3, sem lista nova) e <c>Ai__Gestao__Modo</c> não é Desligado.
 /// </summary>
-public sealed record SituacaoAgenteIa(bool Contratado, bool IaLiberada, bool AgendamentoLiberado);
+public sealed record SituacaoAgenteIa(bool Contratado, bool IaLiberada, bool AgendamentoLiberado, ModoGestaoAgente Gestao = ModoGestaoAgente.Desligado);
 
 /// <summary>
 /// Gate único do serviço premium. Escopo de DI = uma rodada: a situação é memorizada por negócio (uma consulta por rodada), mas
@@ -60,6 +61,7 @@ public sealed class PoliticaAgenteIa
     public static SituacaoAgenteIa Calcular(OpcoesIa opcoes, Guid negocioId, bool contratado)
     {
         var iaLiberada = contratado && opcoes.Provider == ProvedorIa.Gemini && opcoes.NegocioHabilitado(negocioId);
-        return new SituacaoAgenteIa(contratado, iaLiberada, iaLiberada && opcoes.Agendamento.Habilitado(negocioId));
+        var agendamento = iaLiberada && opcoes.Agendamento.Habilitado(negocioId);
+        return new SituacaoAgenteIa(contratado, iaLiberada, agendamento, agendamento ? opcoes.Gestao.ModoEfetivo : ModoGestaoAgente.Desligado);
     }
 }

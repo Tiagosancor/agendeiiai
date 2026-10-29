@@ -54,13 +54,15 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
     private readonly IServiceScopeFactory _escopos;
     private readonly PoliticaAgenteIa _politica;
     private readonly AvisadorAtendimentoHumano _avisador;
+    private readonly EmissorLinkGestaoAgente _emissorLinkGestao;
 
     public ProcessadorRodadaAgente(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IRespostaAgente resposta, IClienteEvolution evolution,
         IConsultaSituacaoAssinatura assinatura, LimitadorUsoAgente limitador, IOptions<OpcoesIa> opcoes, IOptions<OpcoesMarca> marca,
         GerenciadorPendenciasAgente pendencias, ConfirmadorPendenciaAgente confirmador, ILogger<ProcessadorRodadaAgente> logger,
-        IServiceScopeFactory escopos, PoliticaAgenteIa politica, AvisadorAtendimentoHumano avisador)
+        IServiceScopeFactory escopos, PoliticaAgenteIa politica, AvisadorAtendimentoHumano avisador, EmissorLinkGestaoAgente emissorLinkGestao)
     {
+        _emissorLinkGestao = emissorLinkGestao;
         _avisador = avisador;
         _politica = politica;
         _escopos = escopos;
@@ -478,6 +480,17 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
                 _ => DesfechoRodadaAgente.EnvioFalhou,
             };
         }
+        else if (resposta.Acao is { Tipo: TipoAcaoServidor.LinkGestao } pedidoLink)
+        {
+            // Pediu o link de gestão (Fase 4): o texto do modelo é descartado e o servidor envia o link.
+            var estadoLink = await EnviarLinkGestaoAsync(lease, conversa, instancia, pedidoLink.Id, cancellationToken);
+            diagnostico.Desfecho = estadoLink switch
+            {
+                EstadoEnvio.Enviado => DesfechoRodadaAgente.Respondida,
+                EstadoEnvio.Ambiguo => DesfechoRodadaAgente.EnvioAmbiguo,
+                _ => DesfechoRodadaAgente.EnvioFalhou,
+            };
+        }
         else if (!string.IsNullOrWhiteSpace(resposta.Texto))
         {
             // O aviso de atendimento automatizado vai colado no início da primeira resposta (e de novo a cada N dias).
@@ -558,6 +571,30 @@ public sealed class ProcessadorRodadaAgente : IProcessadorRodadaAgente
 
         await MarcarProcessadaAsync(lease, ultima, cancellationToken, exigirAgente: false);
         return desfecho;
+    }
+
+    // ---------------------------------------------------------------- link de gestão (Fase 4, modo Link)
+
+    /// <summary>
+    /// Envia o texto com o link de gestão. O servidor relê a elegibilidade e gera o token aqui; o banco guarda o marcador sem token. O
+    /// lote já foi marcado como tratado (como no resumo), então um envio que falha de forma definitiva apaga a reserva da mensagem e
+    /// não conta no limite diário de links.
+    /// </summary>
+    private async Task<EstadoEnvio> EnviarLinkGestaoAsync(
+        Lease lease, ConversaWhatsApp conversa, InstanciaWhatsApp instancia, Guid agendamentoId, CancellationToken cancellationToken)
+    {
+        var slug = await _dbContext.Negocios.AsNoTracking().Where(n => n.Id == conversa.NegocioId)
+            .Select(n => n.Slug.Valor).FirstOrDefaultAsync(cancellationToken);
+        if (slug is null)
+            return EstadoEnvio.SemPrazo;
+
+        var mensagem = await _emissorLinkGestao.MontarAsync(conversa.Id, agendamentoId, slug, instancia.Telefone, cancellationToken);
+        var envio = await EnviarEGravarAsync(
+            lease, conversa, instancia, mensagem.Texto, PapelMensagemWhatsApp.Sistema, mensagem.Marcador, cancellationToken, mensagem.TextoGravado);
+        if (envio.Estado is EstadoEnvio.FalhaDefinitiva or EstadoEnvio.SemPrazo && envio.MensagemId is { } mensagemId)
+            await _dbContext.MensagensWhatsApp.Where(m => m.Id == mensagemId).ExecuteDeleteAsync(CancellationToken.None);
+
+        return envio.Estado;
     }
 
     // ---------------------------------------------------------------- atendimento humano (Fase 4)

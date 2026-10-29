@@ -324,6 +324,11 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaPrepararAgendamento>();
         // Fase 4: registrada sempre, mas só oferecida/executada com Ai__Humano__FerramentaAtiva e o serviço de IA contratado.
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaChamarAtendente>();
+        // Fase 4 (gestão dos agendamentos do cliente, modo Link): registradas sempre, mas só oferecidas/executadas com Ai__Gestao__Modo ligado.
+        servicos.AddScoped<ConsultaAgendamentosDoClienteAgente>();
+        servicos.AddScoped<EmissorLinkGestaoAgente>();
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaListarMeusAgendamentos>();
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaEnviarLinkGestao>();
         servicos.AddScoped<GerenciadorPendenciasAgente>();
         servicos.AddScoped<ConfirmadorPendenciaAgente>();
         servicos.AddScoped<IExecutorFerramentasAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.ExecutorFerramentasAgente>();

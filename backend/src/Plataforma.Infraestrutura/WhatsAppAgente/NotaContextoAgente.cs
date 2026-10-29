@@ -33,10 +33,22 @@ public static class NotaContextoAgente
         var servicos = new Dictionary<Guid, string>();
         var profissionais = new Dictionary<Guid, (string Nome, List<string> Servicos)>();
         var horarios = new List<ConsultaHorarios>();
+        List<string>? agendamentos = null;
 
         foreach (var consulta in consultas)
         {
             var resultado = consulta.Resultado;
+
+            // Gestão (Fase 4): os ids dos agendamentos do número também sobrevivem entre mensagens ("cancela o de sexta"). A lista mais
+            // recente da rodada vence. Vêm do resultado já filtrado pelo servidor (nunca nome, telefone, preço ou observação).
+            if (consulta.Ferramenta == "listar_meus_agendamentos" && resultado.ValueKind == JsonValueKind.Object
+                && resultado.TryGetProperty("agendamentos", out var meus) && meus.ValueKind == JsonValueKind.Array && !resultado.TryGetProperty("erro", out _))
+                agendamentos = LerAgendamentos(meus);
+            else if (consulta.Ferramenta == "enviar_link_gestao" && resultado.ValueKind == JsonValueKind.Object
+                && resultado.TryGetProperty("erro", out var codigo) && codigo.ValueKind == JsonValueKind.String && codigo.GetString() == "escolha_necessaria"
+                && resultado.TryGetProperty("agendamentos", out var opcoes) && opcoes.ValueKind == JsonValueKind.Array)
+                agendamentos = LerAgendamentos(opcoes);
+
             if (resultado.ValueKind == JsonValueKind.Object && resultado.TryGetProperty("erro", out _))
                 continue;
 
@@ -84,6 +96,10 @@ public static class NotaContextoAgente
         var linhas = new List<string>();
         var restante = MaximoCaracteresNota - Rotulo.Length - 1;
 
+        // Os agendamentos do cliente têm prioridade de espaço: sem o id completo o modelo reinventa um.
+        if (agendamentos is { Count: > 0 })
+            AdicionarLista(linhas, "Agendamentos do cliente: ", agendamentos, ref restante);
+
         foreach (var h in horarios.Take(MaximoLinhasHorarios))
         {
             var texto = FormatarHorarios(h, restante - 1);
@@ -106,8 +122,45 @@ public static class NotaContextoAgente
             return null;
 
         // Ordem de leitura: serviços, profissionais, horários (a lista foi montada por prioridade de espaço).
-        var ordenadas = linhas.OrderBy(l => l.StartsWith("Serviços", StringComparison.Ordinal) ? 0 : l.StartsWith("Profissionais", StringComparison.Ordinal) ? 1 : 2);
+        var ordenadas = linhas.OrderBy(l => l.StartsWith("Serviços", StringComparison.Ordinal) ? 0 : l.StartsWith("Profissionais", StringComparison.Ordinal) ? 1 : l.StartsWith("Agendamentos", StringComparison.Ordinal) ? 2 : 3);
         return Rotulo + "\n" + string.Join("\n", ordenadas);
+    }
+
+    /// <summary>
+    /// Itens "serviços data hora com Profissional=id" de uma lista de agendamentos do número (a de <c>listar_meus_agendamentos</c> ou o
+    /// <c>escolha_necessaria</c>, que só traz id, data e hora). Item sem id válido é ignorado; nomes higienizados como dado.
+    /// </summary>
+    private static List<string> LerAgendamentos(JsonElement lista)
+    {
+        var itens = new List<string>();
+        foreach (var item in lista.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object || !item.TryGetProperty("id", out var i) || i.ValueKind != JsonValueKind.String
+                || !Guid.TryParse(i.GetString(), out var id))
+                continue;
+
+            var data = item.TryGetProperty("data", out var d) && d.ValueKind == JsonValueKind.String && DateOnly.TryParseExact(d.GetString(), "yyyy-MM-dd", out var dia)
+                ? dia.ToString("yyyy-MM-dd") : null;
+            var hora = item.TryGetProperty("hora", out var h) && h.ValueKind == JsonValueKind.String && TimeOnly.TryParseExact(h.GetString(), "HH:mm", out var horario)
+                ? horario.ToString("HH:mm") : null;
+            if (data is null || hora is null)
+                continue;
+
+            var servicos = new List<string>();
+            if (item.TryGetProperty("servicos", out var s) && s.ValueKind == JsonValueKind.Array)
+                servicos.AddRange(s.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => Higienizar(x.GetString())).Where(x => x.Length > 0));
+            var profissional = item.TryGetProperty("profissional", out var p) && p.ValueKind == JsonValueKind.String ? Higienizar(p.GetString()) : string.Empty;
+
+            var descricao = new StringBuilder();
+            if (servicos.Count > 0)
+                descricao.Append(string.Join(", ", servicos.Take(2))).Append(' ');
+            descricao.Append(data).Append(' ').Append(hora);
+            if (profissional.Length > 0)
+                descricao.Append(" com ").Append(profissional);
+            itens.Add($"{descricao}={id}");
+        }
+
+        return itens;
     }
 
     /// <summary>Marcador de corte dos horários (os ids de profissional e serviço nunca são cortados).</summary>
