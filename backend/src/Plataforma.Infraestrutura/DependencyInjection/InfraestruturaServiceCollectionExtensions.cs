@@ -322,6 +322,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaConsultarHorarios>();
         // Fase 3: a ferramenta de escrita é registrada sempre, mas só é oferecida/executada com Ai__Agendamento__Modo ligado.
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaPrepararAgendamento>();
+        // Fase 4: registrada sempre, mas só oferecida/executada com Ai__Humano__FerramentaAtiva e o serviço de IA contratado.
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaChamarAtendente>();
         servicos.AddScoped<GerenciadorPendenciasAgente>();
         servicos.AddScoped<ConfirmadorPendenciaAgente>();
         servicos.AddScoped<IExecutorFerramentasAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.ExecutorFerramentasAgente>();
@@ -341,6 +343,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddHostedService<ProcessadorFilaAgente>();
         servicos.AddScoped<IProcessadorWebhookAgente, ProcessadorWebhookAgente>();
         servicos.AddScoped<IGerenciadorInstanciaWhatsApp, GerenciadorInstanciaWhatsApp>();
+        servicos.AddScoped<Plataforma.Aplicacao.WhatsAppAgente.IGerenciadorConversasWhatsApp, GerenciadorConversasWhatsApp>();
+        servicos.AddScoped<AvisadorAtendimentoHumano>();
 
         servicos
             .AddHealthChecks()

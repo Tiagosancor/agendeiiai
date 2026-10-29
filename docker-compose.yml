@@ -100,6 +100,10 @@ services:
       Ai__RetencaoMensagensDias: ${AI_RETENCAO_MENSAGENS_DIAS:-0}
       Ai__Indisponivel__IntervaloHoras: ${AI_INDISPONIVEL_INTERVALO_HORAS:-24}
       Ai__Indisponivel__LimitePorNegocioPorDia: ${AI_INDISPONIVEL_LIMITE_NEGOCIO_DIA:-200}
+      Ai__Humano__FerramentaAtiva: ${AI_HUMANO_FERRAMENTA_ATIVA:-false}
+      Ai__Humano__DevolverAposHoras: ${AI_HUMANO_DEVOLVER_APOS_HORAS:-24}
+      Ai__Humano__IntervaloAvisoPorConversaHoras: ${AI_HUMANO_INTERVALO_AVISO_HORAS:-6}
+      Ai__Humano__LimiteAvisosPorNegocioPorDia: ${AI_HUMANO_LIMITE_AVISOS_NEGOCIO_DIA:-20}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}

@@ -40,6 +40,7 @@ public sealed class ConversaWhatsAppConfiguracao : IEntityTypeConfiguration<Conv
         builder.Property(c => c.TelefoneCliente).HasMaxLength(20).IsRequired();
         builder.Property(c => c.Status).HasConversion<string>().HasMaxLength(20).IsRequired();
         builder.Property(c => c.Resumo).HasMaxLength(4000);
+        builder.Property(c => c.HumanoMotivo).HasConversion<string>().HasMaxLength(20);
 
         builder.HasOne<InstanciaWhatsApp>().WithMany().HasForeignKey(c => c.InstanciaId).OnDelete(DeleteBehavior.Cascade);
 
@@ -149,5 +150,21 @@ public sealed class PendenciaAgendamentoWhatsAppConfiguracao : IEntityTypeConfig
         builder.HasIndex(p => new { p.ExpiraEm, p.NegocioId }).HasFilter("status = 'Aguardando'");
         builder.HasIndex(p => new { p.NegocioId, p.CriadoEm });
         builder.HasIndex(p => p.AgendamentoId);
+    }
+}
+
+public sealed class AvisoAtendenteWhatsAppConfiguracao : IEntityTypeConfiguration<AvisoAtendenteWhatsApp>
+{
+    public void Configure(EntityTypeBuilder<AvisoAtendenteWhatsApp> builder)
+    {
+        builder.ToTable("avisos_atendente_whatsapp");
+
+        builder.HasKey(a => a.Id);
+
+        builder.HasOne<Negocio>().WithMany().HasForeignKey(a => a.NegocioId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne<ConversaWhatsApp>().WithMany().HasForeignKey(a => a.ConversaId).OnDelete(DeleteBehavior.Cascade);
+
+        // A contagem do dia é por negócio e instante.
+        builder.HasIndex(a => new { a.NegocioId, a.Em });
     }
 }

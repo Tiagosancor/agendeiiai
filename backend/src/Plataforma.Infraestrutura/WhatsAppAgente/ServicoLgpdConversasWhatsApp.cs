@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Auditoria;
 using Plataforma.Aplicacao.WhatsAppAgente;
 using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.WhatsAppAgente;
@@ -16,11 +17,13 @@ public sealed class ServicoLgpdConversasWhatsApp : IServicoLgpdConversasWhatsApp
 {
     private readonly PlataformaDbContext _dbContext;
     private readonly IContextoNegocio _contextoNegocio;
+    private readonly IRegistroAuditoria _auditoria;
 
-    public ServicoLgpdConversasWhatsApp(PlataformaDbContext dbContext, IContextoNegocio contextoNegocio)
+    public ServicoLgpdConversasWhatsApp(PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IRegistroAuditoria auditoria)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
+        _auditoria = auditoria;
     }
 
     public async Task<int> AnonimizarDoClienteAsync(Guid clienteId, TelefoneE164? telefone, CancellationToken cancellationToken = default)
@@ -45,6 +48,8 @@ public sealed class ServicoLgpdConversasWhatsApp : IServicoLgpdConversasWhatsApp
                 return false;
             }
 
+            // Auditoria só com o id da conversa (nenhum conteúdo); sai no mesmo SaveChanges da anonimização.
+            _auditoria.Registrar(AcoesAuditoria.ApagarConversaWhatsApp, nameof(ConversaWhatsApp), conversaId);
             await AnonimizarAsync(negocioId, [conversaId], cancellationToken);
             await transacao.CommitAsync(cancellationToken);
             return true;

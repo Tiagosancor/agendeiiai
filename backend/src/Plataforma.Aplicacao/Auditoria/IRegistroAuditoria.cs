@@ -42,4 +42,10 @@ public static class AcoesAuditoria
     public const string ExcluirLancamentoSaldo = "ExcluirLancamentoSaldo";
     public const string ConfigurarLembreteRetorno = "ConfigurarLembreteRetorno";
     public const string AlterarAceiteLembreteRetorno = "AlterarAceiteLembreteRetorno";
+
+    // Agente de WhatsApp, atendimento humano (Fase 4): detalhes sem nenhum conteúdo de conversa.
+    public const string AssumirConversaWhatsApp = "AssumirConversaWhatsApp";
+    public const string DevolverConversaWhatsApp = "DevolverConversaWhatsApp";
+    public const string ApagarConversaWhatsApp = "ApagarConversaWhatsApp";
+    public const string AtenderConversaPeloAgente = "AtenderConversaPeloAgente";
 }

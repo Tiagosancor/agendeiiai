@@ -112,9 +112,10 @@ public sealed class ConstrutorPromptAgenteTestes
     [Fact]
     public void Texto_do_cliente_nao_tem_como_entrar_no_prompt_de_sistema()
     {
-        // A assinatura só aceita nome do negócio, relógio e link: o texto do cliente vai apenas como mensagem de papel usuário.
+        // A assinatura só aceita nome do negócio, relógio, link e uma flag booleana (a ferramenta de atendente humano): o texto do cliente
+        // vai apenas como mensagem de papel usuário.
         var parametros = typeof(ConstrutorPromptAgente).GetMethod(nameof(ConstrutorPromptAgente.Construir))!.GetParameters().Select(p => p.Name);
-        parametros.Should().Equal("nomeNegocio", "agoraLocal", "linkPublico");
+        parametros.Should().Equal("nomeNegocio", "agoraLocal", "linkPublico", "comAtendenteHumano");
     }
 
     [Fact]

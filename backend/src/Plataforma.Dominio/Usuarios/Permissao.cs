@@ -60,4 +60,10 @@ public enum Permissao
     /// padrão — permissão própria, separada do estoque (decisão do dono).
     /// </summary>
     LancarVales = 20,
+
+    /// <summary>
+    /// Assumir, devolver e (na fatia das telas) ler e apagar as conversas do WhatsApp do negócio — texto livre do cliente e telefone
+    /// (agente de WhatsApp, Fase 4). Só o Administrador, por padrão.
+    /// </summary>
+    AtenderConversasWhatsApp = 21,
 }

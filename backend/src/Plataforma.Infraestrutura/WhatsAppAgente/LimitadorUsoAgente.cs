@@ -49,6 +49,17 @@ public sealed class LimitadorUsoAgente
         var umaHoraAtras = agora.AddHours(-1);
         var umDiaAtras = agora.AddDays(-1);
 
+        // Conversa devolvida do atendimento humano: o que veio antes de `devolvida_em` (acumulado durante o atendimento) não conta (G12-f).
+        var devolvidaEm = await _dbContext.ConversasWhatsApp.AsNoTracking().Where(c => c.Id == conversaId)
+            .Select(c => c.DevolvidaEm).FirstOrDefaultAsync(cancellationToken);
+        if (devolvidaEm is { } devolvida)
+        {
+            if (devolvida > umaHoraAtras)
+                umaHoraAtras = devolvida;
+            if (devolvida > umDiaAtras)
+                umDiaAtras = devolvida;
+        }
+
         // Uma conversa = um telefone numa instância; contar por conversa é contar por telefone.
         var mensagens = _dbContext.MensagensWhatsApp.AsNoTracking()
             .Where(m => m.ConversaId == conversaId && m.Papel == PapelMensagemWhatsApp.Usuario);
