@@ -128,7 +128,7 @@ public sealed class GestaoPublicaAgendamento : IGestaoPublicaAgendamento
     /// FONTE ÚNICA da regra de tempo (link público e agente de WhatsApp): início menos agora precisa ser ao menos a antecedência mínima.
     /// Devolve o código do bloqueio (<c>agendamento_passado</c> | <c>antecedencia_minima</c>) ou nulo se está liberado.
     /// </summary>
-    internal static string? MotivoTemporal(DateTimeOffset inicio, DateTimeOffset agora, int antecedenciaMinimaHoras)
+    public static string? MotivoTemporal(DateTimeOffset inicio, DateTimeOffset agora, int antecedenciaMinimaHoras)
     {
         var faltam = inicio - agora;
         if (faltam < TimeSpan.Zero)
