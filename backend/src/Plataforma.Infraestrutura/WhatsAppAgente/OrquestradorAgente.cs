@@ -121,7 +121,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
         {
             resultado = await ConversarAsync(
                 contexto, negocio.NomeExibido, negocio.Fuso, link, situacao.AgendamentoLiberado, _opcoes.Humano.FerramentaAtiva,
-                situacao.Gestao >= ModoGestaoAgente.Link, cancellationToken);
+                situacao.Gestao, cancellationToken);
         }
         catch (Exception excecao) when (excecao is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
         {
@@ -155,9 +155,14 @@ public sealed class OrquestradorAgente : IRespostaAgente
         if (situacao.AgendamentoLiberado && SanitizadorRespostaAgente.AfirmaAgendamento(texto)
             && !await ConfirmouRecentementeAsync(contexto.ConversaId, cancellationToken))
             texto += "\n\n" + SanitizadorRespostaAgente.AvisoPromessaFalsa;
-        // Gestão (Fase 4, modo Link): o agente NUNCA cancela nem remarca; quem altera é o cliente, na página do link. Guarda independente da anterior ("cancelei o anterior e agendei outro" recebe os dois avisos).
-        if (situacao.Gestao >= ModoGestaoAgente.Link && SanitizadorRespostaAgente.AfirmaGestaoEfetivada(texto))
-            texto += "\n\n" + SanitizadorRespostaAgente.AvisoGestaoNaoEfetivada;
+        // Gestão (Fase 4): no modo Link o agente NUNCA cancela nem remarca (quem altera é o cliente, na página do link); no modo Cancelar o
+        // cancelamento só vale depois do "SIM" avaliado pelo servidor, e o modelo só pode falar nele se um foi efetivado há pouco.
+        // Guarda independente da anterior ("cancelei o anterior e agendei outro" recebe os dois avisos).
+        if (situacao.Gestao >= ModoGestaoAgente.Link && SanitizadorRespostaAgente.AfirmaGestaoEfetivada(texto)
+            && !(situacao.Gestao >= ModoGestaoAgente.Cancelar && await CanceladoRecentementeAsync(contexto.ConversaId, cancellationToken)))
+            texto += "\n\n" + (situacao.Gestao >= ModoGestaoAgente.Cancelar
+                ? SanitizadorRespostaAgente.AvisoCancelamentoNaoEfetivado
+                : SanitizadorRespostaAgente.AvisoGestaoNaoEfetivada);
 
         return new RespostaAgente(texto, null, Telemetria(false));
     }
@@ -199,6 +204,15 @@ public sealed class OrquestradorAgente : IRespostaAgente
             p => p.ConversaId == conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde, cancellationToken);
     }
 
+    /// <summary>Um cancelamento foi de fato efetivado nesta conversa na janela recente? Só então o modelo pode falar em "cancelado".</summary>
+    private Task<bool> CanceladoRecentementeAsync(Guid conversaId, CancellationToken cancellationToken)
+    {
+        var desde = DateTimeOffset.UtcNow - JanelaConfirmacaoRecente;
+        return _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().AnyAsync(
+            p => p.ConversaId == conversaId && p.Tipo == TipoGestaoWhatsApp.Cancelar
+                && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde, cancellationToken);
+    }
+
     /// <summary>Texto fixo (nosso, não do modelo) para qualquer falha: leva o cliente ao link público.</summary>
     public static string TextoFallback(string nomeNegocio, string link) =>
         $"Aqui é o assistente virtual de {ConstrutorPromptAgente.LimparNome(nomeNegocio)}. Não consegui consultar as informações agora. " +
@@ -212,8 +226,10 @@ public sealed class OrquestradorAgente : IRespostaAgente
     /// </summary>
     private async Task<ResultadoModelo?> ConversarAsync(
         ContextoRespostaAgente contexto, string nomeNegocio, string fuso, string link, bool agendamentoLigado, bool humanoLigado,
-        bool gestaoLigada, CancellationToken cancellationToken)
+        ModoGestaoAgente gestao, CancellationToken cancellationToken)
     {
+        var gestaoLigada = gestao >= ModoGestaoAgente.Link;
+        var gestaoCancelar = gestao >= ModoGestaoAgente.Cancelar;
         var relogio = Stopwatch.StartNew();
         var orcamento = TimeSpan.FromSeconds(_opcoes.TempoMaximoProcessamentoSegundos);
         var agoraLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(fuso));
@@ -222,9 +238,11 @@ public sealed class OrquestradorAgente : IRespostaAgente
         // Com a ferramenta de atendente humano oferecida (Ai__Humano__FerramentaAtiva) o prompt ganha a regra dela e vira v3.
         // A gestão dos agendamentos do cliente (Fase 4) só existe com o agendamento ligado: o prompt é o v2 com as regras dela (v4).
         var prompt = agendamentoLigado
-            ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link, humanoLigado, gestaoLigada)
+            ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link, humanoLigado, gestaoLigada, gestaoCancelar)
             : ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link, humanoLigado);
-        _coleta.PromptVersao = agendamentoLigado && gestaoLigada
+        _coleta.PromptVersao = agendamentoLigado && gestaoCancelar
+            ? ConstrutorPromptAgente.VersaoGestaoCancelar
+            : agendamentoLigado && gestaoLigada
             ? ConstrutorPromptAgente.VersaoGestao
             : humanoLigado
                 ? ConstrutorPromptAgente.VersaoHumano

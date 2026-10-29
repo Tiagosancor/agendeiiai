@@ -329,6 +329,8 @@ public static class InfraestruturaServiceCollectionExtensions
         servicos.AddScoped<EmissorLinkGestaoAgente>();
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaListarMeusAgendamentos>();
         servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaEnviarLinkGestao>();
+        // Fatia 7 (cancelar): registrada sempre, mas só oferecida/executada com Ai__Gestao__Modo=Cancelar (ou acima).
+        servicos.AddScoped<IFerramentaAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.FerramentaPrepararCancelamento>();
         servicos.AddScoped<GerenciadorPendenciasAgente>();
         servicos.AddScoped<ConfirmadorPendenciaAgente>();
         servicos.AddScoped<IExecutorFerramentasAgente, Plataforma.Infraestrutura.WhatsAppAgente.Ferramentas.ExecutorFerramentasAgente>();

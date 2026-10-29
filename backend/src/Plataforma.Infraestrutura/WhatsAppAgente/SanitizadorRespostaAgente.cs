@@ -167,6 +167,10 @@ public static class SanitizadorRespostaAgente
     public const string AvisoGestaoNaoEfetivada =
         "Atenção: não cancelei nem remarquei nada por aqui. Para cancelar ou remarcar, use o link de gestão do seu agendamento.";
 
+    /// <summary>Aviso fixo do modo Cancelar: o cancelamento só vale depois do SIM ao resumo do sistema; remarcar é pelo link.</summary>
+    public const string AvisoCancelamentoNaoEfetivado =
+        "Atenção: ainda não cancelei nem remarquei nada por aqui. O cancelamento só vale depois que você responde SIM ao resumo que o sistema envia; para remarcar, use o link de gestão do seu agendamento.";
+
     /// <summary>O texto afirma que algo foi cancelado/remarcado/desmarcado? Heurística de palavras (sem acento também).</summary>
     public static bool AfirmaGestaoEfetivada(string? texto)
     {

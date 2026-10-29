@@ -17,6 +17,14 @@ public enum MotivoLimiteAgente
     CotaMensal = 4,
 }
 
+public enum MotivoLimiteGestao
+{
+    Nenhum = 0,
+    PreparosPorDia = 1,
+    CancelamentosPorDia = 2,
+    OperacoesNegocioPorDia = 3,
+}
+
 public enum MotivoLimiteEscrita
 {
     Nenhum = 0,
@@ -149,6 +157,33 @@ public sealed class LimitadorUsoAgente
             m => m.ConversaId == conversaId && m.Papel == PapelMensagemWhatsApp.Sistema
                 && m.NomeFerramenta == MarcadoresAgente.GestaoLink && m.CriadoEm >= inicioDoDia, cancellationToken);
         return enviados >= _opcoes.Gestao.LimiteLinksPorTelefonePorDia;
+    }
+
+    /// <summary>
+    /// Fase 4 (Fatia 7): limites de cancelar ANTES de criar a pendência — pedidos preparados por telefone no dia, cancelamentos efetivados
+    /// por telefone no dia e operações efetivadas (cancelar + remarcar) por negócio no dia. Dia UTC; contados no Postgres sob o filtro
+    /// global; "macios" sob concorrência (o rígido é o índice único de uma pendência por conversa). Uma conversa = um telefone.
+    /// </summary>
+    public async Task<MotivoLimiteGestao> VerificarGestaoAsync(Guid conversaId, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        var limites = _opcoes.Gestao;
+        var inicioDoDia = new DateTimeOffset(agora.UtcDateTime.Date, TimeSpan.Zero);
+        var daConversa = _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().Where(p => p.ConversaId == conversaId);
+
+        if (await daConversa.CountAsync(p => p.CriadoEm >= inicioDoDia, cancellationToken) >= limites.LimitePreparosPorTelefonePorDia)
+            return MotivoLimiteGestao.PreparosPorDia;
+
+        if (await daConversa.CountAsync(
+                p => p.Tipo == TipoGestaoWhatsApp.Cancelar && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= inicioDoDia,
+                cancellationToken) >= limites.LimiteCancelamentosPorTelefonePorDia)
+            return MotivoLimiteGestao.CancelamentosPorDia;
+
+        if (await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().CountAsync(
+                p => p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= inicioDoDia, cancellationToken)
+            >= limites.LimiteOperacoesPorNegocioPorDia)
+            return MotivoLimiteGestao.OperacoesNegocioPorDia;
+
+        return MotivoLimiteGestao.Nenhum;
     }
 
     /// <summary>

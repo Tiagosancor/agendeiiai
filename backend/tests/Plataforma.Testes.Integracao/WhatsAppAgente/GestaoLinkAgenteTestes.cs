@@ -449,22 +449,6 @@ public sealed class GestaoLinkAgenteTestes : IAsyncLifetime
         pedido.PromptSistema.Should().Contain("prompt v4").And.Contain("chamar_atendente").And.Contain("enviar_link_gestao");
     }
 
-    [Theory]
-    [InlineData("Cancelar")]
-    [InlineData("Completo")]
-    public async Task Cancelar_e_Completo_se_comportam_como_Link_por_enquanto(string modo)
-    {
-        await IniciarAsync(new() { ["Ai:Gestao:Modo"] = modo });
-        var c = await _ambiente.SemearAsync();
-        await AgendarAsync(c, Tel, OrigemAgendamento.LinkPublico, H(10, 0));
-
-        var antes = Roteirizar(("enviar_link_gestao", "{}"));
-        await _ambiente.EnviarAsync(c, "quero cancelar");
-
-        _ambiente.Provedor.Requisicoes[antes].Ferramentas.Select(f => f.Nome).Should().NotContain(n => n.StartsWith("preparar_cancel") || n.StartsWith("preparar_remarc"));
-        _ambiente.Evolution.Envios.Should().ContainSingle().Which.Texto.Should().Contain("/agendamentos/");
-    }
-
     [Fact]
     public async Task Modo_desligado_mantem_o_comportamento_anterior()
     {
@@ -541,7 +525,7 @@ public sealed class GestaoLinkAgenteTestes : IAsyncLifetime
         var c2 = await _ambiente.SemearAsync();
         var admin2 = await _ambiente.AdminAsync(c2);
         Json(await (await admin2.GetAsync("/painel/whatsapp/status")).Content.ReadAsStringAsync())
-            .GetProperty("gestaoModo").GetString().Should().Be("Link", "Cancelar/Completo ainda valem como Link");
+            .GetProperty("gestaoModo").GetString().Should().Be("Cancelar", "Completo vale como Cancelar até a Fatia 8");
 
         await IniciarAsync(new() { ["Ai:Gestao:Modo"] = "Desligado" });
         var c3 = await _ambiente.SemearAsync();

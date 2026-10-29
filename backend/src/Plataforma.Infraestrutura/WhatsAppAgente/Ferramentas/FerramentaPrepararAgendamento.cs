@@ -151,6 +151,11 @@ public sealed class FerramentaPrepararAgendamento : IFerramentaDeEscritaAgente
         if (existente is not null)
             await _pendencias.EncerrarAsync(existente.Id, DesfechoPendenciaAgente.Substituida, cancellationToken);
 
+        // Um pedido de cancelamento aguardando o "SIM" deixa de valer: o cliente mudou de assunto (substituição cruzada, Fatia 7).
+        var gestaoAberta = await _pendencias.ObterGestaoAguardandoAsync(conversa.Id, cancellationToken);
+        if (gestaoAberta is not null)
+            await _pendencias.EncerrarGestaoAsync(gestaoAberta.Id, DesfechoPendenciaAgente.Substituida, cancellationToken);
+
         var reserva = await _agendamentos.CriarReservaAgenteAsync(
             new CriarReservaAgente(profissional.Id, servico.Id, inicio), cancellationToken);
         if (!reserva.Sucesso || reserva.AgendamentoId is null)

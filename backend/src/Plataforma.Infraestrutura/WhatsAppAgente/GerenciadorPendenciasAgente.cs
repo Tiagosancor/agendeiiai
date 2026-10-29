@@ -128,4 +128,152 @@ public sealed class GerenciadorPendenciasAgente
             return false;
         }
     }
+
+    // ---------------------------------------------------------------- pendências de gestão (Fase 4, Fatia 7)
+
+    public Task<PendenciaGestaoWhatsApp?> ObterGestaoAguardandoAsync(Guid conversaId, CancellationToken cancellationToken = default) =>
+        _dbContext.PendenciasGestaoWhatsApp.AsNoTracking()
+            .FirstOrDefaultAsync(p => p.ConversaId == conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando, cancellationToken);
+
+    /// <summary>
+    /// Cria a pendência de gestão da conversa e, NA MESMA TRANSAÇÃO, substitui o que a conversa tinha aberto: a pendência de agendamento
+    /// (liberando a reserva do horário) e a pendência de gestão anterior. Ordem de travas: pendência de agendamento -> o agendamento
+    /// reservado; depois a pendência de gestão antiga (outra tabela, sem agendamento a liberar). Só uma pendência de cada tipo existe
+    /// aberta por conversa (índices únicos parciais). Nulo = o índice recusou (corrida) ou outra transição venceu: nada foi criado.
+    /// </summary>
+    public async Task<PendenciaGestaoWhatsApp?> CriarGestaoAsync(
+        Guid conversaId, Guid agendamentoId, TipoGestaoWhatsApp tipo, DateTimeOffset agora, DateTimeOffset expiraEm, DateTimeOffset? novoInicio = null,
+        CancellationToken cancellationToken = default)
+    {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+        PendenciaGestaoWhatsApp? criada = null;
+        try
+        {
+            await _dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                criada = null;
+                await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+                var idAgendamentoAberta = await _dbContext.PendenciasAgendamentoWhatsApp.AsNoTracking()
+                    .Where(p => p.ConversaId == conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando)
+                    .Select(p => (Guid?)p.Id).FirstOrDefaultAsync(cancellationToken);
+                if (idAgendamentoAberta is { } idAg)
+                {
+                    var pendenciaAg = await _dbContext.PendenciasAgendamentoWhatsApp.FirstAsync(p => p.Id == idAg, cancellationToken);
+                    await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                        $"SELECT 1 FROM pendencias_agendamento_whatsapp WHERE id = {idAg} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+                    await _dbContext.Entry(pendenciaAg).ReloadAsync(cancellationToken);
+                    if (pendenciaAg.Aguardando)
+                    {
+                        var reserva = await _dbContext.Agendamentos.FirstOrDefaultAsync(a => a.Id == pendenciaAg.AgendamentoId, cancellationToken);
+                        if (reserva is not null)
+                        {
+                            await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                                $"SELECT 1 FROM agendamentos WHERE id = {reserva.Id} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+                            await _dbContext.Entry(reserva).ReloadAsync(cancellationToken);
+                            // Só a reserva que o agente fez e ninguém tomou: nunca um agendamento já confirmado ou de outro cliente.
+                            if (reserva.Status == StatusAgendamento.Reservado && reserva.ClienteId is null && reserva.Origem == OrigemAgendamento.WhatsApp)
+                                reserva.Expirar();
+                        }
+
+                        pendenciaAg.Substituir(agora);
+                    }
+                }
+
+                var idGestaoAberta = await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking()
+                    .Where(p => p.ConversaId == conversaId && p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando)
+                    .Select(p => (Guid?)p.Id).FirstOrDefaultAsync(cancellationToken);
+                if (idGestaoAberta is { } idGe)
+                {
+                    var antiga = await _dbContext.PendenciasGestaoWhatsApp.FirstAsync(p => p.Id == idGe, cancellationToken);
+                    await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                        $"SELECT 1 FROM pendencias_gestao_whatsapp WHERE id = {idGe} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+                    await _dbContext.Entry(antiga).ReloadAsync(cancellationToken);
+                    if (antiga.Aguardando)
+                        antiga.Substituir(agora);
+                }
+
+                // As substituições gravam antes do insert: o índice único parcial (uma Aguardando por conversa) não pode ver as duas.
+                await _dbContext.SaveChangesAsync(cancellationToken);
+
+                var nova = new PendenciaGestaoWhatsApp(negocioId, conversaId, agendamentoId, tipo, agora, expiraEm, novoInicio);
+                _dbContext.PendenciasGestaoWhatsApp.Add(nova);
+                try
+                {
+                    await _dbContext.SaveChangesAsync(cancellationToken);
+                }
+                catch
+                {
+                    _dbContext.Entry(nova).State = EntityState.Detached;
+                    throw;
+                }
+
+                await transacao.CommitAsync(cancellationToken);
+                criada = nova;
+            });
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            _dbContext.ChangeTracker.Clear();
+            _logger.LogWarning("Agente: já existe pendência de gestão aguardando nesta conversa (conversa {ConversaId}).", conversaId);
+            return null;
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            _dbContext.ChangeTracker.Clear();
+            return null;
+        }
+
+        return criada;
+    }
+
+    /// <summary>Encerra a pendência de gestão (se ainda <c>Aguardando</c>) sob a trava dela. Verdadeiro se foi esta chamada que encerrou.</summary>
+    public async Task<bool> EncerrarGestaoAsync(
+        Guid pendenciaId, DesfechoPendenciaAgente desfecho, CancellationToken cancellationToken = default)
+    {
+        var negocioId = _contextoNegocio.NegocioId!.Value;
+        try
+        {
+            return await _dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            {
+                await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+
+                var pendencia = await _dbContext.PendenciasGestaoWhatsApp.FirstOrDefaultAsync(p => p.Id == pendenciaId, cancellationToken);
+                if (pendencia is null)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return false;
+                }
+
+                await _dbContext.Database.ExecuteSqlInterpolatedAsync(
+                    $"SELECT 1 FROM pendencias_gestao_whatsapp WHERE id = {pendenciaId} AND negocio_id = {negocioId} FOR UPDATE", cancellationToken);
+                await _dbContext.Entry(pendencia).ReloadAsync(cancellationToken);
+
+                if (!pendencia.Aguardando)
+                {
+                    await transacao.RollbackAsync(cancellationToken);
+                    return false;
+                }
+
+                var agora = DateTimeOffset.UtcNow;
+                switch (desfecho)
+                {
+                    case DesfechoPendenciaAgente.Recusada: pendencia.Recusar(agora); break;
+                    case DesfechoPendenciaAgente.Substituida: pendencia.Substituir(agora); break;
+                    case DesfechoPendenciaAgente.Falhou: pendencia.Falhar(agora); break;
+                    default: pendencia.Expirar(agora); break;
+                }
+
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transacao.CommitAsync(cancellationToken);
+                return true;
+            });
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Outra transição da mesma pendência (confirmação, job) venceu: vale o que ela gravou.
+            _dbContext.ChangeTracker.Clear();
+            return false;
+        }
+    }
 }

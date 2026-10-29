@@ -50,10 +50,14 @@ public sealed class JobExpirarReservas
     /// </summary>
     private async Task ExpirarPendenciasDoAgenteAsync(DateTimeOffset agora, CancellationToken cancellationToken)
     {
-        var negocios = await _dbContext.PendenciasAgendamentoWhatsApp.IgnoreQueryFilters().AsNoTracking()
+        var negociosAgendamento = await _dbContext.PendenciasAgendamentoWhatsApp.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando && p.ExpiraEm <= agora)
-            .Select(p => p.NegocioId).Distinct().OrderBy(id => id)
-            .ToListAsync(cancellationToken);
+            .Select(p => p.NegocioId).Distinct().ToListAsync(cancellationToken);
+        // Pedidos de gestão (Fase 4, Fatia 7) também expiram aqui, no mesmo escopo por negócio.
+        var negociosGestao = await _dbContext.PendenciasGestaoWhatsApp.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.Status == StatusPendenciaAgendamentoWhatsApp.Aguardando && p.ExpiraEm <= agora)
+            .Select(p => p.NegocioId).Distinct().ToListAsync(cancellationToken);
+        var negocios = negociosAgendamento.Union(negociosGestao).OrderBy(id => id).ToList();
 
         foreach (var negocioId in negocios)
         {

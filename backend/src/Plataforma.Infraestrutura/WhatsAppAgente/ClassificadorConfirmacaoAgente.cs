@@ -32,29 +32,53 @@ public static class ClassificadorConfirmacaoAgente
         "nao", "n", "nao quero", "cancela", "cancelar", "desisto", "desisti",
     };
 
-    public static RespostaDoCliente Classificar(string? mensagem)
+    // Cancelar (gestão): lista MAIS ESTRITA. Cancelar é irreversível, então "ok", "beleza", "pode", "isso" e "👍" não bastam, e "cancela"
+    // sozinho é ambíguo (pode ser o pedido inicial repetido) e vai para a IA — diferente do agendamento, onde "cancela" é negativo.
+    private static readonly HashSet<string> AfirmativasCancelamento = new(StringComparer.Ordinal)
+    {
+        "sim", "s", "confirmo", "sim confirmo", "pode cancelar", "sim pode cancelar", "sim cancela",
+    };
+
+    private static readonly HashSet<string> NegativasCancelamento = new(StringComparer.Ordinal)
+    {
+        "nao", "n", "nao quero", "nao cancela", "nao cancelar", "desisto", "desisti", "mantem", "manter", "deixa", "deixa assim",
+    };
+
+    public static RespostaDoCliente Classificar(string? mensagem) => ClassificarCom(mensagem, Afirmativas, Negativas);
+
+    /// <summary>"Sim" ou "não" a um resumo de CANCELAMENTO: lista estrita (ver <see cref="AfirmativasCancelamento"/>).</summary>
+    public static RespostaDoCliente ClassificarCancelamento(string? mensagem) =>
+        ClassificarCom(mensagem, AfirmativasCancelamento, NegativasCancelamento);
+
+    private static RespostaDoCliente ClassificarCom(string? mensagem, HashSet<string> afirmativas, HashSet<string> negativas)
     {
         if (string.IsNullOrWhiteSpace(mensagem) || mensagem.Trim().Length > TamanhoMaximoMensagem)
             return RespostaDoCliente.Outra;
 
         var normalizada = Normalizar(mensagem);
-        if (Afirmativas.Contains(normalizada))
+        if (afirmativas.Contains(normalizada))
             return RespostaDoCliente.Afirmativa;
 
-        return Negativas.Contains(normalizada) ? RespostaDoCliente.Negativa : RespostaDoCliente.Outra;
+        return negativas.Contains(normalizada) ? RespostaDoCliente.Negativa : RespostaDoCliente.Outra;
     }
 
     /// <summary>Lote vazio é <c>Outra</c>. Mistura de "sim" e "não", ou qualquer mensagem fora da lista, também.</summary>
-    public static RespostaDoCliente ClassificarLote(IReadOnlyCollection<string?> mensagens)
+    public static RespostaDoCliente ClassificarLote(IReadOnlyCollection<string?> mensagens) => ClassificarLoteCom(mensagens, Classificar);
+
+    /// <summary>Igual a <see cref="ClassificarLote"/>, com a lista estrita do cancelamento.</summary>
+    public static RespostaDoCliente ClassificarLoteCancelamento(IReadOnlyCollection<string?> mensagens) =>
+        ClassificarLoteCom(mensagens, ClassificarCancelamento);
+
+    private static RespostaDoCliente ClassificarLoteCom(IReadOnlyCollection<string?> mensagens, Func<string?, RespostaDoCliente> classificar)
     {
         if (mensagens.Count == 0)
             return RespostaDoCliente.Outra;
 
-        var primeira = Classificar(mensagens.First());
+        var primeira = classificar(mensagens.First());
         if (primeira == RespostaDoCliente.Outra)
             return RespostaDoCliente.Outra;
 
-        return mensagens.All(m => Classificar(m) == primeira) ? primeira : RespostaDoCliente.Outra;
+        return mensagens.All(m => classificar(m) == primeira) ? primeira : RespostaDoCliente.Outra;
     }
 
     /// <summary>Minúsculas, sem acento, só letras/dígitos/emoji (pontuação vira espaço), espaços colapsados.</summary>
