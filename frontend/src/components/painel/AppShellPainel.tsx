@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { BotaoTema } from "@/components/BotaoTema";
 import { MarcaPainel } from "./IdentidadePainel";
 import { useAutenticacao } from "@/lib/auth-context";
+import type { ResumoConversasWhatsApp } from "@/lib/tipos";
 
 // As mesmas rotas do layout anterior. Autorizações continuam nas telas e na API.
 type ItemMenu = readonly [href: string, rotulo: string, desenho: string];
@@ -28,11 +29,38 @@ const ITENS_MENU: readonly ItemMenu[] = [
 ];
 
 export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSair: () => Promise<void> }) {
-  const { temPermissao } = useAutenticacao();
+  const { temPermissao, chamarApi } = useAutenticacao();
+  const podeAtender = temPermissao("AtenderConversasWhatsApp");
+  const podeConfigurar = temPermissao("GerenciarConfiguracoesDoNegocio");
+  const [aguardando, setAguardando] = useState<number | null>(null);
+  const consultaResumo = useRef(0);
+  const api = useRef(chamarApi);
+  useEffect(() => { api.current = chamarApi; }, [chamarApi]);
   const caminho = usePathname();
   const [aberto, setAberto] = useState(false);
   const sidebar = useRef<HTMLElement>(null);
   const botaoMenu = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!podeAtender) return;
+    const controle = new AbortController();
+    async function consultar() {
+      const atual = ++consultaResumo.current;
+      try {
+        const resumo = await api.current<ResumoConversasWhatsApp>("/painel/whatsapp/conversas/resumo", { sinal: controle.signal, semRenovar: true });
+        if (atual === consultaResumo.current) setAguardando(resumo.aguardandoAtendimento);
+      } catch { if (atual === consultaResumo.current) setAguardando(null); }
+    }
+    consultar();
+    const intervalo = setInterval(consultar, 60000);
+    window.addEventListener("whatsapp-conversas-alteradas", consultar);
+    return () => {
+      // Contador de requisições, não ref de DOM: invalida a consulta pendente.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      ++consultaResumo.current;
+      controle.abort(); clearInterval(intervalo); window.removeEventListener("whatsapp-conversas-alteradas", consultar);
+    };
+  }, [podeAtender, caminho]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -78,10 +106,10 @@ export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSa
       <div className="painel-sidebar-marca"><MarcaPainel /><button type="button" className="painel-menu-controle painel-menu-fechar" aria-label="Fechar menu" onClick={() => setAberto(false)}>✕</button></div>
       <nav aria-label="Navegação do painel"><ul>{ITENS_MENU.flatMap<ItemMenu>((item) => {
         const [href] = item;
-        if (href === "/painel/assinatura" && temPermissao("GerenciarConfiguracoesDoNegocio")) {
+        if (href === "/painel/assinatura" && (podeConfigurar || podeAtender)) {
           return [
-            ["/painel/whatsapp", "WhatsApp", "M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5M8 8c0 4 2 6 6 6"],
-            ["/painel/configuracoes/notificacoes", "Notificações", "M18 8A6 6 0 0 0 6 8c0 7-3 7h18c-3 0-3-7-3-7M10 19a2 2 0 0 0 4 0"], item,
+            [podeConfigurar ? "/painel/whatsapp" : "/painel/whatsapp/conversas", "WhatsApp", "M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5M8 8c0 4 2 6 6 6"],
+            ...(podeConfigurar ? [["/painel/configuracoes/notificacoes", "Notificações", "M18 8A6 6 0 0 0 6 8c0 7-3 7h18c-3 0-3-7-3-7M10 19a2 2 0 0 0 4 0"] as ItemMenu] : []), item,
           ];
         }
         return [item];
@@ -89,6 +117,7 @@ export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSa
         const ativo = caminho === href || (href !== "/painel" && caminho.startsWith(`${href}/`));
         return <li key={href}><Link href={href} aria-current={ativo ? "page" : undefined} onClick={() => setAberto(false)}>
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={desenho} /></svg><span>{rotulo}</span>
+          {rotulo === "WhatsApp" && podeAtender && aguardando !== null && aguardando > 0 && <><span aria-hidden="true" className="ml-auto rounded-full bg-cyan-100 px-2 text-xs text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">{aguardando}</span><span className="sr-only">, {aguardando} aguardando atendimento</span></>}
         </Link></li>;
       })}</ul></nav>
       <div className="painel-sidebar-conta"><BotaoTema className="painel-tema" /><button type="button" className="painel-sair" onClick={aoSair}>Sair <span aria-hidden="true">↗</span></button></div>

@@ -269,6 +269,8 @@ function AgendaGeral() {
                 )}
               </div>
               <p className="text-sm text-gray-700 dark:text-neutral-300">{item.clienteNome}</p>
+              {item.origem === "WhatsApp" && <p className="text-xs font-semibold text-green-700 dark:text-green-400">WhatsApp</p>}
+              {item.status === "Reservado" && item.reservadoAte && <p className="text-xs text-amber-800 dark:text-amber-200">{item.origem === "WhatsApp" ? "Aguardando confirmação no WhatsApp" : "Reservado"} (até {formatarHora(item.reservadoAte)})</p>}
               <p className="text-xs text-gray-500 dark:text-neutral-400">
                 {item.servicos.join(", ")} · {formatarReais(item.total)}
               </p>

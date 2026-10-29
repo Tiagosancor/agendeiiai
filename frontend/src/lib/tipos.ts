@@ -29,7 +29,8 @@ export type Permissao =
   | "ForcarAgendamento"
   | "VenderProdutos"
   | "GerenciarEstoque"
-  | "LancarVales";
+  | "LancarVales"
+  | "AtenderConversasWhatsApp";
 
 export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "GerenciarUsuarios", rotulo: "Gerenciar usuários" },
@@ -52,6 +53,7 @@ export const PERMISSOES: { valor: Permissao; rotulo: string }[] = [
   { valor: "VenderProdutos", rotulo: "Vender produtos" },
   { valor: "GerenciarEstoque", rotulo: "Gerenciar estoque (produtos, entradas, ajustes, consumo interno, preço de custo)" },
   { valor: "LancarVales", rotulo: "Lançar vales (adiantamento em dinheiro aos profissionais)" },
+  { valor: "AtenderConversasWhatsApp", rotulo: "Atender conversas do WhatsApp" },
 ];
 
 /** Endereço de usuário/profissional/negócio — todos os campos opcionais. */
@@ -419,6 +421,8 @@ export interface ProfissionalServicoResumo {
 }
 
 export interface AgendamentoResumo {
+  origem: "LinkPublico" | "Painel" | "Encaixe" | "WhatsApp";
+  reservadoAte: string | null;
   id: string;
   profissionalId: string;
   clienteId: string | null;
@@ -968,15 +972,8 @@ export interface ValoresAtendimento {
 }
 
 export interface ConexaoWhatsApp {
-  status: string;
+  status: StatusInstanciaWhatsApp;
   qrCode: string | null;
-}
-
-export interface StatusWhatsApp {
-  agenteIaContratado: boolean;
-  status: string;
-  agenteAtivo: boolean;
-  telefone: string | null;
 }
 
 export interface NegocioNaPlataforma {
@@ -1029,3 +1026,71 @@ export interface ServicoAgenteIaPainel {
   contratado: boolean;
   origem: OrigemAgenteIa | null;
 }
+
+export type StatusInstanciaWhatsApp = "Desconectada" | "AguardandoQrCode" | "Conectada";
+export type ModoGestaoAgente = "Desligado" | "Link" | "Cancelar" | "Completo";
+
+export interface StatusWhatsApp {
+  status: StatusInstanciaWhatsApp;
+  agenteAtivo: boolean;
+  telefone: string | null;
+  agenteIaContratado: boolean;
+  mensagemTransferencia: string | null;
+  iaAtiva: boolean;
+  agendamentoAtivo: boolean;
+  gestaoModo: ModoGestaoAgente;         // por ora sempre "Desligado"
+  atendimentoHumanoAtivo: boolean;
+}
+
+export interface UsoIaDia { dia: string; chamadas: number; tokens: number; }   // dia "AAAA-MM-DD" (UTC)
+export interface UsoIaMes {
+  mes: string;                    // "AAAA-MM", mês UTC
+  chamadas: number;
+  chamadasComFalha: number;
+  tokensEntrada: number;
+  tokensSaida: number;
+  cotaMensalTokens: number;
+  percentualCota: number;         // uma casa (0.1 = 0,1%); pode passar de 100
+  chamadasHoje: number;
+  limiteChamadasPorDia: number;
+  conversasAtendidas: number;
+  respostasFallback: number;
+  agendamentosConfirmados: number;
+  cancelamentos: number;
+  remarcacoes: number;
+  transferenciasHumano: number;
+  porDia: UsoIaDia[];
+}
+
+export type StatusConversaWhatsApp = "Agente" | "Humano";
+export type MotivoHumano = "Painel" | "PedidoDoAgente";
+export interface ConversaWhatsAppResumo {
+  id: string;
+  telefone: string;                 // E.164 completo, ex. "+5571988887777"
+  clienteNome: string | null;
+  status: StatusConversaWhatsApp;
+  humanoDesde: string | null;
+  humanoMotivo: MotivoHumano | null;
+  humanoAte: string | null;
+  ultimaMensagemEm: string;
+  mensagensDesdeHumano: number;
+  aguardandoAtendimento: boolean;   // Humano e ninguém assumiu
+}
+export interface PaginaConversasWhatsApp {
+  itens: ConversaWhatsAppResumo[];
+  total: number;
+  pagina: number;
+  tamanhoPagina: number;            // 20
+}
+export interface ResumoConversasWhatsApp {
+  aguardandoAtendimento: number;
+  emAtendimentoHumano: number;
+}
+export type PapelMensagemConversa = "Cliente" | "Assistente" | "Sistema";
+export interface MensagemConversaWhatsApp { id: string; papel: PapelMensagemConversa; texto: string; em: string; }
+export interface DetalheConversaWhatsApp extends ConversaWhatsAppResumo {
+  mensagens: MensagemConversaWhatsApp[];   // cronológica, até 50
+  haMaisAntigas: boolean;
+}
+
+export interface DefinirMensagemTransferenciaRequisicao { mensagem: string | null; }
