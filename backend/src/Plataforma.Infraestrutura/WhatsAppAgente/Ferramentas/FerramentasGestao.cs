@@ -38,7 +38,7 @@ public sealed record OpcaoDeAgendamentoDaFerramenta(
     [property: JsonPropertyName("hora")] string Hora);
 
 /// <summary>Barreiras e formatação comuns às duas ferramentas de gestão.</summary>
-internal static class ApoioGestaoAgente
+public static class ApoioGestaoAgente
 {
     public const int MaximoAgendamentos = 5;
 
