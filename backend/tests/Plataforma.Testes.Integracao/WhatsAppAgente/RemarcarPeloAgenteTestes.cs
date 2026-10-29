@@ -1206,6 +1206,26 @@ public sealed class RemarcarPeloAgenteTestes : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Anuncio_recuperado_depois_de_transferencia_pelo_painel_cita_o_profissional_da_remarcacao()
+    {
+        var (c, id, _) = await RemarcadoSemAnuncioAsync();
+        using (var escopo = Escopo(c.NegocioId))
+            (await escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>().TransferirAsync(id, c.Ana, c.Beto)).Sucesso.Should().BeFalse("Beto não trabalha às 14:00");
+        // O painel move para a manhã e transfere para Beto antes da recuperação do anúncio.
+        using (var escopo = Escopo(c.NegocioId))
+        {
+            var servico = escopo.ServiceProvider.GetRequiredService<IServicoAgendamentos>();
+            (await servico.MoverAsync(id, H(9, 0))).Sucesso.Should().BeTrue();
+            (await servico.TransferirAsync(id, c.Ana, c.Beto)).Sucesso.Should().BeTrue();
+        }
+
+        await _ambiente.ProcessarConversaAsync();
+
+        var anuncio = _ambiente.Evolution.Envios.Single(e => e.Texto.Contains("Pronto, remarquei")).Texto;
+        anuncio.Should().Contain("Ana").And.Contain("14:00").And.NotContain("Beto").And.NotContain("09:00");
+    }
+
+    [Fact]
     public async Task Anuncio_de_remarcacao_ja_gravada_sai_mesmo_com_a_conversa_em_Humano_e_depois_de_mais_de_10_minutos()
     {
         var (c, _, conversa) = await RemarcadoSemAnuncioAsync();

@@ -489,14 +489,16 @@ public sealed class ConfirmadorPendenciaAgente
     private async Task<MensagemDoServidor?> MontarRemarcacaoEfetivadaAsync(
         PendenciaGestaoWhatsApp gestao, string nomeNegocio, string fuso, TextosAgendamentoAgente textos, CancellationToken cancellationToken)
     {
-        if (gestao.NovoInicio is not { } novoInicio)
+        // O anúncio descreve o que FOI efetivado: horário e profissional do retrato da pendência, nunca o estado atual do agendamento
+        // (o painel pode ter transferido ou remarcado de novo antes de uma recuperação tardia).
+        if (gestao.NovoInicio is not { } novoInicio || gestao.ProfissionalId is null)
             return null;
 
         var agendamento = await _dbContext.Agendamentos.AsNoTracking().Include(a => a.Servicos).FirstOrDefaultAsync(a => a.Id == gestao.AgendamentoId, cancellationToken);
         if (agendamento is null || agendamento.Servicos.Count == 0)
             return null;
 
-        var profissional = await _dbContext.Profissionais.AsNoTracking().Where(p => p.Id == agendamento.ProfissionalId)
+        var profissional = await _dbContext.Profissionais.AsNoTracking().Where(p => p.Id == gestao.ProfissionalId)
             .Select(p => p.Nome).FirstOrDefaultAsync(cancellationToken);
         if (profissional is null)
             return null;
