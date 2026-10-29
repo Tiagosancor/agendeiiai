@@ -30,6 +30,9 @@ public enum TipoAcaoServidor
 {
     /// <summary>O agente chamou um atendente: a conversa já está em Humano; o servidor envia o texto fixo de transferência.</summary>
     Transferencia = 1,
+
+    /// <summary>O agente pediu o link de gestão de um agendamento (<c>Id</c> = o agendamento): o servidor envia o texto com o link.</summary>
+    LinkGestao = 2,
 }
 
 /// <summary>
@@ -56,6 +59,14 @@ public interface IFerramentaDeEscritaAgente : IFerramentaAgente
 /// depende do agendamento pelo agente: só do serviço de IA e da flag <c>Ai__Humano__FerramentaAtiva</c>.
 /// </summary>
 public interface IFerramentaDeAtendimentoHumano : IFerramentaDeEscritaAgente
+{
+}
+
+/// <summary>
+/// Ferramenta de gestão dos agendamentos do próprio cliente (<c>listar_meus_agendamentos</c>, <c>enviar_link_gestao</c>). Só é oferecida e
+/// só executa quando <c>Ai__Gestao__Modo</c> está ligado para o negócio (e o serviço de IA contratado).
+/// </summary>
+public interface IFerramentaDeGestaoAgente : IFerramentaAgente
 {
 }
 

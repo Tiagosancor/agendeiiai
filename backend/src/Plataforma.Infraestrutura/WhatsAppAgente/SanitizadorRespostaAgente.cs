@@ -45,7 +45,7 @@ public static class SanitizadorRespostaAgente
             if (EhFimDeFraseSemEspaco(correspondencia.Value))
                 return correspondencia.Value;
 
-            if (!PermitirLink(correspondencia.Value, hostPermitido))
+            if (!PermitirLink(correspondencia.Value, hostPermitido) || EhLinkDeGestao(correspondencia.Value))
                 return string.Empty;
 
             protegidos.Add(correspondencia.Value);
@@ -151,6 +151,36 @@ public static class SanitizadorRespostaAgente
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// G3: o link de gestão (<c>/agendamentos/{token}</c>) é credencial e só os textos fixos do servidor o enviam. Qualquer URL do modelo
+    /// com esse caminho sai, mesmo no host do próprio negócio (o modelo pode ter visto o link no que o cliente colou).
+    /// </summary>
+    private static bool EhLinkDeGestao(string valor) => valor.Contains("/agendamentos/", StringComparison.OrdinalIgnoreCase);
+
+    private static readonly Regex PromessaDeGestao = new(
+        @"\b(?:cancelad[oa]s?|cancelei|desmarquei|desmarcad[oa]s?|remarquei|remarcad[oa]s?)\b",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
+
+    /// <summary>Aviso fixo anexado quando o modelo diz que cancelou ou remarcou (no modo Link ele nunca faz nenhum dos dois).</summary>
+    public const string AvisoGestaoNaoEfetivada =
+        "Atenção: não cancelei nem remarquei nada por aqui. Para cancelar ou remarcar, use o link de gestão do seu agendamento.";
+
+    /// <summary>O texto afirma que algo foi cancelado/remarcado/desmarcado? Heurística de palavras (sem acento também).</summary>
+    public static bool AfirmaGestaoEfetivada(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+            return false;
+
+        try
+        {
+            return PromessaDeGestao.IsMatch(SemAcento(texto));
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            return true;
+        }
     }
 
     private static bool PermitirLink(string valor, string hostPermitido)

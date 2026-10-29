@@ -139,6 +139,19 @@ public sealed class LimitadorUsoAgente
     }
 
     /// <summary>
+    /// Fase 4: o telefone (uma conversa = um telefone numa instância) já recebeu <c>Ai__Gestao__LimiteLinksPorTelefonePorDia</c> links de
+    /// gestão no dia UTC? Conta as mensagens <c>gestao_link</c> que o servidor reservou ao enviar. "Macio" sob concorrência.
+    /// </summary>
+    public async Task<bool> LimiteDeLinksDeGestaoAtingidoAsync(Guid conversaId, DateTimeOffset agora, CancellationToken cancellationToken)
+    {
+        var inicioDoDia = new DateTimeOffset(agora.UtcDateTime.Date, TimeSpan.Zero);
+        var enviados = await _dbContext.MensagensWhatsApp.AsNoTracking().CountAsync(
+            m => m.ConversaId == conversaId && m.Papel == PapelMensagemWhatsApp.Sistema
+                && m.NomeFerramenta == MarcadoresAgente.GestaoLink && m.CriadoEm >= inicioDoDia, cancellationToken);
+        return enviados >= _opcoes.Gestao.LimiteLinksPorTelefonePorDia;
+    }
+
+    /// <summary>
     /// Já avisamos esta conversa neste tipo de janela? O aviso é uma mensagem fixa registrada como <c>Sistema</c>;
     /// uma por hora (limite horário) ou por dia (demais), depois silêncio — corta também o laço entre dois bots.
     /// </summary>

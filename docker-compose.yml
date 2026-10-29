@@ -104,6 +104,8 @@ services:
       Ai__Humano__DevolverAposHoras: ${AI_HUMANO_DEVOLVER_APOS_HORAS:-24}
       Ai__Humano__IntervaloAvisoPorConversaHoras: ${AI_HUMANO_INTERVALO_AVISO_HORAS:-6}
       Ai__Humano__LimiteAvisosPorNegocioPorDia: ${AI_HUMANO_LIMITE_AVISOS_NEGOCIO_DIA:-20}
+      Ai__Gestao__Modo: ${AI_GESTAO_MODO:-Desligado}
+      Ai__Gestao__LimiteLinksPorTelefonePorDia: ${AI_GESTAO_LIMITE_LINKS_TELEFONE_DIA:-3}
       # Instruções do pagamento manual da assinatura (seção 7), enquanto não há gateway.
       Cobranca__ChavePix: ${COBRANCA_CHAVE_PIX:-}
       Cobranca__WhatsAppContato: ${COBRANCA_WHATSAPP_CONTATO:-}

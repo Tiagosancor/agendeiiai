@@ -111,8 +111,8 @@ public sealed class GerenciadorInstanciaWhatsApp : IGerenciadorInstanciaWhatsApp
         return new StatusWhatsApp(
             instancia.Status.ToString(), instancia.AgenteAtivo, instancia.Telefone, situacao.Contratado, instancia.MensagemTransferencia,
             situacao.IaLiberada, situacao.AgendamentoLiberado,
-            // Gestão (cancelar/remarcar) só chega nas Fatias 6–8; até lá o efetivo é sempre "Desligado".
-            GestaoModo: "Desligado",
+            // Modo efetivo de gestão (Fase 4): Desligado ou Link; Cancelar/Completo só mudam isto nas Fatias 7 e 8.
+            GestaoModo: situacao.Gestao.ToString(),
             AtendimentoHumanoAtivo: situacao.IaLiberada && _opcoesIa.Humano.FerramentaAtiva);
     }
 

@@ -19,11 +19,17 @@ public static class MarcadoresAgente
     public const string NaoConfirmado = "agendamento_nao_confirmado";
     public const string PrazoPassou = "agendamento_prazo_passou";
 
+    /// <summary>Texto com o link de gestão que o servidor enviou (Fase 4). Gravado SEM o token ("[link de gestão enviado]") e conta no limite diário.</summary>
+    public const string GestaoLink = "gestao_link";
+
+    /// <summary>O link de gestão pedido não pôde ser enviado (o agendamento deixou de ser elegível). Não conta no limite de links.</summary>
+    public const string GestaoNaoEnviada = "gestao_nao_enviada";
+
     /// <summary>
     /// Nota de contexto das ferramentas de consulta (<see cref="NotaContextoAgente"/>): vai ao histórico do modelo como turno em texto,
     /// fora da contagem de mensagens, e NUNCA ao cliente. Não está em <see cref="DoHistorico"/>: tem tratamento próprio.
     /// </summary>
     public const string ContextoConsulta = "contexto_consulta";
 
-    public static readonly string[] DoHistorico = [Resumo, Confirmado, NaoConfirmado, PrazoPassou];
+    public static readonly string[] DoHistorico = [Resumo, Confirmado, NaoConfirmado, PrazoPassou, GestaoLink, GestaoNaoEnviada];
 }

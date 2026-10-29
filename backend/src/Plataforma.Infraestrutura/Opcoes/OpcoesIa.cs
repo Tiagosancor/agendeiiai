@@ -82,6 +82,9 @@ public sealed class OpcoesIa
     /// <summary>Fase 4: atendimento humano (ferramenta <c>chamar_atendente</c>, devolução automática, avisos ao dono).</summary>
     public OpcoesHumanoAgente Humano { get; set; } = new();
 
+    /// <summary>Fase 4: gestão dos agendamentos do cliente pelo agente (por ora só o link). Desligada por padrão.</summary>
+    public OpcoesGestaoAgente Gestao { get; set; } = new();
+
     /// <summary>
     /// Parte GLOBAL da conta (disjuntor): Gemini + piloto da Fase 2 + modo/piloto da Fase 3. NÃO inclui a contratação do negócio —
     /// quem decide se o agente roda para um negócio é a <c>PoliticaAgenteIa</c> (global E contratado).
@@ -130,6 +133,38 @@ public sealed class OpcoesHumanoAgente
 
     /// <summary>Prazo da devolução automática; nulo = nunca.</summary>
     public TimeSpan? PrazoDevolucao => DevolverAposHoras > 0 ? TimeSpan.FromHours(DevolverAposHoras) : null;
+}
+
+/// <summary>
+/// Quanto o agente pode fazer com os agendamentos que o cliente já tem (<c>Ai__Gestao__Modo</c>). Cada degrau inclui o anterior.
+/// Hoje só <see cref="Link"/> tem efeito: <c>Cancelar</c> e <c>Completo</c> são aceitos na validação (as Fatias 7 e 8 os ativam) e
+/// se comportam como <c>Link</c> até lá.
+/// </summary>
+public enum ModoGestaoAgente
+{
+    Desligado = 0,
+
+    /// <summary>Lista os agendamentos do número e envia o link de gestão (a página que já existe).</summary>
+    Link = 1,
+
+    Cancelar = 2,
+
+    Completo = 3,
+}
+
+/// <summary>Seção <c>Ai:Gestao</c> (<c>Ai__Gestao__Modo</c>, <c>Ai__Gestao__LimiteLinksPorTelefonePorDia</c>).</summary>
+public sealed class OpcoesGestaoAgente
+{
+    public ModoGestaoAgente Modo { get; set; } = ModoGestaoAgente.Desligado;
+
+    /// <summary>Links de gestão que o servidor envia por telefone (conversa) por dia UTC (1–100).</summary>
+    public int LimiteLinksPorTelefonePorDia { get; set; } = 3;
+
+    /// <summary>
+    /// O que o agente de fato faz neste momento: <c>Cancelar</c>/<c>Completo</c> ainda não têm ferramenta própria (Fatias 7 e 8),
+    /// então valem como <c>Link</c>. Fonte única para a política, o status do painel e o executor de ferramentas.
+    /// </summary>
+    public ModoGestaoAgente ModoEfetivo => Modo == ModoGestaoAgente.Desligado ? ModoGestaoAgente.Desligado : ModoGestaoAgente.Link;
 }
 
 public enum ModoAgendamentoAgente
@@ -243,6 +278,9 @@ public sealed class ValidadorOpcoesIa : IValidateOptions<OpcoesIa>
             && o.Agendamento.Negocios.Split([',', ';', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Any(item => !Guid.TryParse(item, out _)))
             erros.Add("Ai__Agendamento__Negocios deve ser uma lista de GUIDs separada por vírgula.");
+        if (!Enum.IsDefined(o.Gestao.Modo))
+            erros.Add("Ai__Gestao__Modo deve ser Desligado, Link, Cancelar ou Completo.");
+        Faixa(erros, "Gestao.LimiteLinksPorTelefonePorDia", o.Gestao.LimiteLinksPorTelefonePorDia, 1, 100);
         Faixa(erros, nameof(o.RetencaoRodadasDias), o.RetencaoRodadasDias, 7, 365);
         if (o.RetencaoMensagensDias != 0)
             Faixa(erros, nameof(o.RetencaoMensagensDias), o.RetencaoMensagensDias, 30, 730);
