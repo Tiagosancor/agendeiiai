@@ -47,12 +47,16 @@ public sealed class ConsultaConversasWhatsApp : IConsultaConversasWhatsApp
         };
 
         var total = await consulta.CountAsync(cancellationToken);
-        var pagina_ = consulta.OrderByDescending(c => c.UltimaMensagemEm).ThenBy(c => c.Id).Skip((pagina - 1) * TamanhoPagina).Take(TamanhoPagina);
-        var itens = await ResumirAsync(negocioId, pagina_, cancellationToken);
+        // Em long: (pagina - 1) * 20 estoura int para páginas enormes. Além do que o Skip aceita não há linha nenhuma: página vazia.
+        var deslocamento = (long)(pagina - 1) * TamanhoPagina;
+        if (deslocamento > int.MaxValue)
+            deslocamento = int.MaxValue + 1L;
+        var pagina_ = consulta.OrderByDescending(c => c.UltimaMensagemEm).ThenBy(c => c.Id).Skip((int)deslocamento).Take(TamanhoPagina);
+        var itens = deslocamento > int.MaxValue ? [] : await ResumirAsync(negocioId, pagina_, cancellationToken);
         return new PaginaConversasWhatsApp(itens, total, pagina, TamanhoPagina);
     }
 
-    public async Task<DetalheConversaWhatsApp?> ObterAsync(Guid conversaId, DateTimeOffset? antesDe, CancellationToken cancellationToken = default)
+    public async Task<DetalheConversaWhatsApp?> ObterAsync(Guid conversaId, DateTimeOffset? antesDe, Guid? antesDeId, CancellationToken cancellationToken = default)
     {
         var negocioId = NegocioId;
         var resumo = (await ResumirAsync(negocioId, Conversas(negocioId).Where(c => c.Id == conversaId), cancellationToken)).FirstOrDefault();
@@ -66,8 +70,14 @@ public sealed class ConsultaConversasWhatsApp : IConsultaConversasWhatsApp
                 && m.Papel != PapelMensagemWhatsApp.Ferramenta
                 && (m.NomeFerramenta == null || m.NomeFerramenta != MarcadoresAgente.ContextoConsulta)
                 && m.Conteudo != string.Empty);
+        // Cursor composto, com os MESMOS critérios da ordenação (instante desc, Id desc): mensagens no mesmo instante da fronteira
+        // não se perdem nem se repetem. Sem o Id (cliente antigo), vale só o instante.
         if (antesDe is { } limite)
-            mensagens = mensagens.Where(m => m.CriadoEm < limite);
+        {
+            mensagens = antesDeId is { } limiteId
+                ? mensagens.Where(m => m.CriadoEm < limite || (m.CriadoEm == limite && m.Id.CompareTo(limiteId) < 0))
+                : mensagens.Where(m => m.CriadoEm < limite);
+        }
 
         var lote = await mensagens.OrderByDescending(m => m.CriadoEm).ThenByDescending(m => m.Id)
             .Take(MaximoMensagens + 1)

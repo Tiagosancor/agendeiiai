@@ -359,6 +359,79 @@ public sealed class PainelLeituraWhatsAppTestes : IAsyncLifetime
         terceira.GetProperty("haMaisAntigas").GetBoolean().Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Cursor_composto_percorre_130_mensagens_no_mesmo_instante_sem_omitir_nem_repetir()
+    {
+        var c = await _ambiente.SemearAsync();
+        var admin = await LogarAsync(c);
+        var ids = await InserirConversasAsync(c, 1);
+        var instante = DateTimeOffset.UtcNow.AddHours(-3);
+        await _ambiente.NoBancoAsync(async db =>
+        {
+            var instancia = await db.InstanciasWhatsApp.IgnoreQueryFilters().AsNoTracking().SingleAsync(i => i.NegocioId == c.NegocioId);
+            for (var i = 0; i < 130; i++)
+            {
+                var m = new MensagemWhatsApp(c.NegocioId, instancia.Id, ids[0], null, PapelMensagemWhatsApp.Usuario, $"igual-{i:D3}");
+                db.Entry(m).Property(x => x.CriadoEm).CurrentValue = instante;
+                db.MensagensWhatsApp.Add(m);
+            }
+
+            await db.SaveChangesAsync();
+            return 0;
+        });
+
+        var vistos = new List<Guid>();
+        string url = $"/painel/whatsapp/conversas/{ids[0]}";
+        for (var volta = 0; volta < 10; volta++)
+        {
+            var pagina = await JsonAsync(await admin.GetAsync(url));
+            var lote = pagina.GetProperty("mensagens").EnumerateArray().ToList();
+            vistos.InsertRange(0, lote.Select(m => m.GetProperty("id").GetGuid()));
+            if (!pagina.GetProperty("haMaisAntigas").GetBoolean())
+                break;
+            var primeira = lote[0];
+            url = $"/painel/whatsapp/conversas/{ids[0]}?antesDe={Uri.EscapeDataString(primeira.GetProperty("em").GetDateTimeOffset().ToString("O"))}"
+                + $"&antesDeId={primeira.GetProperty("id").GetGuid()}";
+        }
+
+        vistos.Should().HaveCount(130).And.OnlyHaveUniqueItems();
+        var todas = await _ambiente.MensagensAsync();
+        vistos.Should().BeEquivalentTo(todas.Select(m => m.Id));
+    }
+
+    [Fact]
+    public async Task Pagina_enorme_devolve_lista_vazia_sem_estourar_o_deslocamento()
+    {
+        var c = await _ambiente.SemearAsync();
+        var admin = await LogarAsync(c);
+        await InserirConversasAsync(c, 3);
+
+        foreach (var pagina in new[] { int.MaxValue, int.MaxValue - 1, 107_374_183 })
+        {
+            var resposta = await JsonAsync(await admin.GetAsync($"/painel/whatsapp/conversas?pagina={pagina}"));
+            resposta.GetProperty("itens").GetArrayLength().Should().Be(0, pagina.ToString());
+            resposta.GetProperty("total").GetInt32().Should().Be(3);
+        }
+
+        (await JsonAsync(await admin.GetAsync("/painel/whatsapp/conversas?pagina=1"))).GetProperty("itens").GetArrayLength().Should().Be(3);
+    }
+
+    [Fact]
+    public async Task Uso_aceita_de_2020_01_a_9999_11_e_recusa_alem_disso()
+    {
+        var c = await _ambiente.SemearAsync();
+        var admin = await LogarAsync(c);
+
+        (await admin.GetAsync("/painel/whatsapp/uso?mes=2020-01")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await admin.GetAsync("/painel/whatsapp/uso?mes=9999-11")).StatusCode.Should().Be(HttpStatusCode.OK);
+        foreach (var invalido in new[] { "9999-12", "2019-12", "10000-01" })
+        {
+            var resposta = await admin.GetAsync($"/painel/whatsapp/uso?mes={invalido}");
+            resposta.StatusCode.Should().Be(HttpStatusCode.BadRequest, invalido);
+            (await resposta.Content.ReadAsStringAsync()).Should().Contain("mes_invalido");
+        }
+    }
+
     // ---------------------------------------------------------------- apagar
 
     [Fact]

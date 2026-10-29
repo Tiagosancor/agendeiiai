@@ -46,8 +46,8 @@ public interface IConsultaConversasWhatsApp
     /// <summary>Lista paginada, mais recente primeiro. NÃO traz texto de mensagem.</summary>
     Task<PaginaConversasWhatsApp> ListarAsync(FiltroConversasWhatsApp filtro, int pagina, CancellationToken cancellationToken = default);
 
-    /// <summary>Até 50 mensagens em ordem cronológica; <paramref name="antesDe"/> pagina para trás. Nulo se não existe neste negócio.</summary>
-    Task<DetalheConversaWhatsApp?> ObterAsync(Guid conversaId, DateTimeOffset? antesDe, CancellationToken cancellationToken = default);
+    /// <summary>Até 50 mensagens em ordem cronológica; <paramref name="antesDe"/> + <paramref name="antesDeId"/> (cursor composto: instante e id da mais antiga já exibida) paginam para trás. Nulo se não existe neste negócio.</summary>
+    Task<DetalheConversaWhatsApp?> ObterAsync(Guid conversaId, DateTimeOffset? antesDe, Guid? antesDeId, CancellationToken cancellationToken = default);
 
     Task<ResumoConversasWhatsApp> ResumoAsync(CancellationToken cancellationToken = default);
 }

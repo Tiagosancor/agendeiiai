@@ -63,11 +63,11 @@ public sealed class ConversasWhatsAppController : ControllerBase
     public async Task<ActionResult<ResumoConversasWhatsApp>> Resumo(CancellationToken cancellationToken) =>
         Ok(await _consulta.ResumoAsync(cancellationToken));
 
-    /// <summary>Até 50 mensagens em ordem cronológica. <c>antesDe</c> (o <c>em</c> da mais antiga já exibida) carrega as anteriores.</summary>
+    /// <summary>Até 50 mensagens em ordem cronológica. <c>antesDe</c> + <c>antesDeId</c> (o <c>em</c> e o <c>id</c> da mais antiga já exibida) carregam as anteriores.</summary>
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<DetalheConversaWhatsApp>> Obter(Guid id, [FromQuery] DateTimeOffset? antesDe, CancellationToken cancellationToken)
+    public async Task<ActionResult<DetalheConversaWhatsApp>> Obter(Guid id, [FromQuery] DateTimeOffset? antesDe, [FromQuery] Guid? antesDeId, CancellationToken cancellationToken)
     {
-        var detalhe = await _consulta.ObterAsync(id, antesDe, cancellationToken);
+        var detalhe = await _consulta.ObterAsync(id, antesDe, antesDeId, cancellationToken);
         return detalhe is null ? NotFound() : Ok(detalhe);
     }
 

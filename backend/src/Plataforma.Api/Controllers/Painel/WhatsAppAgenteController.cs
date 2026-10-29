@@ -85,6 +85,10 @@ public sealed class WhatsAppAgenteController : ControllerBase
         };
 
     /// <summary>Uso de IA do mês (UTC, o mesmo recorte da cota). <c>mes</c> = <c>AAAA-MM</c>; sem ele, o mês corrente.</summary>
+    // Último mês aceito: o limite exclusivo (primeiro dia do mês seguinte) precisa caber em DateTimeOffset (máximo 9999-12-31).
+    private const int UsoMesMaximoAno = 9999;
+    private const int UsoMesMaximoMes = 11;
+
     [HttpGet("uso")]
     public async Task<ActionResult<UsoIaMes>> Uso([FromQuery] string? mes, CancellationToken cancellationToken)
     {
@@ -96,7 +100,7 @@ public sealed class WhatsAppAgenteController : ControllerBase
             numero = agora.Month;
         }
         else if (DateTime.TryParseExact(mes.Trim(), "yyyy-MM", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var data)
-            && data.Year >= 2020)
+            && data.Year >= 2020 && data.Year <= UsoMesMaximoAno && !(data.Year == UsoMesMaximoAno && data.Month > UsoMesMaximoMes))
         {
             ano = data.Year;
             numero = data.Month;
