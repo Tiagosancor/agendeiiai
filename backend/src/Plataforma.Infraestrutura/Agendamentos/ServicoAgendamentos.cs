@@ -1297,7 +1297,8 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
             a.Servicos.Select(s => s.Nome).ToList(), a.Total,
             a.Forcado, a.ForcadoMotivo,
             a.ForcadoPorUsuarioId is not null && autores.TryGetValue(a.ForcadoPorUsuarioId.Value, out var autor) ? autor : null,
-            a.ForcadoRegras?.Split('\n'))).ToList();
+            a.ForcadoRegras?.Split('\n'),
+            a.Origem.ToString(), a.Status == StatusAgendamento.Reservado ? a.ReservadoAte : null)).ToList();
     }
 
     public async Task<DetalhePublicoAgendamento?> ObterDetalhePublicoAsync(Guid agendamentoId, CancellationToken cancellationToken = default)

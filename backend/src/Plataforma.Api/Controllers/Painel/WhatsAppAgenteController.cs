@@ -16,9 +16,17 @@ public sealed class WhatsAppAgenteController : ControllerBase
 {
     private readonly IGerenciadorInstanciaWhatsApp _gerenciador;
 
-    public WhatsAppAgenteController(IGerenciadorInstanciaWhatsApp gerenciador) => _gerenciador = gerenciador;
+    private readonly IConsultaUsoIaWhatsApp _uso;
+
+    public WhatsAppAgenteController(IGerenciadorInstanciaWhatsApp gerenciador, IConsultaUsoIaWhatsApp uso)
+    {
+        _gerenciador = gerenciador;
+        _uso = uso;
+    }
 
     public sealed record DefinirAgenteRequisicao(bool? Ativo);
+
+    public sealed record DefinirMensagemTransferenciaRequisicao(string? Mensagem);
 
     /// <summary>Cria a instância (se preciso) e devolve o QR code (data URI) para ler no WhatsApp. Evolution fora do ar → 502.</summary>
     [HttpPost("conectar")]
@@ -61,6 +69,49 @@ public sealed class WhatsAppAgenteController : ControllerBase
     }
 
     public const string CodigoAgenteIaNaoContratado = "agente_ia_nao_contratado";
+
+    /// <summary>Texto que o negócio acrescenta ao aviso de transferência para atendimento humano. <c>null</c>/vazio tira. Até 300 caracteres.</summary>
+    [HttpPut("mensagem-transferencia")]
+    public async Task<IActionResult> DefinirMensagemTransferencia(DefinirMensagemTransferenciaRequisicao dados, CancellationToken cancellationToken) =>
+        await _gerenciador.DefinirMensagemTransferenciaAsync(dados.Mensagem, cancellationToken) switch
+        {
+            ResultadoMensagemTransferencia.Ok => NoContent(),
+            ResultadoMensagemTransferencia.Invalida => BadRequest(new ProblemDetails
+            {
+                Title = "A mensagem de transferência tem no máximo 300 caracteres e não pode ter caracteres de controle.",
+                Extensions = { ["codigo"] = "mensagem_invalida" },
+            }),
+            _ => NotFound(),
+        };
+
+    /// <summary>Uso de IA do mês (UTC, o mesmo recorte da cota). <c>mes</c> = <c>AAAA-MM</c>; sem ele, o mês corrente.</summary>
+    [HttpGet("uso")]
+    public async Task<ActionResult<UsoIaMes>> Uso([FromQuery] string? mes, CancellationToken cancellationToken)
+    {
+        int ano, numero;
+        if (string.IsNullOrWhiteSpace(mes))
+        {
+            var agora = DateTimeOffset.UtcNow;
+            ano = agora.Year;
+            numero = agora.Month;
+        }
+        else if (DateTime.TryParseExact(mes.Trim(), "yyyy-MM", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var data)
+            && data.Year >= 2020)
+        {
+            ano = data.Year;
+            numero = data.Month;
+        }
+        else
+        {
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Informe o mês no formato AAAA-MM.",
+                Extensions = { ["codigo"] = "mes_invalido" },
+            });
+        }
+
+        return Ok(await _uso.ObterAsync(ano, numero, cancellationToken));
+    }
 
     /// <summary>Situação do serviço de IA do negócio (contratado e origem). Responde 200 mesmo sem instância conectada.</summary>
     [HttpGet("servico-ia")]

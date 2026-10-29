@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Plataforma.Aplicacao.Abstracoes;
+using Plataforma.Aplicacao.Auditoria;
 using Plataforma.Aplicacao.WhatsAppAgente;
 using Plataforma.Dominio.WhatsAppAgente;
 using Plataforma.Infraestrutura.Opcoes;
@@ -20,16 +21,23 @@ public sealed class GerenciadorInstanciaWhatsApp : IGerenciadorInstanciaWhatsApp
     private readonly IClienteEvolution _evolution;
     private readonly OpcoesAgenteWhatsApp _opcoes;
     private readonly ILogger<GerenciadorInstanciaWhatsApp> _logger;
+    private readonly PoliticaAgenteIa _politica;
+    private readonly OpcoesIa _opcoesIa;
+    private readonly IRegistroAuditoria _auditoria;
 
     public GerenciadorInstanciaWhatsApp(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IClienteEvolution evolution,
-        IOptions<OpcoesAgenteWhatsApp> opcoes, ILogger<GerenciadorInstanciaWhatsApp> logger)
+        IOptions<OpcoesAgenteWhatsApp> opcoes, ILogger<GerenciadorInstanciaWhatsApp> logger,
+        PoliticaAgenteIa politica, IOptions<OpcoesIa> opcoesIa, IRegistroAuditoria auditoria)
     {
         _dbContext = dbContext;
         _contextoNegocio = contextoNegocio;
         _evolution = evolution;
         _opcoes = opcoes.Value;
         _logger = logger;
+        _politica = politica;
+        _opcoesIa = opcoesIa.Value;
+        _auditoria = auditoria;
     }
 
     public async Task<ConexaoWhatsApp> ConectarAsync(CancellationToken cancellationToken = default)
@@ -97,8 +105,40 @@ public sealed class GerenciadorInstanciaWhatsApp : IGerenciadorInstanciaWhatsApp
             // Evolution fora do ar: devolve o último estado gravado em vez de derrubar a tela.
         }
 
-        var contratado = await PoliticaAgenteIa.LerContratadoAsync(_dbContext, instancia.NegocioId, cancellationToken);
-        return new StatusWhatsApp(instancia.Status.ToString(), instancia.AgenteAtivo, instancia.Telefone, contratado);
+        // Mesma regra que decide em tempo de execução (global E contratado): a tela só mostra o que o agente de fato faz.
+        _politica.Invalidar();
+        var situacao = await _politica.ObterAsync(instancia.NegocioId, cancellationToken);
+        return new StatusWhatsApp(
+            instancia.Status.ToString(), instancia.AgenteAtivo, instancia.Telefone, situacao.Contratado, instancia.MensagemTransferencia,
+            situacao.IaLiberada, situacao.AgendamentoLiberado,
+            // Gestão (cancelar/remarcar) só chega nas Fatias 6–8; até lá o efetivo é sempre "Desligado".
+            GestaoModo: "Desligado",
+            AtendimentoHumanoAtivo: situacao.IaLiberada && _opcoesIa.Humano.FerramentaAtiva);
+    }
+
+    public async Task<ResultadoMensagemTransferencia> DefinirMensagemTransferenciaAsync(string? mensagem, CancellationToken cancellationToken = default)
+    {
+        var instancia = await _dbContext.InstanciasWhatsApp.FirstOrDefaultAsync(cancellationToken);
+        if (instancia is null)
+            return ResultadoMensagemTransferencia.SemInstancia;
+
+        var antes = instancia.MensagemTransferencia?.Length ?? 0;
+        try
+        {
+            // O navegador pode mandar quebra de linha do Windows; o domínio só aceita "\n".
+            instancia.DefinirMensagemTransferencia(mensagem?.Replace("\r\n", "\n").Replace('\r', '\n'));
+        }
+        catch (ArgumentException)
+        {
+            return ResultadoMensagemTransferencia.Invalida;
+        }
+
+        // Auditoria sem o conteúdo: só o tamanho do texto antes e depois.
+        var depois = instancia.MensagemTransferencia?.Length ?? 0;
+        _auditoria.Registrar(
+            AcoesAuditoria.AlterarMensagemTransferenciaWhatsApp, nameof(InstanciaWhatsApp), instancia.Id, $"{antes} → {depois} caracteres");
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return ResultadoMensagemTransferencia.Ok;
     }
 
     public async Task<ResultadoDefinirAgente> DefinirAgenteAsync(bool ativo, CancellationToken cancellationToken = default)
