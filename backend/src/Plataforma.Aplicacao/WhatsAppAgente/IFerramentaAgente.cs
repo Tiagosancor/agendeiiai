@@ -33,6 +33,12 @@ public enum TipoAcaoServidor
 
     /// <summary>O agente pediu o link de gestão de um agendamento (<c>Id</c> = o agendamento): o servidor envia o texto com o link.</summary>
     LinkGestao = 2,
+
+    /// <summary>
+    /// O agente preparou um cancelamento (<c>Id</c> = a pendência de gestão): o servidor envia o resumo pedindo o "SIM" e o texto do modelo
+    /// é descartado.
+    /// </summary>
+    ResumoGestao = 3,
 }
 
 /// <summary>
@@ -67,6 +73,14 @@ public interface IFerramentaDeAtendimentoHumano : IFerramentaDeEscritaAgente
 /// só executa quando <c>Ai__Gestao__Modo</c> está ligado para o negócio (e o serviço de IA contratado).
 /// </summary>
 public interface IFerramentaDeGestaoAgente : IFerramentaAgente
+{
+}
+
+/// <summary>
+/// Ferramenta de gestão que PREPARA um cancelamento (<c>preparar_cancelamento</c>): só é oferecida e só executa com
+/// <c>Ai__Gestao__Modo</c> em <c>Cancelar</c> (ou acima). Nunca cancela: o servidor efetiva depois do "SIM" do cliente.
+/// </summary>
+public interface IFerramentaDeCancelamentoAgente : IFerramentaDeGestaoAgente
 {
 }
 

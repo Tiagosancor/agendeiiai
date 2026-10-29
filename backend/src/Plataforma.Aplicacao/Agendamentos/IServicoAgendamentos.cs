@@ -52,6 +52,14 @@ public interface IServicoAgendamentos
     /// </summary>
     Task<ResultadoConfirmacaoAgente> ConfirmarReservaAgenteAsync(ConfirmarReservaAgente dados, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Cancela o agendamento do cliente pelo agente de WhatsApp (Fase 4, Fatia 7) depois do "SIM" avaliado pelo servidor. Roda na trava de
+    /// quinzenas (como o cancelamento do painel e do link), revalida DENTRO da transação tudo o que o preparo conferiu (vínculo com o
+    /// telefone da conversa, status, antecedência mínima, ausência de pagamento, quinzena fechada) e reaproveita o cancelamento normal
+    /// (aviso ao profissional). Repetir a mesma operação não duplica nada. Não avisa o cliente (a resposta vai na própria conversa).
+    /// </summary>
+    Task<ResultadoGestaoAgente> CancelarPeloAgenteAsync(CancelarPeloAgente dados, CancellationToken cancellationToken = default);
+
     /// <summary>Só para feedback imediato do botão "Aplicar" (seção 6.2.4) — não grava nada; a revalidação que vale é a de <see cref="ConfirmarReservaPublicaAsync"/>.</summary>
     Task<ResultadoPreVisualizacaoCupom> PreVisualizarCupomAsync(
         Guid agendamentoId, string codigoCupom, CancellationToken cancellationToken = default);
@@ -204,6 +212,59 @@ public sealed record ResultadoConfirmacaoAgente(
 
     public static ResultadoConfirmacaoAgente Recusada(MotivoRecusaConfirmacaoAgente motivo, IReadOnlyList<DateTimeOffset>? proximos = null) =>
         new(false, null, false, motivo, proximos);
+}
+
+/// <summary>
+/// <c>TelefoneConversa</c> é o número do webhook (nunca do modelo) e precisa ser o da conversa dona da pendência de gestão.
+/// <c>OperacaoId</c> é aleatório, criado uma vez por quem confirma e igual em todas as novas tentativas da mesma operação.
+/// </summary>
+public sealed record CancelarPeloAgente(Guid PendenciaGestaoId, string TelefoneConversa, Guid OperacaoId, Guid? MensagemConfirmacaoId = null);
+
+public enum MotivoRecusaGestaoAgente
+{
+    Nenhum = 0,
+
+    /// <summary>Pendência inexistente, de outro negócio, de outra conversa ou de outro tipo.</summary>
+    NaoEncontrada,
+
+    /// <summary>Já recusada, expirada, substituída ou falhada (por exemplo, o dono assumiu a conversa).</summary>
+    Encerrada,
+
+    /// <summary>O prazo da pendência passou.</summary>
+    Expirada,
+
+    /// <summary>O agendamento deixou de ser do cliente deste número (telefone trocado, cliente excluído, outro negócio ou origem não verificada).</summary>
+    NaoPermitido,
+
+    /// <summary>Falta menos que a antecedência mínima do link público (ou o horário já passou).</summary>
+    AntecedenciaMinima,
+
+    /// <summary>Há pagamento registrado: o agente não cancela.</summary>
+    ComPagamento,
+
+    /// <summary>O status mudou (em atendimento, concluído, faltou, já cancelado).</summary>
+    StatusNaoPermite,
+
+    /// <summary>O atendimento cai numa quinzena de comissões já fechada.</summary>
+    QuinzenaFechada,
+
+    /// <summary>Assinatura suspensa: nada é gravado e o agente fica em silêncio.</summary>
+    AssinaturaSuspensa,
+
+    /// <summary>O serviço de IA foi desligado para o negócio: nada é gravado e o agente fica em silêncio.</summary>
+    ServicoNaoContratado,
+}
+
+/// <summary>
+/// <c>EfetivadaAgora</c> é verdadeiro só para a operação que de fato gravou (quem envia o texto): outra chamada para a mesma pendência
+/// devolve sucesso com <c>EfetivadaAgora = false</c>.
+/// </summary>
+public sealed record ResultadoGestaoAgente(
+    bool Sucesso, bool EfetivadaAgora, MotivoRecusaGestaoAgente Motivo = MotivoRecusaGestaoAgente.Nenhum, Guid? AgendamentoId = null)
+{
+    public static ResultadoGestaoAgente Efetivada(Guid agendamentoId, bool agora) => new(true, agora, MotivoRecusaGestaoAgente.Nenhum, agendamentoId);
+
+    public static ResultadoGestaoAgente Recusada(MotivoRecusaGestaoAgente motivo, Guid? agendamentoId = null) => new(false, false, motivo, agendamentoId);
 }
 
 public sealed record ConfirmarReservaPublica(

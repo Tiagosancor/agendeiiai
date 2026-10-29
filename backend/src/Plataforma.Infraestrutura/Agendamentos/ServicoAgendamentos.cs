@@ -54,14 +54,16 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
     private readonly IServicoIdempotencia _idempotencia;
     private readonly OutboxNotificacoes _outbox;
     private readonly IConsultaSituacaoAssinatura _assinaturas;
+    private readonly OpcoesAgendamentoPublico _opcoesAgendamentoPublico;
 
     public ServicoAgendamentos(
         PlataformaDbContext dbContext, IContextoNegocio contextoNegocio, IConsultaDisponibilidade consultaDisponibilidade,
         INotificador notificador, IServicoTokenPublico servicoToken, IOptions<OpcoesMarca> opcoesMarca,
         IGerenciadorFidelidade gerenciadorFidelidade, IRegistroAuditoria auditoria, TravaQuinzenas travaQuinzenas,
         IUsuarioAtual usuarioAtual, ILogger<ServicoAgendamentos> logger, IServicoIdempotencia idempotencia, OutboxNotificacoes outbox,
-        IConsultaSituacaoAssinatura assinaturas)
+        IConsultaSituacaoAssinatura assinaturas, IOptions<OpcoesAgendamentoPublico> opcoesAgendamentoPublico)
     {
+        _opcoesAgendamentoPublico = opcoesAgendamentoPublico.Value;
         _assinaturas = assinaturas;
         _outbox = outbox;
         _idempotencia = idempotencia;
@@ -791,24 +793,7 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
                 }
             }
 
-            await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
-            agendamento.Cancelar();
-
-            // Entra no mesmo SaveChanges do cancelamento (seção 7: toda ação da exclusão fica no log) — registrado aqui
-            // dentro, e não antes, para cada tentativa da estratégia gravar o seu (a limpeza da nova tentativa o apagaria).
-            if (avisandoCliente)
-                _auditoria.Registrar(AcoesAuditoria.CancelarAgendamento, "Agendamento", agendamentoId, "Cancelado avisando o cliente");
-
-            // Confirmação, lembrete e avisos de "novo"/"remarcado" que ainda esperam na outbox ficam obsoletos — sempre invalidados
-            // (inclusive com a flag desligada: uma mensagem gravada antes do rollback não pode sair depois do cancelamento).
-            await _outbox.CancelarPendentesObsoletosDoCancelamentoAsync(agendamentoId, cancellationToken);
-            if (usaOutbox)
-            {
-                await _outbox.EnfileirarAvisoAoProfissionalAsync(agendamento, EventoAgendamentoProfissional.Cancelado, cancellationToken);
-                if (avisandoCliente)
-                    await _outbox.EnfileirarCancelamentoDoClienteAsync(agendamento, cancellationToken);
-            }
-
+            await CancelarCarregadoAsync(agendamento, usaOutbox, avisandoCliente, cancellationToken);
             await _dbContext.SaveChangesAsync(cancellationToken);
             resultado = ResultadoCancelamentoPublico.Cancelado;
             return true;
@@ -818,6 +803,32 @@ public sealed partial class ServicoAgendamentos : IServicoAgendamentos
             await NotificarProfissionalAsync(agendamentoId, EventoAgendamentoProfissional.Cancelado, cancellationToken);
 
         return resultado;
+    }
+
+    /// <summary>
+    /// Núcleo do cancelamento, COMPARTILHADO pelo painel, pelo link público e pelo agente de WhatsApp (nenhuma regra duplicada): precisa
+    /// da transação da trava de quinzenas aberta e da linha do agendamento travada e relida. Confere a quinzena fechada, cancela, deixa
+    /// obsoletas as mensagens pendentes e enfileira os avisos. Quem chama grava (<c>SaveChanges</c>).
+    /// </summary>
+    private async Task CancelarCarregadoAsync(Agendamento agendamento, bool usaOutbox, bool avisandoCliente, CancellationToken cancellationToken)
+    {
+        await _travaQuinzenas.GarantirNaoTravadoAsync(agendamento.ProfissionalId, agendamento.Inicio, cancellationToken);
+        agendamento.Cancelar();
+
+        // Entra no mesmo SaveChanges do cancelamento (seção 7: toda ação da exclusão fica no log) — registrado aqui
+        // dentro, e não antes, para cada tentativa da estratégia gravar o seu (a limpeza da nova tentativa o apagaria).
+        if (avisandoCliente)
+            _auditoria.Registrar(AcoesAuditoria.CancelarAgendamento, "Agendamento", agendamento.Id, "Cancelado avisando o cliente");
+
+        // Confirmação, lembrete e avisos de "novo"/"remarcado" que ainda esperam na outbox ficam obsoletos — sempre invalidados
+        // (inclusive com a flag desligada: uma mensagem gravada antes do rollback não pode sair depois do cancelamento).
+        await _outbox.CancelarPendentesObsoletosDoCancelamentoAsync(agendamento.Id, cancellationToken);
+        if (usaOutbox)
+        {
+            await _outbox.EnfileirarAvisoAoProfissionalAsync(agendamento, EventoAgendamentoProfissional.Cancelado, cancellationToken);
+            if (avisandoCliente)
+                await _outbox.EnfileirarCancelamentoDoClienteAsync(agendamento, cancellationToken);
+        }
     }
 
     public async Task<bool> CancelarAvisandoClienteAsync(Guid agendamentoId, CancellationToken cancellationToken = default)
