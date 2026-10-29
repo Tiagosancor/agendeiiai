@@ -91,7 +91,7 @@ public sealed class ConfirmacaoNoAgenteTestes : IAsyncLifetime
         agendamento.Origem.Should().Be(OrigemAgendamento.WhatsApp);
         agendamento.ClienteId.Should().NotBeNull();
         agendamento.ConsentimentoData.Should().NotBeNull();
-        agendamento.ConsentimentoVersaoTermos.Should().Be("2.0");
+        agendamento.ConsentimentoVersaoTermos.Should().Be("2.1");
         agendamento.ConsentimentoIp.Should().BeNull();
 
         var cliente = (await _ambiente.ClientesAsync()).Single();
@@ -104,7 +104,7 @@ public sealed class ConfirmacaoNoAgenteTestes : IAsyncLifetime
         pendencia.Status.Should().Be(StatusPendenciaAgendamentoWhatsApp.Confirmada);
         pendencia.ConfirmacaoMensagemId.Should().Be((Guid?)await IdDaMensagemDoClienteAsync("Sim!"));
         pendencia.NomeInformado.Should().BeNull();
-        pendencia.VersaoTermos.Should().Be("2.0");
+        pendencia.VersaoTermos.Should().Be("2.1");
 
         // Texto fixo do servidor com o link de gestão (token válido para ESTE agendamento), na própria conversa.
         var confirmacao = ConfirmacaoEntregue()!;
