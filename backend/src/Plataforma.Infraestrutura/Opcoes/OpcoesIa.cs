@@ -137,7 +137,7 @@ public sealed class OpcoesHumanoAgente
 
 /// <summary>
 /// Quanto o agente pode fazer com os agendamentos que o cliente já tem (<c>Ai__Gestao__Modo</c>). Cada degrau inclui o anterior.
-/// <see cref="Link"/> e <see cref="Cancelar"/> têm efeito; <c>Completo</c> é aceito na validação e vale como <c>Cancelar</c> até a Fatia 8.
+/// <see cref="Link"/>, <see cref="Cancelar"/> e <see cref="Completo"/> (cancelar e remarcar pelo agente) têm efeito.
 /// </summary>
 public enum ModoGestaoAgente
 {
@@ -149,6 +149,7 @@ public enum ModoGestaoAgente
     /// <summary>Além do link: prepara o cancelamento (duas etapas, o servidor efetiva depois do "SIM").</summary>
     Cancelar = 2,
 
+    /// <summary>Além do cancelamento: prepara a remarcação (duas etapas, o servidor move o MESMO agendamento depois do "SIM").</summary>
     Completo = 3,
 }
 
@@ -166,25 +167,20 @@ public sealed class OpcoesGestaoAgente
     /// <summary>Cancelamentos efetivados pelo agente por telefone por dia UTC (1–100).</summary>
     public int LimiteCancelamentosPorTelefonePorDia { get; set; } = 2;
 
-    /// <summary>Remarcações efetivadas pelo agente por telefone por dia UTC (1–100). Consumido pela Fatia 8 (remarcar).</summary>
+    /// <summary>Remarcações efetivadas pelo agente por telefone por dia UTC (1–100). Consumido ao preparar uma remarcação (modo Completo).</summary>
     public int LimiteRemarcacoesPorTelefonePorDia { get; set; } = 2;
 
-    /// <summary>Remarcações efetivadas pelo agente no total para o mesmo agendamento (1–100). Consumido pela Fatia 8 (remarcar).</summary>
+    /// <summary>Remarcações efetivadas pelo agente no total para o mesmo agendamento (1–100). Consumido ao preparar uma remarcação (modo Completo).</summary>
     public int LimiteRemarcacoesPorAgendamento { get; set; } = 2;
 
     /// <summary>Operações efetivadas (cancelar + remarcar) pelo agente por negócio por dia UTC (1–1000).</summary>
     public int LimiteOperacoesPorNegocioPorDia { get; set; } = 30;
 
     /// <summary>
-    /// O que o agente de fato faz neste momento: <c>Completo</c> ainda não tem ferramenta de remarcar (Fatia 8), então vale como
-    /// <c>Cancelar</c>. Fonte única para a política, o status do painel e o executor de ferramentas.
+    /// O que o agente de fato faz neste momento. Desde a Fatia 8 todo modo tem efeito próprio; a propriedade continua sendo a fonte única
+    /// para a política, o status do painel e o executor de ferramentas.
     /// </summary>
-    public ModoGestaoAgente ModoEfetivo => Modo switch
-    {
-        ModoGestaoAgente.Desligado => ModoGestaoAgente.Desligado,
-        ModoGestaoAgente.Link => ModoGestaoAgente.Link,
-        _ => ModoGestaoAgente.Cancelar,
-    };
+    public ModoGestaoAgente ModoEfetivo => Enum.IsDefined(Modo) ? Modo : ModoGestaoAgente.Desligado;
 }
 
 public enum ModoAgendamentoAgente

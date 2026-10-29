@@ -64,9 +64,16 @@ public sealed class ExecutorFerramentasAgente : IExecutorFerramentasAgente
             ? _politica.Memorizada(negocioId)?.Gestao >= ModoGestaoAgente.Cancelar
             : _opcoes?.AgendamentoAtivoPara(negocioId) == true && _opcoes.Gestao.ModoEfetivo >= ModoGestaoAgente.Cancelar;
 
+    /// <summary>Remarcar pelo agente (Fatia 8): o modo precisa ser <c>Completo</c>; sem leitura, fechado.</summary>
+    private bool RemarcarLigado(Guid negocioId) =>
+        _politica is not null
+            ? _politica.Memorizada(negocioId)?.Gestao >= ModoGestaoAgente.Completo
+            : _opcoes?.AgendamentoAtivoPara(negocioId) == true && _opcoes.Gestao.ModoEfetivo >= ModoGestaoAgente.Completo;
+
     private bool Disponivel(IFerramentaAgente ferramenta, Guid negocioId) => ferramenta switch
     {
         IFerramentaDeAtendimentoHumano => HumanoLigado(negocioId),
+        IFerramentaDeRemarcacaoAgente => RemarcarLigado(negocioId),
         IFerramentaDeCancelamentoAgente => CancelarLigado(negocioId),
         IFerramentaDeGestaoAgente => GestaoLigada(negocioId),
         IFerramentaDeEscritaAgente => EscritaLigada(negocioId),

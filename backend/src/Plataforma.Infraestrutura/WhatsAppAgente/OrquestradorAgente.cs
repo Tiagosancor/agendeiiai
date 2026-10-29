@@ -161,8 +161,15 @@ public sealed class OrquestradorAgente : IRespostaAgente
         // uma janela de tempo). Guardas independentes da de agendamento ("cancelei o anterior e agendei outro" recebe os dois avisos).
         if (situacao.Gestao >= ModoGestaoAgente.Cancelar)
         {
+            // Modo Completo: "remarquei" só passa sem aviso se citar o dia ou a hora de uma remarcação que o SERVIDOR efetivou há pouco. No Cancelar
+            // remarcar pelo agente não existe e a proteção é sempre aplicada, com o aviso que manda para o link de gestão.
             if (SanitizadorRespostaAgente.AfirmaRemarcacao(texto))
-                texto += "\n\n" + SanitizadorRespostaAgente.AvisoRemarcacaoNaoEfetivada;
+            {
+                if (situacao.Gestao < ModoGestaoAgente.Completo)
+                    texto += "\n\n" + SanitizadorRespostaAgente.AvisoRemarcacaoNaoEfetivada;
+                else if (!await RemarcacaoEfetivadaCitadaAsync(contexto.ConversaId, texto, negocio.Fuso, cancellationToken))
+                    texto += "\n\n" + SanitizadorRespostaAgente.AvisoRemarcacaoNaoEfetivadaCompleto;
+            }
             if (SanitizadorRespostaAgente.AfirmaCancelamento(texto) && !await CancelamentoEfetivadoCitadoAsync(contexto.ConversaId, texto, negocio.Fuso, cancellationToken))
                 texto += "\n\n" + SanitizadorRespostaAgente.AvisoCancelamentoNaoEfetivado;
         }
@@ -235,6 +242,30 @@ public sealed class OrquestradorAgente : IRespostaAgente
         return false;
     }
 
+    /// <summary>
+    /// O texto cita o dia (dd/MM) ou a hora (HH:mm) NOVOS de uma remarcação que o servidor efetivou nesta conversa na janela recente? Só então o
+    /// modelo pode falar em "remarcado" sem o aviso: a afirmação fica ligada ao resultado específico do servidor.
+    /// </summary>
+    private async Task<bool> RemarcacaoEfetivadaCitadaAsync(Guid conversaId, string texto, string fuso, CancellationToken cancellationToken)
+    {
+        var desde = DateTimeOffset.UtcNow - JanelaConfirmacaoRecente;
+        var inicios = await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking()
+            .Where(p => p.ConversaId == conversaId && p.Tipo == TipoGestaoWhatsApp.Remarcar
+                && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= desde && p.NovoInicio != null)
+            .Select(p => p.NovoInicio!.Value).ToListAsync(cancellationToken);
+
+        var zona = TimeZoneInfo.FindSystemTimeZoneById(fuso);
+        foreach (var inicio in inicios)
+        {
+            var local = TimeZoneInfo.ConvertTime(inicio, zona);
+            if (texto.Contains(local.ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
+                || texto.Contains(local.ToString("dd/MM", System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Texto fixo (nosso, não do modelo) para qualquer falha: leva o cliente ao link público.</summary>
     public static string TextoFallback(string nomeNegocio, string link) =>
         $"Aqui é o assistente virtual de {ConstrutorPromptAgente.LimparNome(nomeNegocio)}. Não consegui consultar as informações agora. " +
@@ -252,6 +283,7 @@ public sealed class OrquestradorAgente : IRespostaAgente
     {
         var gestaoLigada = gestao >= ModoGestaoAgente.Link;
         var gestaoCancelar = gestao >= ModoGestaoAgente.Cancelar;
+        var gestaoRemarcar = gestao >= ModoGestaoAgente.Completo;
         var relogio = Stopwatch.StartNew();
         var orcamento = TimeSpan.FromSeconds(_opcoes.TempoMaximoProcessamentoSegundos);
         var agoraLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, TimeZoneInfo.FindSystemTimeZoneById(fuso));
@@ -260,9 +292,11 @@ public sealed class OrquestradorAgente : IRespostaAgente
         // Com a ferramenta de atendente humano oferecida (Ai__Humano__FerramentaAtiva) o prompt ganha a regra dela e vira v3.
         // A gestão dos agendamentos do cliente (Fase 4) só existe com o agendamento ligado: o prompt é o v2 com as regras dela (v4).
         var prompt = agendamentoLigado
-            ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link, humanoLigado, gestaoLigada, gestaoCancelar)
+            ? ConstrutorPromptAgente.ConstruirComAgendamento(nomeNegocio, agoraLocal, link, humanoLigado, gestaoLigada, gestaoCancelar, gestaoRemarcar)
             : ConstrutorPromptAgente.Construir(nomeNegocio, agoraLocal, link, humanoLigado);
-        _coleta.PromptVersao = agendamentoLigado && gestaoCancelar
+        _coleta.PromptVersao = agendamentoLigado && gestaoRemarcar
+            ? ConstrutorPromptAgente.VersaoGestaoCompleto
+            : agendamentoLigado && gestaoCancelar
             ? ConstrutorPromptAgente.VersaoGestaoCancelar
             : agendamentoLigado && gestaoLigada
             ? ConstrutorPromptAgente.VersaoGestao

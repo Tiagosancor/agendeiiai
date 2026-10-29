@@ -3530,9 +3530,17 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
 
+                    b.Property<int?>("DuracaoMinutos")
+                        .HasColumnType("integer")
+                        .HasColumnName("duracao_minutos");
+
                     b.Property<DateTimeOffset>("ExpiraEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expira_em");
+
+                    b.Property<DateTimeOffset?>("InicioAnterior")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("inicio_anterior");
 
                     b.Property<Guid>("NegocioId")
                         .HasColumnType("uuid")
@@ -3545,6 +3553,10 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.Property<Guid?>("OperacaoId")
                         .HasColumnType("uuid")
                         .HasColumnName("operacao_id");
+
+                    b.Property<Guid?>("ProfissionalId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("profissional_id");
 
                     b.Property<DateTimeOffset?>("ResumoEnviadoEm")
                         .HasColumnType("timestamp with time zone")

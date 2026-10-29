@@ -44,11 +44,27 @@ public static class ClassificadorConfirmacaoAgente
         "nao", "n", "nao quero", "nao cancela", "nao cancelar", "desisto", "desisti", "mantem", "manter", "deixa", "deixa assim",
     };
 
+    // Remarcar (gestão, Fatia 8): a mesma disciplina estrita do cancelamento, com o verbo certo. "pode cancelar"/"sim cancela" NÃO confirmam uma
+    // remarcação (vão para a IA), e "cancela"/"remarca" sozinhos são ambíguos (podem ser o pedido inicial repetido).
+    private static readonly HashSet<string> AfirmativasRemarcacao = new(StringComparer.Ordinal)
+    {
+        "sim", "s", "confirmo", "sim confirmo", "pode remarcar", "sim pode remarcar", "sim remarca",
+    };
+
+    private static readonly HashSet<string> NegativasRemarcacao = new(StringComparer.Ordinal)
+    {
+        "nao", "n", "nao quero", "nao remarca", "nao remarcar", "desisto", "desisti", "mantem", "manter", "deixa", "deixa assim",
+    };
+
     public static RespostaDoCliente Classificar(string? mensagem) => ClassificarCom(mensagem, Afirmativas, Negativas);
 
     /// <summary>"Sim" ou "não" a um resumo de CANCELAMENTO: lista estrita (ver <see cref="AfirmativasCancelamento"/>).</summary>
     public static RespostaDoCliente ClassificarCancelamento(string? mensagem) =>
         ClassificarCom(mensagem, AfirmativasCancelamento, NegativasCancelamento);
+
+    /// <summary>"Sim" ou "não" a um resumo de REMARCAÇÃO: lista estrita (ver <see cref="AfirmativasRemarcacao"/>).</summary>
+    public static RespostaDoCliente ClassificarRemarcacao(string? mensagem) =>
+        ClassificarCom(mensagem, AfirmativasRemarcacao, NegativasRemarcacao);
 
     private static RespostaDoCliente ClassificarCom(string? mensagem, HashSet<string> afirmativas, HashSet<string> negativas)
     {
@@ -68,6 +84,10 @@ public static class ClassificadorConfirmacaoAgente
     /// <summary>Igual a <see cref="ClassificarLote"/>, com a lista estrita do cancelamento.</summary>
     public static RespostaDoCliente ClassificarLoteCancelamento(IReadOnlyCollection<string?> mensagens) =>
         ClassificarLoteCom(mensagens, ClassificarCancelamento);
+
+    /// <summary>Igual a <see cref="ClassificarLote"/>, com a lista estrita da remarcação.</summary>
+    public static RespostaDoCliente ClassificarLoteRemarcacao(IReadOnlyCollection<string?> mensagens) =>
+        ClassificarLoteCom(mensagens, ClassificarRemarcacao);
 
     private static RespostaDoCliente ClassificarLoteCom(IReadOnlyCollection<string?> mensagens, Func<string?, RespostaDoCliente> classificar)
     {

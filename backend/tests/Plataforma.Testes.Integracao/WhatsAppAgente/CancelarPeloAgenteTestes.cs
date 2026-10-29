@@ -1107,12 +1107,14 @@ public sealed class CancelarPeloAgenteTestes : IAsyncLifetime
             .And.NotContain(n => n.StartsWith("preparar_remarc") || n.StartsWith("consultar_horarios_remarc"));
         pedido.PromptSistema.Should().Contain("prompt v5").And.Contain("preparar_cancelamento");
 
-        // Completo vale como Cancelar até a Fatia 8.
+        // Completo (Fatia 8) mantém o cancelamento e acrescenta as ferramentas de remarcar, com o prompt v6.
         await IniciarAsync(new() { ["Ai:Gestao:Modo"] = "Completo" });
         var c2 = await _ambiente.SemearAsync();
         Roteirizar();
         await _ambiente.EnviarAsync(c2, "oi");
-        _ambiente.Provedor.Requisicoes.Last().Ferramentas.Select(f => f.Nome).Should().Contain("preparar_cancelamento");
+        _ambiente.Provedor.Requisicoes.Last().Ferramentas.Select(f => f.Nome)
+            .Should().Contain(["preparar_cancelamento", "preparar_remarcacao", "consultar_horarios_remarcacao"]);
+        _ambiente.Provedor.Requisicoes.Last().PromptSistema.Should().Contain("prompt v6");
 
         // Link e Desligado: nenhuma ferramenta de cancelar; chamá-la é ferramenta desconhecida e nada é gravado.
         foreach (var modo in new[] { "Link", "Desligado" })

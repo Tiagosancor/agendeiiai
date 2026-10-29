@@ -23,6 +23,8 @@ public enum MotivoLimiteGestao
     PreparosPorDia = 1,
     CancelamentosPorDia = 2,
     OperacoesNegocioPorDia = 3,
+    RemarcacoesPorDia = 4,
+    RemarcacoesPorAgendamento = 5,
 }
 
 public enum MotivoLimiteEscrita
@@ -164,7 +166,9 @@ public sealed class LimitadorUsoAgente
     /// por telefone no dia e operações efetivadas (cancelar + remarcar) por negócio no dia. Dia UTC; contados no Postgres sob o filtro
     /// global; "macios" sob concorrência (o rígido é o índice único de uma pendência por conversa). Uma conversa = um telefone.
     /// </summary>
-    public async Task<MotivoLimiteGestao> VerificarGestaoAsync(Guid conversaId, DateTimeOffset agora, CancellationToken cancellationToken)
+    public async Task<MotivoLimiteGestao> VerificarGestaoAsync(
+        Guid conversaId, DateTimeOffset agora, CancellationToken cancellationToken,
+        TipoGestaoWhatsApp tipo = TipoGestaoWhatsApp.Cancelar, Guid? agendamentoId = null)
     {
         var limites = _opcoes.Gestao;
         var inicioDoDia = new DateTimeOffset(agora.UtcDateTime.Date, TimeSpan.Zero);
@@ -173,10 +177,26 @@ public sealed class LimitadorUsoAgente
         if (await daConversa.CountAsync(p => p.CriadoEm >= inicioDoDia, cancellationToken) >= limites.LimitePreparosPorTelefonePorDia)
             return MotivoLimiteGestao.PreparosPorDia;
 
-        if (await daConversa.CountAsync(
+        if (tipo == TipoGestaoWhatsApp.Cancelar
+            && await daConversa.CountAsync(
                 p => p.Tipo == TipoGestaoWhatsApp.Cancelar && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= inicioDoDia,
                 cancellationToken) >= limites.LimiteCancelamentosPorTelefonePorDia)
             return MotivoLimiteGestao.CancelamentosPorDia;
+
+        // Remarcações (Fatia 8): efetivadas pelo telefone no dia e, no total, para o mesmo agendamento.
+        if (tipo == TipoGestaoWhatsApp.Remarcar)
+        {
+            if (await daConversa.CountAsync(
+                    p => p.Tipo == TipoGestaoWhatsApp.Remarcar && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= inicioDoDia,
+                    cancellationToken) >= limites.LimiteRemarcacoesPorTelefonePorDia)
+                return MotivoLimiteGestao.RemarcacoesPorDia;
+
+            if (agendamentoId is { } idAgendamento
+                && await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().CountAsync(
+                    p => p.AgendamentoId == idAgendamento && p.Tipo == TipoGestaoWhatsApp.Remarcar && p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada,
+                    cancellationToken) >= limites.LimiteRemarcacoesPorAgendamento)
+                return MotivoLimiteGestao.RemarcacoesPorAgendamento;
+        }
 
         if (await _dbContext.PendenciasGestaoWhatsApp.AsNoTracking().CountAsync(
                 p => p.Status == StatusPendenciaAgendamentoWhatsApp.Confirmada && p.ConcluidaEm >= inicioDoDia, cancellationToken)

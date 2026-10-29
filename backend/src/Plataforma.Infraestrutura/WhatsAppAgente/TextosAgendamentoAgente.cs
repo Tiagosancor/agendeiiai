@@ -37,6 +37,12 @@ public sealed class TextosAgendamentoAgente
     public const string CancelamentoPrazoPassou =
         "O prazo para confirmar o cancelamento terminou e nada foi cancelado. Se ainda quiser cancelar, me diga de novo.";
 
+    // Remarcação (Fatia 8).
+    public const string RemarcacaoNaoEfetivada = "Tudo bem, não remarquei nada. O seu agendamento continua no horário de antes.";
+
+    public const string RemarcacaoPrazoPassou =
+        "O prazo para confirmar a remarcação terminou e nada foi alterado. Se ainda quiser remarcar, me diga de novo.";
+
     /// <summary>Texto gravado no lugar do link de gestão: o token nunca é persistido nem vai à IA.</summary>
     public const string LinkDeGestaoOculto = "[link de gestão enviado]";
 
@@ -176,4 +182,55 @@ public sealed class TextosAgendamentoAgente
         motivo == Plataforma.Aplicacao.Agendamentos.MotivoRecusaGestaoAgente.AntecedenciaMinima
             ? "Não consegui cancelar por aqui: o prazo mínimo para cancelar esse horário já passou. Fale com o estabelecimento."
             : "Não consegui cancelar esse agendamento por aqui. Fale com o estabelecimento.";
+
+    /// <summary>Resumo da remarcação que pede o "SIM" (o servidor o envia; o texto do modelo é descartado). Avisa que o horário novo só é garantido no "SIM".</summary>
+    public string ResumoRemarcacao(DadosDoAgendamentoParaTexto dados, DateTimeOffset novoInicio, int minutosDeValidade)
+    {
+        DiaEHora(dados.Inicio, dados.Fuso, out var diaAtual, out var horaAtual);
+        DiaEHora(novoInicio, dados.Fuso, out var diaNovo, out var horaNova);
+        var negocio = Fragmento(dados.NomeNegocio, "o estabelecimento");
+        var servico = Fragmento(dados.NomeServico, "serviço");
+        var profissional = Fragmento(dados.NomeProfissional, "profissional");
+
+        return string.Join('\n',
+            $"Confira a remarcação em {negocio}:",
+            $"- Serviço: {servico}",
+            $"- Profissional: {profissional}",
+            $"- De: {diaAtual} às {horaAtual}",
+            $"- Para: {diaNovo} às {horaNova}",
+            string.Empty,
+            $"Para REMARCAR, responda SIM. Para manter o horário de antes, responda NÃO. Este pedido vale por {minutosDeValidade} minutos; o novo horário só fica garantido depois do SIM.");
+    }
+
+    /// <summary>A remarcação foi gravada (o servidor anuncia; o modelo nunca). O link de gestão que o cliente já tem continua valendo.</summary>
+    public string RemarcacaoEfetivada(DadosDoAgendamentoParaTexto dados)
+    {
+        DiaEHora(dados.Inicio, dados.Fuso, out var dia, out var hora);
+        var servico = Fragmento(dados.NomeServico, "serviço");
+        var profissional = Fragmento(dados.NomeProfissional, "profissional");
+
+        return $"Pronto, remarquei o seu agendamento de {servico} com {profissional} para {dia} às {hora}.";
+    }
+
+    /// <summary>O servidor recusou a remarcação na hora de efetivar. Texto neutro: não revela regra interna.</summary>
+    public string RemarcacaoRecusada(Plataforma.Aplicacao.Agendamentos.MotivoRecusaGestaoAgente motivo) =>
+        motivo switch
+        {
+            Plataforma.Aplicacao.Agendamentos.MotivoRecusaGestaoAgente.AntecedenciaMinima =>
+                "Não consegui remarcar por aqui: o prazo mínimo para remarcar esse horário já passou. Fale com o estabelecimento.",
+            Plataforma.Aplicacao.Agendamentos.MotivoRecusaGestaoAgente.AgendamentoAlterado =>
+                "Esse agendamento foi alterado depois do resumo, então não remarquei nada. Se ainda quiser remarcar, me diga de novo.",
+            _ => "Não consegui remarcar esse agendamento por aqui. Fale com o estabelecimento.",
+        };
+
+    /// <summary>O novo horário foi tomado (ou saiu da oferta) entre o resumo e o "SIM": nada foi alterado; traz até 5 horários livres do dia.</summary>
+    public string RemarcacaoHorarioIndisponivel(IReadOnlyList<DateTimeOffset>? alternativas, string fuso)
+    {
+        const string basico = "Não consegui remarcar: esse horário não está mais disponível e o seu agendamento continua como estava.";
+        if (alternativas is not { Count: > 0 })
+            return basico + " Me diga outro dia ou horário que eu verifico.";
+
+        var lista = string.Join(", ", alternativas.Take(5).Select(a => FormatacaoBrasil.DataHora(a, fuso)));
+        return $"{basico} Horários livres perto desse: {lista}. Me diga qual prefere.";
+    }
 }

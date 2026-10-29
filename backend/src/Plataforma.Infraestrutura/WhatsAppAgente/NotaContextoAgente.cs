@@ -44,7 +44,7 @@ public static class NotaContextoAgente
             if (consulta.Ferramenta == "listar_meus_agendamentos" && resultado.ValueKind == JsonValueKind.Object
                 && resultado.TryGetProperty("agendamentos", out var meus) && meus.ValueKind == JsonValueKind.Array && !resultado.TryGetProperty("erro", out _))
                 agendamentos = LerAgendamentos(meus);
-            else if (consulta.Ferramenta is "enviar_link_gestao" or "preparar_cancelamento" && resultado.ValueKind == JsonValueKind.Object
+            else if (consulta.Ferramenta is "enviar_link_gestao" or "preparar_cancelamento" or "preparar_remarcacao" or "consultar_horarios_remarcacao" && resultado.ValueKind == JsonValueKind.Object
                 && resultado.TryGetProperty("erro", out var codigo) && codigo.ValueKind == JsonValueKind.String && codigo.GetString() == "escolha_necessaria"
                 && resultado.TryGetProperty("agendamentos", out var opcoes) && opcoes.ValueKind == JsonValueKind.Array)
                 agendamentos = LerAgendamentos(opcoes);

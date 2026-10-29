@@ -40,6 +40,7 @@ public enum TipoAcaoServidor
     /// </summary>
     ResumoGestao = 3,
 }
+// ResumoGestao vale para cancelamento e remarcação: o servidor monta o texto pelo Tipo da pendência.
 
 /// <summary>
 /// Sinal da ferramenta ao servidor. <c>Motivo</c> é sempre um código fechado (nunca texto do modelo); <c>AvisarAtendente</c> diz que
@@ -81,6 +82,14 @@ public interface IFerramentaDeGestaoAgente : IFerramentaAgente
 /// <c>Ai__Gestao__Modo</c> em <c>Cancelar</c> (ou acima). Nunca cancela: o servidor efetiva depois do "SIM" do cliente.
 /// </summary>
 public interface IFerramentaDeCancelamentoAgente : IFerramentaDeGestaoAgente
+{
+}
+
+/// <summary>
+/// Ferramentas de remarcação (<c>consultar_horarios_remarcacao</c>, <c>preparar_remarcacao</c>): só oferecidas e só executam com
+/// <c>Ai__Gestao__Modo=Completo</c>. Nunca remarcam: o servidor move o agendamento depois do "SIM" do cliente.
+/// </summary>
+public interface IFerramentaDeRemarcacaoAgente : IFerramentaDeGestaoAgente
 {
 }
 
