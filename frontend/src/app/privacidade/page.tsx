@@ -57,6 +57,22 @@ export default async function PaginaPrivacidade() {
         sensíveis</strong>, como CPF, dados de cartão, senhas ou informações de saúde. Procuramos ocultar
         automaticamente números de telefone, e-mails e documentos digitados, mas esse filtro não é perfeito.
       </p>
+      <p>
+        Quando você pede para <strong>ver, cancelar ou remarcar</strong> um agendamento, o assistente
+        envia ao provedor os dados <strong>do seu próprio agendamento</strong>: o serviço, o dia e a hora,
+        o primeiro nome do profissional e um identificador interno do agendamento. Não enviamos o seu
+        nome, telefone ou e-mail cadastrados. Só aparecem para o assistente os seus agendamentos,
+        reconhecidos pelo número de WhatsApp de onde você escreve.
+      </p>
+
+      <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Cancelar e remarcar pelo WhatsApp</h2>
+      <p>
+        Você pode pedir ao assistente para cancelar ou remarcar um agendamento feito pelo site ou pelo
+        próprio WhatsApp. Antes de qualquer mudança, o sistema envia um resumo e <strong>só altera o
+        agendamento depois que você responde &quot;SIM&quot;</strong>. Valem as mesmas regras da página de
+        gestão do agendamento, como a antecedência mínima. O assistente não consegue mudar agendamentos
+        marcados diretamente por {nome}, e, nesses casos, ou se preferir, você pode falar com uma pessoa.
+      </p>
 
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Como o agendamento é confirmado</h2>
       <p>
@@ -78,7 +94,8 @@ export default async function PaginaPrivacidade() {
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Por quanto tempo guardamos</h2>
       <p>
         Os dados de agendamento são guardados pelo tempo necessário ao atendimento e ao histórico de
-        {" "}{nome}. As reservas que você não confirma expiram sozinhas em 10 minutos.
+        {" "}{nome}. As reservas que você não confirma expiram sozinhas em 10 minutos. As mensagens das
+        conversas com o assistente são guardadas por até 180 dias e depois apagadas.
       </p>
 
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Seus direitos</h2>
@@ -93,7 +110,7 @@ export default async function PaginaPrivacidade() {
       <h2 className="text-base font-semibold text-gray-900 dark:text-neutral-50">Contato</h2>
       <p>Para exercer esses direitos, entre em contato diretamente com {nome} pelos canais informados na página inicial.</p>
 
-      <p className="text-xs text-gray-500 dark:text-neutral-400">Versão 2.0 desta política.</p>
+      <p className="text-xs text-gray-500 dark:text-neutral-400">Versão 2.1 desta política.</p>
     </main>
   );
 }

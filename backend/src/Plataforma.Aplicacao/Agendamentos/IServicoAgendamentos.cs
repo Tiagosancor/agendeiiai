@@ -314,10 +314,11 @@ public sealed record ConfirmarReservaPublica(
 /// <summary>
 /// Versão atual dos termos aceitos no assistente público e no agendamento pelo WhatsApp (seção 8.4) — subir manualmente quando o texto
 /// dos termos mudar. 2.0: a política de privacidade do negócio passa a citar a IA e o agendamento pelo WhatsApp.
+/// 2.1: cita o envio dos dados do próprio agendamento à IA ao listar/cancelar/remarcar e a guarda das conversas por 180 dias.
 /// </summary>
 public static class VersaoTermos
 {
-    public const string Atual = "2.0";
+    public const string Atual = "2.1";
 }
 
 public sealed record ResultadoPreVisualizacaoCupom(bool Sucesso, decimal Desconto = 0m, string? MensagemErro = null);
