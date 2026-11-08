@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState, type FormEvent } from "react";
+import { use, useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { CabecalhoCadastro } from "@/components/painel/CadastrosVisuais";
 import Link from "next/link";
 import { useAutenticacao } from "@/lib/auth-context";
@@ -521,33 +521,79 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
   const { chamarApi } = useAutenticacao();
   const [vinculados, setVinculados] = useState<ProfissionalServicoResumo[]>([]);
   const [todos, setTodos] = useState<ServicoResumo[]>([]);
-  const [servicoParaVincular, setServicoParaVincular] = useState("");
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [busca, setBusca] = useState("");
+  const [buscaEmFoco, setBuscaEmFoco] = useState(false);
+  const [vinculando, setVinculando] = useState(false);
+  const envioEmCurso = useRef(false);
+  const versaoCarregamento = useRef(0);
+  const tituloServicos = useRef<HTMLHeadingElement>(null);
+  const focarAoEsvaziar = useRef(false);
+  const [resultadoVinculo, setResultadoVinculo] = useState("");
   // Preço/duração próprios deste profissional (seção 7) — edição de um serviço por vez.
   const [editando, setEditando] = useState<{ servicoId: string; preco: string; duracao: string } | null>(null);
 
   const carregar = useCallback(async () => {
+    const versao = ++versaoCarregamento.current;
     const [vinculosAtuais, listaServicos] = await Promise.all([
       chamarApi<ProfissionalServicoResumo[]>(`/painel/profissionais/${profissionalId}/servicos`),
       chamarApi<ServicoResumo[]>("/painel/servicos"),
     ]);
+    if (versao !== versaoCarregamento.current) return;
     setVinculados(vinculosAtuais);
     setTodos(listaServicos.filter((s) => s.ativo));
   }, [chamarApi, profissionalId]);
 
   useEffect(() => {
     // Busca disparada pela montagem, não estado derivado de props.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const controleCarregamento = versaoCarregamento;
     carregar();
+    return () => { controleCarregamento.current++; };
   }, [carregar]);
 
   async function vincular() {
-    if (!servicoParaVincular) return;
-    await chamarApi(`/painel/profissionais/${profissionalId}/servicos`, {
-      metodo: "POST",
-      corpo: { servicoId: servicoParaVincular, precoPersonalizado: null, duracaoPersonalizadaMinutos: null },
-    });
-    setServicoParaVincular("");
-    await carregar();
+    const servicos = disponiveisParaVincular.filter((s) => selecionados.includes(s.id));
+    if (envioEmCurso.current || servicos.length === 0) return;
+    envioEmCurso.current = true;
+    focarAoEsvaziar.current = true;
+    setVinculando(true);
+    setResultadoVinculo("");
+    const falhas: string[] = [];
+    const pendentes: string[] = [];
+    let sucessos = 0;
+    try {
+      for (const [indice, servico] of servicos.entries()) {
+        try {
+          await chamarApi(`/painel/profissionais/${profissionalId}/servicos`, {
+            metodo: "POST",
+            corpo: { servicoId: servico.id, precoPersonalizado: null, duracaoPersonalizadaMinutos: null },
+          });
+          sucessos++;
+        } catch (erro) {
+          pendentes.push(servico.id);
+          falhas.push(`${servico.nome}: ${erro instanceof ErroApi ? erro.message : "Não foi possível vincular (sem conexão com o servidor)."}`);
+          // Não continua enviando após um bloqueio de acesso ou assinatura.
+          if (erro instanceof ErroApi && [401, 402, 403].includes(erro.status)) {
+            const restantes = servicos.slice(indice + 1);
+            pendentes.push(...restantes.map((s) => s.id));
+            if (restantes.length > 0) falhas.push(`Não enviados: ${restantes.map((s) => s.nome).join(", ")}.`);
+            break;
+          }
+        }
+      }
+      setSelecionados(pendentes);
+      let mensagem = `${sucessos} ${sucessos === 1 ? "serviço vinculado" : "serviços vinculados"}.`;
+      if (falhas.length > 0) mensagem += ` ${pendentes.length} ${pendentes.length === 1 ? "serviço não vinculado" : "serviços não vinculados"}. Falhas: ${falhas.join(" ")}`;
+      try {
+        await carregar();
+      } catch {
+        mensagem += " Não foi possível atualizar a lista. Recarregue a página para conferir os vínculos.";
+      }
+      setResultadoVinculo(mensagem);
+    } finally {
+      envioEmCurso.current = false;
+      setVinculando(false);
+    }
   }
 
   async function salvarPrecoProprio(servicoId: string, preco: number | null, duracao: number | null) {
@@ -565,10 +611,22 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
   }
 
   const disponiveisParaVincular = todos.filter((s) => !vinculados.some((v) => v.servicoId === s.id));
+  const normalizar = (texto: string) => texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  const visiveis = disponiveisParaVincular.filter((s) => normalizar(s.nome).includes(normalizar(busca.trim())));
+  const quantidadeSelecionados = disponiveisParaVincular.filter((s) => selecionados.includes(s.id)).length;
+  const quantidadeVisiveisSelecionados = visiveis.filter((s) => selecionados.includes(s.id)).length;
+  const todosVisiveisSelecionados = visiveis.length > 0 && quantidadeVisiveisSelecionados === visiveis.length;
+
+  useEffect(() => {
+    if (!vinculando && focarAoEsvaziar.current) {
+      focarAoEsvaziar.current = false;
+      if (disponiveisParaVincular.length === 0) tituloServicos.current?.focus();
+    }
+  }, [vinculando, disponiveisParaVincular.length]);
 
   return (
     <section>
-      <h2 className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Serviços executados</h2>
+      <h2 ref={tituloServicos} tabIndex={-1} className="mb-3 text-lg font-semibold text-gray-900 dark:text-neutral-50">Serviços executados</h2>
 
       <div className={`${classeCartao} mb-3 divide-y divide-gray-100 dark:divide-neutral-800`}>
         {vinculados.map((v) => {
@@ -630,12 +688,13 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
               </span>
               <span className="space-x-3">
                 <button
-                  className="text-marca-primaria hover:underline dark:text-marca-acento"
+                  disabled={vinculando}
+                  className="text-marca-primaria hover:underline disabled:opacity-50 dark:text-marca-acento"
                   onClick={() => setEditando({ servicoId: v.servicoId, preco: v.preco.toFixed(2).replace(".", ","), duracao: String(v.duracaoMinutos) })}
                 >
                   Preço e duração
                 </button>
-                <button className="text-red-600 hover:underline dark:text-red-400" onClick={() => desvincular(v.servicoId)}>
+                <button disabled={vinculando} className="text-red-600 hover:underline disabled:opacity-50 dark:text-red-400" onClick={() => desvincular(v.servicoId)}>
                   Remover
                 </button>
               </span>
@@ -645,23 +704,56 @@ function SecaoServicosVinculados({ profissionalId }: { profissionalId: string })
         {vinculados.length === 0 && <p className="px-4 py-3 text-sm text-gray-500 dark:text-neutral-400">Nenhum serviço vinculado ainda.</p>}
       </div>
 
+      <p role="status" className="mb-3 text-sm text-gray-700 empty:hidden dark:text-neutral-300">{resultadoVinculo}</p>
       {disponiveisParaVincular.length > 0 && (
-        <div className="flex items-end gap-2">
-          <label>
-            <span className={classeLabel}>Vincular serviço</span>
-            <select className={classeInput} value={servicoParaVincular} onChange={(e) => setServicoParaVincular(e.target.value)}>
-              <option value="">Selecione...</option>
-              {disponiveisParaVincular.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.nome}
-                </option>
-              ))}
-            </select>
+        <fieldset disabled={vinculando} aria-busy={vinculando} className={`${classeCartao} min-w-0 p-4`}>
+          <legend className="px-1 font-medium">Vincular serviços</legend>
+          {(disponiveisParaVincular.length > 8 || busca.length > 0 || buscaEmFoco) && (
+            <label className="mb-2 block">
+              <span className={classeLabel}>Buscar serviço por nome</span>
+              <input type="search" className={`${classeInput} w-full`} value={busca} onFocus={() => setBuscaEmFoco(true)} onBlur={() => setBuscaEmFoco(false)} onChange={(e) => setBusca(e.target.value)} />
+            </label>
+          )}
+          <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm font-medium">
+            <input
+              type="checkbox"
+              className="h-5 w-5 shrink-0 accent-marca-primaria"
+              checked={todosVisiveisSelecionados}
+              disabled={vinculando || visiveis.length === 0}
+              ref={(elemento) => { if (elemento) elemento.indeterminate = quantidadeVisiveisSelecionados > 0 && !todosVisiveisSelecionados; }}
+              onChange={() => setSelecionados((atuais) => todosVisiveisSelecionados
+                ? atuais.filter((id) => !visiveis.some((s) => s.id === id))
+                : [...new Set([...atuais, ...visiveis.map((s) => s.id)])])}
+            />
+            Selecionar todos{busca.trim() ? " os resultados" : ""}
           </label>
-          <button type="button" className={classeBotaoPrimario} onClick={vincular}>
-            Vincular
-          </button>
-        </div>
+          <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-neutral-800">
+            {visiveis.map((s) => (
+              <label key={s.id} className="flex min-h-11 cursor-pointer items-center gap-3 py-3 text-sm">
+                <input
+                  type="checkbox"
+                  className="h-5 w-5 shrink-0 accent-marca-primaria"
+                  checked={selecionados.includes(s.id)}
+                  onChange={(e) => setSelecionados((atuais) => e.target.checked ? [...atuais, s.id] : atuais.filter((id) => id !== s.id))}
+                />
+                <span className="min-w-0 break-words">
+                  <span className="font-medium">{s.nome}</span>
+                  <span className="ml-2 text-gray-500 dark:text-neutral-400">{formatarReais(s.preco)} · {s.duracaoMinutos} min</span>
+                </span>
+              </label>
+            ))}
+            {visiveis.length === 0 && <p className="py-3 text-sm text-gray-500 dark:text-neutral-400">Nenhum serviço encontrado.</p>}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <span role="status" className="text-sm text-gray-500 dark:text-neutral-400">
+              {quantidadeSelecionados} {quantidadeSelecionados === 1 ? "selecionado" : "selecionados"}
+              {quantidadeSelecionados > quantidadeVisiveisSelecionados && ` (${quantidadeSelecionados - quantidadeVisiveisSelecionados} fora da busca)`}
+            </span>
+            <button type="button" disabled={quantidadeSelecionados === 0 || vinculando} className={classeBotaoPrimario} onClick={vincular}>
+              {vinculando ? "Vinculando..." : `Vincular selecionados (${quantidadeSelecionados})`}
+            </button>
+          </div>
+        </fieldset>
       )}
     </section>
   );
