@@ -376,5 +376,20 @@ public static class InfraestruturaServiceCollectionExtensions
     }
 
     private static string ObterConnectionString(IServiceProvider servicos) =>
-        servicos.GetRequiredService<IConfiguration>()[ChaveConnectionString]!;
+        DesligarCriptografiaGss(servicos.GetRequiredService<IConfiguration>()[ChaveConnectionString]!);
+
+    /// <summary>
+    /// Desliga a negociação de criptografia GSSAPI/Kerberos do Npgsql, sempre (inclusive se a connection string disser outra coisa).
+    /// O sistema só autentica por senha; mas um Postgres que aceita o pedido GSS (o do Railway aceita, o Neon recusava) faz o
+    /// Npgsql chamar a biblioteca GSS nativa, que na imagem Alpine termina em segmentation fault (exit 139) — o processo morre
+    /// ~1 s depois de subir, sem nenhuma linha de erro, e reinicia em loop. Ver docs/decisoes.md.
+    /// </summary>
+    public static string DesligarCriptografiaGss(string connectionString)
+    {
+        var construtor = new Npgsql.NpgsqlConnectionStringBuilder(connectionString)
+        {
+            GssEncryptionMode = Npgsql.GssEncryptionMode.Disable,
+        };
+        return construtor.ConnectionString;
+    }
 }

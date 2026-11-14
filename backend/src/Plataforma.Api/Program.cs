@@ -34,9 +34,6 @@ TaskScheduler.UnobservedTaskException += (_, evento) =>
 AppDomain.CurrentDomain.ProcessExit += (_, _) =>
     Log.Warning("Processo encerrando (ProcessExit). Memória em uso: {MemoriaMb} MB.", Environment.WorkingSet / 1024 / 1024);
 
-// Primeiros segundos: memória/threads/cgroup a cada 250 ms (ver DiagnosticoProcesso) — explica uma morte súbita sem log.
-Plataforma.Api.DiagnosticoProcesso.IniciarSentinela(TimeSpan.FromSeconds(8), TimeSpan.FromMilliseconds(250));
-
 try
 {
     var builder = WebApplication.CreateBuilder(args);
