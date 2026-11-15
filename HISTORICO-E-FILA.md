@@ -549,6 +549,58 @@ só guardam as horas mais recentes e as conversas já tinham saído da janela):
 - **Teste instável:** `CommitAmbiguoProxyTestes.Iniciar_com_conexao_derrubada_no_commit…` falhou uma vez na CI do PR #42 e passou na reexecução, sem relação com o agente (derruba a conexão no COMMIT por um proxy;
   depende de tempo).
 
+### Agente de WhatsApp — Fase 4 (gestão, atendente humano, observabilidade), fatias 1 a 9 — 2026-10-28/29
+
+Plano e modelo de ameaças em `.agents/handoffs/agente-whatsapp-fase4/plano.md` (local). Decisões do dono: P1 (dados do próprio agendamento vão ao Gemini ao cancelar/remarcar; exige política do
+negócio v2.1 antes de ativar), P2 (cancelar/remarcar só atinge origem `LinkPublico`/`WhatsApp`), P3 (ampliar o item 8.1.7 da especificação — **ainda a registrar**), agente de IA como **serviço premium**
+(interruptor único por negócio em `/plataforma`; cobrança futura só pelo Asaas). **Tudo desligado por padrão** (`Ai__Humano__FerramentaAtiva=false`, `Ai__Gestao__Modo=Desligado`).
+- **Fatia 1 — PR #46 (merge `320532d`):** observabilidade das rodadas (`rodadas_agente`, um desfecho por rodada). **Fatia 1b — PR #47 (`455b5b4`):** serviço premium (`PoliticaAgenteIa`; sem contratação, "atendimento
+  automático indisponível"). **Fatia 2 — PR #48 (`943c440`):** LGPD das conversas (retenção, apagar conversa).
+- **Fatia 3 — PR #49 (`3200692`):** modo Humano — assumir/devolver (`EpocaAtendimento` invalida rodadas antigas), `chamar_atendente`, permissão `AtenderConversasWhatsApp` (21). Riscos aceitos: janela de ms entre a última
+  conferência e a chamada à Evolution; anúncio de fato já efetivado em conversa assumida pode não ser recuperado após falha definitiva + reinício.
+- **Fatia 4 — PR #50 (`56f95fe`) e #51 (`44118d8`, `no-store`):** APIs de leitura do painel (conversas, uso do mês, status, mensagem de transferência). **Fatia 5 — PR #52 (`dda5e34`):** telas (configurações, conversas,
+  uso, contador no menu, marcas na agenda); `sw.js` não guarda `/painel`, `/api` e `/plataforma`.
+- **Fatia 6 — PR #53 (`0d13a1b`):** gestão modo `Link` (`listar_meus_agendamentos`, `enviar_link_gestao`; o servidor envia o link, token nunca persistido). Prompt v4.
+- **Fatia 7 — PR #54 (`6acb45e`):** cancelar pelo agente (`Ai__Gestao__Modo=Cancelar`): `preparar_cancelamento`, `PendenciaGestaoWhatsApp`, "sim" estrito avaliado antes da IA, `CancelarPeloAgenteAsync` sob a trava de
+  quinzenas, auditoria `CancelarPeloWhatsApp`. Migration `AgenteWhatsAppGestao` **aplicada no Neon pelo dono em 2026-10-29**. Duas revisões do Codex; corrigidos: anúncio de fato efetivado recuperável (Humano e >10 min),
+  proteção contra "remarquei" falso, preparo de agendamento atômico, índice de histórico e o "sim" só valer depois do resumo comprovadamente enviado (vale também para o agendamento da Fase 3). **Riscos aceitos:**
+  recuperação do aviso com 21+ mensagens acumuladas; pagamento concorrente (mesma lacuna do link público); número reciclado vê futuros do dono anterior (igual à Fatia 6).
+- **Fatia 8 — PR #55 (merge `c7c11e6`, CI verde, 2026-10-29):** remarcar (`Ai__Gestao__Modo=Completo`): `consultar_horarios_remarcacao`, `preparar_remarcacao`, `RemarcarPeloAgenteAsync` (move o mesmo agendamento
+  no lugar, sem segurar o novo horário), auditoria `RemarcarPeloWhatsApp`, prompt v6. Migration `AgenteWhatsAppRemarcar` (3 colunas nulas; divergência do plano, necessária para recusar quando profissional/início mudam
+  entre resumo e "sim") **aplicada no Neon pelo dono em 2026-10-29, antes do merge**. Revisão do Codex: Aprovado com ressalvas; o Importante (anúncio com profissional atual) foi corrigido. Status: `integrada` no `main`; deploy do código e ativação por conta do dono.
+- **Fatia 9 (docs, local — `docs/` é ignorado pelo git):** `docs/ativacao-agente-fase4.md` (ordem de ligar, variáveis, migrations, rollback, roteiros, consultas SQL) e seção em `docs/deploy.md`. Guia HTML do agente
+  (artefato privado) atualizado.
+- **Testes (relatados pelos backend-devs; a CI é a evidência de integração completa):** unidade 981 verdes na Fatia 8; integração filtrada 1118/1119 (falha única `ModeloReservaTestes…prazo…`, passa isolada). Nada foi
+  testado com Gemini, Evolution ou Resend reais.
+- **Política do negócio v2.1 — PR #56 (merge `4a2fde1`):** `/privacidade` do negócio com envio dos dados do próprio agendamento à IA, seção de cancelar/remarcar e guarda de 180 dias; `VersaoTermos.Atual` 2.1. O texto promete 180 dias: exige `Ai__RetencaoMensagensDias=180` no Railway (padrão 0 = não apaga). Item 8.1.7 escrito em `prompt-do-projeto.md` (local).
+- **Pré-requisitos antes de ativar cancelar/remarcar com clientes reais (restam):** deploy do código, `Ai__RetencaoMensagensDias=180`, conferir a política 2.1 no ar; roteiros de `docs/ativacao-agente-fase4.md`
+  com número de piloto; serviço premium ligado para o negócio.
+- **Pendências abertas:** spec Playwright contra a stack real; N+1 na listagem de gestão; filtro/página na URL e datas no fuso do negócio nas conversas do painel; cota/retenção recomendadas só com a política
+  atualizada; confirmar que o dono só pode desligar o agente sem serviço contratado; teste instável `CommitAmbiguoProxyTestes…`.
+
+### Pendência registrada — vincular vários serviços de uma vez ao profissional (2026-10-28)
+
+- **Origem:** pedido do dono. **Responsável:** Codex (frontend), com o orquestrador conferindo o contrato; backend só se o endpoint atual não aceitar vários de uma vez. **Estado:** `integrada` no `main` (PR #57, 2026-11-11): lista com caixa por serviço, "Selecionar todos", busca, vínculos em sequência com preço/duração padrão e tratamento de falha parcial; e2e `painel-vincular-varios-servicos.spec.ts` 4/4 contra build de produção local; sem mudança de backend.
+- **O quê:** na ficha do profissional (`/painel/profissionais/[id]`, seção de horários e serviços, componente `SecaoServicosVinculados`), hoje o "Vincular serviço" é um `<select>` que vincula **um serviço por vez** (cada vínculo é uma chamada com `servicoId`). Passa a ser uma lista com **caixa de seleção por serviço** ainda não vinculado, mais **"Selecionar todos"**, para o dono marcar um, vários ou todos (ex.: 15 dos 20 serviços do negócio) e vincular tudo de uma vez com um botão.
+- **A verificar ao começar:** se basta o frontend repetir a chamada atual para cada serviço marcado ou se vale um endpoint em lote (uma transação, tudo ou nada); como ficam preço e duração dos vários marcados de uma vez (hoje o vínculo nasce com `precoPersonalizado`/`duracaoPersonalizadaMinutos` nulos, ou seja, o padrão do serviço, editável depois — manter assim); e campo de busca se a lista for longa.
+
+### Incidente: API em reinício em loop no Railway (segfault do Npgsql/GSS) — PRs #58 a #60 (2026-11-12/14)
+
+- **Sintoma:** após trocar o banco do Neon para o Postgres do Railway, a API subia, abria a 8080 e morria ~1,5 s depois, sem nenhuma linha de erro, reiniciando a cada ~3 s (Restart Policy On Failure). Memória (~130 MB de 8 GB), threads (~29 de 1000) e `oom_kill` normais.
+- **Causa:** exit code **139** (segmentation fault). Relatório de crash do .NET (`DOTNET_DbgEnableMiniDump`/`EnableCrashReport`) apontou `NpgsqlConnector.GSSEncrypt` → `NegotiateAuthentication` → biblioteca GSSAPI nativa na imagem Alpine. O Postgres do Railway aceita a negociação de criptografia GSS (o Neon recusava).
+- **Correção:** `GssEncryptionMode=Disable` sempre (`DesligarCriptografiaGss`, usada por EF, Hangfire e health check) — **PR #60 (merge `71a000c`, CI verde, 2026-11-14)**; no Railway também na variável `ConnectionStrings__Padrao` (`;GSS Encryption Mode=Disable`). Estável após o deploy (jobs registrados, `/health` 200). 3 testes unitários (`ConnectionStringGssTestes`).
+- **Diagnóstico (mantido):** PR #58 (`33eb202`): `try/catch` com `Log.Fatal` + `CloseAndFlush`, handlers de exceção não observada/`ProcessExit` e log de ciclo de vida. PR #59 (`13fa75d`): sentinela de memória/threads/cgroup — **removida no #60**. Passo a passo em `docs/decisoes.md` (local).
+- **Efeito colateral esperado:** lock distribuído do Hangfire preso por contêiner morto expira sozinho (aviso "nova tentativa em 30 s" no registro de jobs).
+- **Lição:** morte sem log e sem `FTL` = suspeitar de crash nativo; obter o exit code com Custom Start Command (`sh -c '...; echo SAIDA=$?'`) antes de mexer no código.
+- **Ao trocar de banco/provedor:** conferir se as migrations (`AgenteWhatsAppGestao`, `AgenteWhatsAppRemarcar` e anteriores) existem no Postgres novo — as dessa fase foram aplicadas no Neon, **não confirmado** no do Railway.
+
+### Administração da plataforma com o layout novo — PR #61 (merge `3bb61f4`, 2026-11-15)
+
+- **Origem:** pedido do dono. **Responsável:** Codex (frontend), conferido pelo orquestrador. **Estado:** `integrada` no `main` (a Vercel publica o frontend); falta conferência visual do dono em produção (claro/escuro/celular).
+- `/plataforma` e `/plataforma/notificacoes` no shell do painel (`AppShellPlataforma`, `plataforma-visual.css`): login, lista, detalhe, saúde do WhatsApp, outbox e serviço de IA reestilizados; sem mudança de API. Corrigido o `path` inválido do ícone de sino (`AppShellPainel` também).
+- **Testes:** lint/tsc/build ok; e2e `administracao-plataforma`, `plataforma-outbox*` e novo `plataforma-layout` passam contra build de produção + API local reconstruída (28). CI: Frontend falhou uma vez por download de fontes do Google (rede) e passou na reexecução.
+- **Pendência encontrada:** `agente-ia-premium.spec.ts` (2 testes) falha igual no código original — anterior ao PR #61.
+
 ### Política de privacidade do produto — PR #28 (frontend)
 
 Texto do dono publicado em `/privacidade` do domínio raiz, sem a faixa de rascunho (`PaginaLegal` ganhou a prop
