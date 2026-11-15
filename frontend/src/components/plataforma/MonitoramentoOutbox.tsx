@@ -116,7 +116,7 @@ export function CartaoResumoOutbox() {
           <button type="button" onClick={() => void consultar()} disabled={carregando} className={`${classeBotaoSecundario} min-h-11`}>
             {carregando ? "Atualizando..." : "Atualizar"}
           </button>
-          <Link href="/plataforma/notificacoes" className={`${classeBotaoPrimario} inline-flex min-h-11 items-center`}>
+          <Link href="/plataforma/notificacoes" className={`${classeBotaoPrimario} painel-botao-principal inline-flex min-h-11 items-center`}>
             Ver detalhes
           </Link>
         </div>
@@ -147,7 +147,7 @@ function Metrica({ rotulo, valor, destaque = false, texto = false }: { rotulo: s
 }
 
 export function MonitoramentoOutbox() {
-  const { chamar, sair } = usePlataforma();
+  const { chamar } = usePlataforma();
   const service = useMemo(() => criarOutboxPlataformaService(chamar), [chamar]);
   const [resumo, setResumo] = useState<ResumoOutbox | null>(null);
   const [pagina, setPagina] = useState<PaginaOutbox | null>(null);
@@ -250,8 +250,8 @@ export function MonitoramentoOutbox() {
   const totalPaginas = pagina ? Math.max(1, Math.ceil(pagina.total / pagina.tamanho)) : 1;
 
   return (
-    <main id="conteudo-plataforma" className="mx-auto max-w-7xl space-y-5 px-4 py-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div className="painel-cadastro plataforma-pagina">
+      <header className="painel-cadastro-cabecalho">
         <div>
           <Link href="/plataforma" className="text-sm font-medium text-marca-primaria hover:underline dark:text-marca-acento">← Voltar aos negócios</Link>
           <h1 className="mt-2 font-display text-2xl font-bold">Notificações</h1>
@@ -261,7 +261,6 @@ export function MonitoramentoOutbox() {
           <button type="button" onClick={() => void atualizarTudo()} disabled={carregandoResumo || carregandoLista} className={`${classeBotaoPrimario} min-h-11`}>
             {carregandoResumo || carregandoLista ? "Atualizando..." : "Atualizar"}
           </button>
-          <button type="button" onClick={sair} className={`${classeBotaoSecundario} min-h-11`}>Sair</button>
         </div>
       </header>
 
@@ -303,7 +302,7 @@ export function MonitoramentoOutbox() {
           </nav>
         )}
       </section>
-    </main>
+    </div>
   );
 }
 
@@ -339,8 +338,8 @@ function ListaOutbox({ itens }: { itens: ItemOutbox[] }) {
   return (
     <>
       <div className={`${classeCartao} hidden lg:block`}>
-        <div className="max-w-full overflow-x-auto">
-        <table className="w-full min-w-240">
+        <div className="plataforma-tabela-scroll" tabIndex={0} role="region" aria-label="Lista de mensagens da outbox">
+        <table className="plataforma-tabela w-full min-w-240">
           <thead className="border-b border-gray-200 dark:border-neutral-800"><tr><th className={classeTh}>Status</th><th className={classeTh}>Tipo e canal</th><th className={classeTh}>Tentativas</th><th className={classeTh}>Atualização</th><th className={classeTh}>Próxima tentativa</th><th className={classeTh}>Motivo</th><th className={classeTh}>Identificadores</th></tr></thead>
           <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">{itens.map((item) => <LinhaOutbox key={item.id} item={item} />)}</tbody>
         </table>

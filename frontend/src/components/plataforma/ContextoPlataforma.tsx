@@ -1,6 +1,9 @@
 "use client";
 
 import { createContext, useCallback, useContext, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { AppShellPlataforma } from "./AppShellPlataforma";
+import { BotaoTema } from "@/components/BotaoTema";
+import { MarcaPainel } from "@/components/painel/IdentidadePainel";
 import { CampoSenha } from "@/components/CampoSenha";
 import { classeBotaoPrimario, classeInput, classeLabel } from "@/components/estilos";
 import { ErroApi, requisicaoApi } from "@/lib/api";
@@ -45,7 +48,7 @@ export function ProvedorPlataforma({ children }: { children: ReactNode }) {
   const valor = useMemo(() => (token ? { token, chamar, sair } : null), [chamar, sair, token]);
 
   if (!valor) return <LoginPlataforma aoEntrar={setToken} />;
-  return <ContextoPlataforma.Provider value={valor}>{children}</ContextoPlataforma.Provider>;
+  return <ContextoPlataforma.Provider value={valor}><AppShellPlataforma aoSair={sair}>{children}</AppShellPlataforma></ContextoPlataforma.Provider>;
 }
 
 export function usePlataforma(): ContextoPlataformaValor {
@@ -78,8 +81,10 @@ function LoginPlataforma({ aoEntrar }: { aoEntrar: (token: string) => void }) {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4">
-      <form onSubmit={enviar} className="w-full max-w-sm space-y-3 rounded-xl border border-gray-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+    <main className="painel-login">
+      <BotaoTema className="painel-login-tema painel-tema" />
+      <form onSubmit={enviar} className="painel-login-card space-y-3">
+        <MarcaPainel tagline />
         <h1 className="font-display text-xl font-bold">Administração da plataforma</h1>
         <label className="block">
           <span className={classeLabel}>E-mail</span>
@@ -89,7 +94,7 @@ function LoginPlataforma({ aoEntrar }: { aoEntrar: (token: string) => void }) {
           <CampoSenha rotulo="Senha" required className={classeInput} value={senha} onChange={(evento) => setSenha(evento.target.value)} autoComplete="current-password" />
         </div>
         {erro && <p role="alert" className="text-sm text-red-700 dark:text-red-400">{erro}</p>}
-        <button type="submit" disabled={enviando} className={`${classeBotaoPrimario} min-h-11 w-full`}>
+        <button type="submit" disabled={enviando} className={`${classeBotaoPrimario} painel-botao-principal min-h-11 w-full`}>
           {enviando ? "Entrando..." : "Entrar"}
         </button>
       </form>

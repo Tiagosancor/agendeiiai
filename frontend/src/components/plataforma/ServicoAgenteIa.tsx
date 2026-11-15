@@ -53,7 +53,7 @@ export function ControleServicoAgenteIa({ negocio, aoAlterar }: { negocio: Negoc
     await aoAlterar(novo);
   }
 
-  return <div className="min-w-48 space-y-2">
+  return <div className="plataforma-agente min-w-48 space-y-2">
     <p>{contratado ? "Ligado" : "Desligado"}{origem ? ` · Origem: ${ROTULOS_ORIGEM[origem]}` : ""}</p>
     <p className="text-xs text-gray-500 dark:text-neutral-400">WhatsApp {negocio.whatsAppConectado ? "conectado" : "não conectado"}</p>
     <button ref={botao} type="button" role="switch" aria-label={`Agente de IA — ${negocio.nome}`} aria-checked={contratado} disabled={salvando || confirmando} className={`${classeBotaoSecundario} min-h-11`} onClick={() => { devolverFoco.current = true; setConfirmando(true); setErro(null); }}>
@@ -87,7 +87,7 @@ export function HistoricoServicoAgenteIa({ negocioId, servico }: { negocioId: st
     return () => controle.abort();
   }, [chamar, negocioId, servico.alteradoEm, servico.contratado, tentativa]);
 
-  return <section aria-label="Histórico do agente de IA" className="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-neutral-800">
+  return <section aria-label="Histórico do agente de IA" className="plataforma-cartao-interno space-y-2 rounded-lg border p-3">
     <h3 className="font-semibold">Histórico do agente de IA</h3>
     <p>Serviço {servico.contratado ? "ligado" : "desligado"}{servico.origem ? ` · Origem: ${ROTULOS_ORIGEM[servico.origem]}` : ""}</p>
     {servico.alteradoEm && <p className="text-sm break-words">Alterado em {new Date(servico.alteradoEm).toLocaleString("pt-BR")} por {servico.alteradoPor ?? "—"}</p>}

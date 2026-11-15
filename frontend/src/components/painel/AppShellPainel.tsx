@@ -109,7 +109,7 @@ export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSa
         if (href === "/painel/assinatura" && (podeConfigurar || podeAtender)) {
           return [
             [podeConfigurar ? "/painel/whatsapp" : "/painel/whatsapp/conversas", "WhatsApp", "M21 11.5a8.5 8.5 0 0 1-12.6 7.4L3 21l2.1-5.4A8.5 8.5 0 1 1 21 11.5M8 8c0 4 2 6 6 6"],
-            ...(podeConfigurar ? [["/painel/configuracoes/notificacoes", "Notificações", "M18 8A6 6 0 0 0 6 8c0 7-3 7h18c-3 0-3-7-3-7M10 19a2 2 0 0 0 4 0"] as ItemMenu] : []), item,
+            ...(podeConfigurar ? [["/painel/configuracoes/notificacoes", "Notificações", "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M10 21a2 2 0 0 0 4 0"] as ItemMenu] : []), item,
           ];
         }
         return [item];

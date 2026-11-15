@@ -79,8 +79,8 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
   }, [carregar]);
 
   return (
-    <main className="mx-auto max-w-6xl space-y-4 px-4 py-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="painel-cadastro plataforma-pagina">
+      <div className="painel-cadastro-cabecalho">
         <h1 className="font-display text-xl font-bold">Negócios</h1>
         <div className="flex flex-wrap items-center gap-2">
           <select aria-label="Filtrar por estado" className={classeInput} value={filtro} onChange={(e) => setFiltro(e.target.value as EstadoAssinatura | "")}>
@@ -96,9 +96,6 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
             <option value="true">Agente de IA ligado</option>
             <option value="false">Agente de IA desligado</option>
           </select>
-          <button onClick={aoSair} className={classeBotaoSecundario}>
-            Sair
-          </button>
         </div>
       </div>
 
@@ -107,8 +104,8 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
       <CartaoResumoOutbox />
 
       <div className={classeCartao}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-200">
+        <div className="plataforma-tabela-scroll" tabIndex={0} role="region" aria-label="Lista de negócios">
+          <table className="plataforma-tabela w-full min-w-200">
             <thead className="border-b border-gray-200 dark:border-neutral-800">
               <tr>
                 <th className={classeTh}>Negócio</th>
@@ -120,6 +117,7 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-neutral-800">
+              {negocios === null && !erroLista && <tr><td className={classeTd} colSpan={6}><p role="status">Carregando negócios…</p></td></tr>}
               {negocios?.map((n) => (
                 <tr key={n.id} className="cursor-pointer hover:bg-gray-50 dark:hover:bg-neutral-800" onClick={() => setSelecionado(n.id)}>
                   <td className={classeTd}>
@@ -163,7 +161,7 @@ function ListaNegocios({ token, aoSair }: { token: string; aoSair: () => void })
           aoAlterar={carregar}
         />
       )}
-    </main>
+    </div>
   );
 }
 
@@ -284,7 +282,7 @@ function DetalheNegocioPlataforma({
   const n = detalhe.negocio;
 
   return (
-    <section data-testid="detalhe-negocio-plataforma" className="space-y-4 rounded-xl border-2 border-marca-primaria/20 p-4 dark:border-marca-acento/30">
+    <section data-testid="detalhe-negocio-plataforma" className="plataforma-detalhe space-y-4 rounded-xl border p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="font-display text-lg font-bold">{n.nome}</h2>
@@ -297,7 +295,7 @@ function DetalheNegocioPlataforma({
             Fim do teste: {data(n.fimTeste)} · Vencimento: {data(n.proximoVencimento)} · Carência até: {data(detalhe.carenciaAte)}
           </p>
         </div>
-        <button onClick={aoFechar} aria-label="Fechar" className="text-gray-400 hover:text-gray-700">
+        <button onClick={aoFechar} aria-label="Fechar" className={`${classeBotaoSecundario} min-h-11 min-w-11`}>
           ✕
         </button>
       </div>

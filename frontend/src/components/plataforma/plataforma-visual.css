@@ -1,0 +1,32 @@
+/* Complementos exclusivos da administração. O shell e os controles vêm do painel. */
+.plataforma-pagina { width: 100%; }
+.plataforma-pagina :is(section, form, header, label, .grid > *, .flex > *) { min-width: 0; }
+.plataforma-pagina :is(p, li, h2, h3) { overflow-wrap: anywhere; }
+.plataforma-pagina .painel-cadastro-cabecalho { flex-wrap: wrap; }
+.plataforma-pagina .painel-cadastro-cabecalho > div { max-width: 100%; }
+.plataforma-pagina .painel-cadastro-cabecalho > div:has(> select) { flex: 1 1 340px; }
+.plataforma-pagina .painel-cadastro-cabecalho select { flex: 1 1 180px; width: auto; }
+.plataforma-tabela-scroll { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.plataforma-tabela thead { background: var(--painel-elevado); }
+.plataforma-tabela th { padding: 14px 16px; white-space: nowrap; }
+.plataforma-tabela td { padding: 14px 16px; vertical-align: top; }
+.plataforma-tabela td[colspan] { padding: 32px 20px; text-align: center; color: var(--painel-secundario); }
+.plataforma-tabela tbody tr:hover { background: var(--painel-elevado); }
+.plataforma-detalhe { background: var(--painel-superficie); border-color: var(--painel-borda); }
+.plataforma-pagina :is(.plataforma-cartao-interno, .plataforma-detalhe form, .plataforma-detalhe div.border) {
+  background: var(--painel-superficie); border-color: var(--painel-borda); border-radius: 12px;
+}
+.plataforma-pagina .plataforma-detalhe form { padding: 18px; }
+.plataforma-pagina .plataforma-detalhe > .grid > div { min-width: 0; }
+.plataforma-pagina .plataforma-detalhe > .grid:last-child > div { padding: 16px; border-radius: 12px; background: var(--painel-elevado); }
+.plataforma-pagina a.bg-marca-primaria { display: inline-flex; align-items: center; }
+.plataforma-pagina [role="switch"][aria-checked="true"] { color: var(--painel-accent); border-color: var(--painel-accent); background: color-mix(in srgb, var(--painel-accent) 8%, var(--painel-superficie)); }
+.plataforma-agente form { max-width: 320px; white-space: normal; }
+.plataforma-pagina .text-gray-950 { color: var(--painel-texto); }
+.plataforma-pagina [role="alert"] { overflow-wrap: anywhere; }
+@media (max-width: 639px) {
+  .plataforma-pagina .plataforma-detalhe form > .grid { grid-template-columns: minmax(0, 1fr); }
+  .plataforma-pagina .plataforma-detalhe form > .grid > span:empty { display: none; }
+  .plataforma-pagina .plataforma-detalhe form.flex { flex-wrap: wrap; }
+  .plataforma-pagina .plataforma-detalhe form.flex > label { flex-basis: 100%; }
+}
