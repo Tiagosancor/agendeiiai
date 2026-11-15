@@ -17,6 +17,8 @@ async function painel(page: Page, contratado: boolean, instancia = true, recusar
     if (caminho.endsWith("/servico-ia")) return falharServico ? r.fulfill({ status: 502, json: { title: "Serviço temporariamente indisponível." } }) : r.fulfill({ json: { contratado, origem: contratado ? "Manual" : null } });
     if (caminho.endsWith("/status")) return instancia ? r.fulfill({ json: { status: "Conectada", agenteAtivo: !recusar, agenteIaContratado: contratado, telefone: "+5585999999999" } }) : r.fulfill({ status: 404 });
     if (caminho.endsWith("/conectar")) { conexoes++; return r.fulfill({ json: { status: "AguardandoQrCode", qrCode: null } }); }
+    // Leituras da tela (ex.: GET /uso, que apareceu depois deste spec) não são alterações.
+    if (r.request().method() === "GET") return r.fulfill({ status: 404, json: { title: "Indisponível neste teste." } });
     alteracoes++;
     corpos.push(r.request().postDataJSON());
     return recusar ? r.fulfill({ status: 409, json: { title: TITULO, codigo: "agente_ia_nao_contratado" } }) : r.fulfill({ status: 204 });
