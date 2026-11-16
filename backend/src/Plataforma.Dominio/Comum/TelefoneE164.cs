@@ -76,6 +76,13 @@ public sealed partial class TelefoneE164 : IEquatable<TelefoneE164>
         return [this];
     }
 
+    /// <summary>
+    /// Forma única de guardar e comparar o número: a de 13 dígitos (com o 9) para celular brasileiro, o próprio
+    /// número nos demais casos (<c>FormasEquivalentes()[0]</c>). Faz <c>+557188887777</c> e <c>+5571988887777</c>
+    /// serem o mesmo identificador. Função pura.
+    /// </summary>
+    public TelefoneE164 FormaCanonica() => FormasEquivalentes()[0];
+
     private static string Normalizar(string valor)
     {
         var texto = valor.Trim();

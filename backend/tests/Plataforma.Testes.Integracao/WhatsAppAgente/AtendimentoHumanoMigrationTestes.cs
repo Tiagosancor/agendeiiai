@@ -52,6 +52,8 @@ public sealed class AtendimentoHumanoMigrationTestes(PostgresContainerFixture po
                 db.Negocios.Add(negocio);
                 var administrador = Usuario.Criar(negocio.Id, "Admin", $"a-{Guid.NewGuid():N}@teste.com", Perfil.Administrador, "hash");
                 var recepcionista = Usuario.Criar(negocio.Id, "Recepção", $"r-{Guid.NewGuid():N}@teste.com", Perfil.Recepcionista, "hash");
+                administrador.ConfirmarEmail(administrador.Email!, DateTimeOffset.UtcNow);
+                recepcionista.ConfirmarEmail(recepcionista.Email!, DateTimeOffset.UtcNow);
                 db.Usuarios.AddRange(administrador, recepcionista);
                 await db.SaveChangesAsync();
                 return (administrador.Id, recepcionista.Id);

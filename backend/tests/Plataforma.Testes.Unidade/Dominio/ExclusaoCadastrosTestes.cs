@@ -27,7 +27,7 @@ public class ExclusaoCadastrosTestes
         usuario.Excluido.Should().BeTrue();
         usuario.ExcluidoEm.Should().NotBeNull();
         usuario.Ativo.Should().BeFalse();
-        usuario.Email.Should().BeEmpty();
+        usuario.Email.Should().BeNull();
         usuario.Telefone.Should().BeNull();
         usuario.Endereco.Should().Be(Endereco.Vazio);
         usuario.Cpf.Should().BeNull();

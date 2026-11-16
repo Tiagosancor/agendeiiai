@@ -208,7 +208,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
 
         // E-mail é único na plataforma inteira, só entre os não excluídos (mesma regra de "Usuários").
         if (await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email && !u.Excluido, cancellationToken))
-            throw new EmailJaCadastradoException(email);
+            throw new EmailJaCadastradoException();
 
         return Usuario.Criar(negocioId, nome, email, Perfil.Profissional, _senhaHasher.Hash(senha), telefone);
     }
@@ -224,7 +224,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         {
             if ((excecao.InnerException as PostgresException)?.ConstraintName == IndiceUsuarioPorProfissional)
                 throw new OperacaoCadastroBloqueadaException("Este profissional já tem acesso ao sistema.");
-            throw new EmailJaCadastradoException(emailNovo ?? string.Empty);
+            throw new EmailJaCadastradoException();
         }
     }
 

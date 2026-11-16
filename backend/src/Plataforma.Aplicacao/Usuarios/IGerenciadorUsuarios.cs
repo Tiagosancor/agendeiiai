@@ -43,10 +43,10 @@ public interface IGerenciadorUsuarios
     Task<string?> RevelarCpfAsync(Guid usuarioId, CancellationToken cancellationToken = default);
 }
 
-public sealed record UsuarioResumo(Guid Id, string Nome, string Email, Perfil Perfil, bool Ativo, string? FotoUrl);
+public sealed record UsuarioResumo(Guid Id, string Nome, string? Email, Perfil Perfil, bool Ativo, string? FotoUrl);
 
 public sealed record UsuarioDetalhe(
-    Guid Id, string Nome, string Email, string? Telefone, Perfil Perfil, bool Ativo, string? FotoUrl,
+    Guid Id, string Nome, string? Email, string? Telefone, Perfil Perfil, bool Ativo, string? FotoUrl,
     string? CpfMascarado, IReadOnlyCollection<Permissao> Permissoes, Endereco? Endereco = null);
 
 public sealed record CriarUsuario(
@@ -60,5 +60,6 @@ public sealed record CriarUsuario(
 public sealed record AtualizarUsuario(
     string Nome, string? Telefone, string? Cpf, string? Email = null, Endereco? Endereco = null, string? FotoUrl = null);
 
-public sealed class EmailJaCadastradoException(string email)
-    : Exception($"Já existe um usuário com o e-mail '{email}'.");
+/// <summary>E-mail já em uso por outra conta. A mensagem **nunca** carrega o e-mail (vai para o corpo do 409 e pode cair em log).</summary>
+public sealed class EmailJaCadastradoException()
+    : Exception("Já existe um usuário com esse e-mail.");

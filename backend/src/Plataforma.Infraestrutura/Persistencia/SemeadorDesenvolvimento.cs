@@ -32,6 +32,7 @@ public static class SemeadorDesenvolvimento
         var administrador = Usuario.Criar(
             negocio.Id, "Administrador (dev)", EmailAdministradorDev, Perfil.Administrador,
             senhaHasher.Hash(SenhaAdministradorDev));
+        administrador.ConfirmarEmail(EmailAdministradorDev, DateTimeOffset.UtcNow);
         dbContext.Usuarios.Add(administrador);
 
         var plano = await dbContext.Planos.OrderBy(p => p.Ordem).FirstAsync(cancellationToken);

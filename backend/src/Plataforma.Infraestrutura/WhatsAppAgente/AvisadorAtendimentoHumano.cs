@@ -37,9 +37,9 @@ public sealed class AvisadorAtendimentoHumano
         try
         {
             var emails = await _dbContext.Usuarios.AsNoTracking()
-                .Where(u => u.NegocioId == negocioId && u.Ativo && !u.Excluido && u.Email != ""
+                .Where(u => u.NegocioId == negocioId && u.Ativo && !u.Excluido && u.Email != null && u.EmailVerificadoEm != null
                     && u.Permissoes.Any(p => p.Permissao == Permissao.AtenderConversasWhatsApp))
-                .Select(u => u.Email).ToListAsync(cancellationToken);
+                .Select(u => u.Email!).ToListAsync(cancellationToken);
             if (emails.Count == 0)
                 return;
 

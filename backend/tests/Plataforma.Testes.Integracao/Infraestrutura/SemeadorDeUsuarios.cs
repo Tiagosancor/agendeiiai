@@ -27,6 +27,7 @@ public static class SemeadorDeUsuarios
 
         var email = $"usuario-{Guid.NewGuid():N}@teste.com";
         var usuario = Usuario.Criar(negocio.Id, "Usuário Teste", email, perfil, senhaHasher.Hash(SenhaPadrao));
+        usuario.ConfirmarEmail(email, DateTimeOffset.UtcNow);
 
         foreach (var permissao in permissoesExtras)
             usuario.ConcederPermissao(permissao);

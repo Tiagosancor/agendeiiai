@@ -2830,6 +2830,11 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("criado_em");
 
+                    b.Property<string>("EmailDestinoHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("email_destino_hash");
+
                     b.Property<DateTimeOffset>("ExpiraEm")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expira_em");
@@ -2847,6 +2852,14 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                     b.Property<Guid>("NegocioId")
                         .HasColumnType("uuid")
                         .HasColumnName("negocio_id");
+
+                    b.Property<string>("Tipo")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Redefinicao")
+                        .HasColumnName("tipo");
 
                     b.Property<DateTimeOffset?>("UsadaEm")
                         .HasColumnType("timestamp with time zone")
@@ -2873,6 +2886,38 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasDatabaseName("ix_redefinicoes_senha_usuario_id_criado_em");
 
                     b.ToTable("redefinicoes_senha", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.TentativaLogin", b =>
+                {
+                    b.Property<string>("Chave")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("chave");
+
+                    b.Property<DateTimeOffset>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<DateTimeOffset?>("BloqueadoAte")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("bloqueado_ate");
+
+                    b.Property<int>("Falhas")
+                        .HasColumnType("integer")
+                        .HasColumnName("falhas");
+
+                    b.Property<DateTimeOffset>("JanelaInicio")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("janela_inicio");
+
+                    b.HasKey("Chave")
+                        .HasName("pk_tentativas_login");
+
+                    b.HasIndex("AtualizadoEm")
+                        .HasDatabaseName("ix_tentativas_login_atualizado_em");
+
+                    b.ToTable("tentativas_login", (string)null);
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Usuarios.TokenAtualizacao", b =>
@@ -2946,10 +2991,13 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnName("criado_em");
 
                     b.Property<string>("Email")
-                        .IsRequired()
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)")
                         .HasColumnName("email");
+
+                    b.Property<DateTimeOffset?>("EmailVerificadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("email_verificado_em");
 
                     b.Property<bool>("Excluido")
                         .HasColumnType("boolean")
@@ -2973,6 +3021,11 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("character varying(200)")
                         .HasColumnName("nome");
 
+                    b.Property<string>("NomeUsuario")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("nome_usuario");
+
                     b.Property<decimal>("PercentualComissaoProdutoVenda")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("numeric(5,2)")
@@ -2989,6 +3042,12 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("uuid")
                         .HasColumnName("profissional_id");
 
+                    b.Property<bool>("SenhaDefinidaPorTerceiro")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("senha_definida_por_terceiro");
+
                     b.Property<string>("SenhaHash")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -3000,21 +3059,40 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("character varying(20)")
                         .HasColumnName("telefone");
 
+                    b.Property<string>("TelefoneLogin")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("telefone_login");
+
                     b.HasKey("Id")
                         .HasName("pk_usuarios");
 
                     b.HasIndex("Email")
                         .IsUnique()
                         .HasDatabaseName("ix_usuarios_email")
-                        .HasFilter("excluido = false");
+                        .HasFilter("excluido = false AND email IS NOT NULL AND email <> ''");
+
+                    b.HasIndex("NomeUsuario")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usuarios_nome_usuario")
+                        .HasFilter("excluido = false AND nome_usuario IS NOT NULL");
 
                     b.HasIndex("ProfissionalId")
                         .IsUnique()
                         .HasDatabaseName("ix_usuarios_profissional_id")
                         .HasFilter("profissional_id IS NOT NULL");
 
+                    b.HasIndex("TelefoneLogin")
+                        .IsUnique()
+                        .HasDatabaseName("ix_usuarios_telefone_login")
+                        .HasFilter("excluido = false AND telefone_login IS NOT NULL");
+
                     b.ToTable("usuarios", null, t =>
                         {
+                            t.HasCheckConstraint("ck_usuarios_algum_identificador", "excluido OR coalesce(email, '') <> '' OR nome_usuario IS NOT NULL OR telefone_login IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_usuarios_nome_usuario_formato", "nome_usuario IS NULL OR (nome_usuario ~ '^[a-z0-9][a-z0-9._-]{1,28}[a-z0-9]$' AND nome_usuario ~ '[a-z]' AND nome_usuario !~ '[._-]{2}')");
+
                             t.HasCheckConstraint("ck_usuarios_percentual_comissao_produto_venda", "percentual_comissao_produto_venda >= 0 AND percentual_comissao_produto_venda <= 100");
                         });
                 });
@@ -3055,6 +3133,74 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasDatabaseName("ix_usuario_permissoes_usuario_id_permissao");
 
                     b.ToTable("usuario_permissoes", (string)null);
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.VerificacaoEmailUsuario", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AtualizadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("atualizado_em");
+
+                    b.Property<string>("CodigoHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("codigo_hash");
+
+                    b.Property<DateTimeOffset>("CriadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("criado_em");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset>("ExpiraEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expira_em");
+
+                    b.Property<DateTimeOffset?>("InvalidadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("invalidado_em");
+
+                    b.Property<int>("MaximoTentativas")
+                        .HasColumnType("integer")
+                        .HasColumnName("maximo_tentativas");
+
+                    b.Property<Guid>("NegocioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("negocio_id");
+
+                    b.Property<int>("Tentativas")
+                        .HasColumnType("integer")
+                        .HasColumnName("tentativas");
+
+                    b.Property<DateTimeOffset?>("UsadoEm")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("usado_em");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("usuario_id");
+
+                    b.Property<uint>("Versao")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_verificacoes_email_usuario");
+
+                    b.HasIndex("UsuarioId", "CriadoEm")
+                        .HasDatabaseName("ix_verificacoes_email_usuario_usuario_id_criado_em");
+
+                    b.ToTable("verificacoes_email_usuario", (string)null);
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.Verificacao.CodigoVerificacao", b =>
@@ -4303,6 +4449,16 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_usuario_permissoes_usuarios_usuario_id");
+                });
+
+            modelBuilder.Entity("Plataforma.Dominio.Usuarios.VerificacaoEmailUsuario", b =>
+                {
+                    b.HasOne("Plataforma.Dominio.Usuarios.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuarioId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_verificacoes_email_usuario_usuarios_usuario_id");
                 });
 
             modelBuilder.Entity("Plataforma.Dominio.WhatsAppAgente.AvisoAtendenteWhatsApp", b =>

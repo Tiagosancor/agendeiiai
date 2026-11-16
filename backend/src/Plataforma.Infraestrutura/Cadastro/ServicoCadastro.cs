@@ -158,6 +158,8 @@ public sealed class ServicoCadastro : IServicoCadastro
                 dados.Telefone.Trim(), email, RedesSociais.Vazio, whatsAppAtivoParaConfirmacoes: false);
 
             var administrador = Usuario.Criar(negocio.Id, dados.Nome, email, Perfil.Administrador, senhaHash, telefone: telefone!.Valor);
+            // O e-mail do dono passou pelo código de confirmação do cadastro (seção 6.5): já nasce verificado.
+            administrador.ConfirmarEmail(email, agora);
             var assinatura = ServicoAssinatura.IniciarTeste(negocio.Id, plano, periodicidade, $"cadastro:{email}", agora);
 
             _dbContext.Negocios.Add(negocio);

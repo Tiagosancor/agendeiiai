@@ -51,7 +51,7 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         // Checagem "otimista": o índice único global em Email (só entre os não excluídos) é
         // quem garante a regra de verdade sob concorrência (ver o catch abaixo).
         if (await EmailEmUsoAsync(emailNormalizado, usuarioIgnorado: null, cancellationToken))
-            throw new EmailJaCadastradoException(emailNormalizado);
+            throw new EmailJaCadastradoException();
 
         var cpfProtegido = ProtegerCpfSeInformado(dados.Cpf);
         var senhaHash = _senhaHasher.Hash(dados.Senha);
@@ -68,7 +68,7 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         }
         catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
         {
-            throw new EmailJaCadastradoException(emailNormalizado);
+            throw new EmailJaCadastradoException();
         }
 
         return usuario.Id;
@@ -95,7 +95,7 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
             if (novoEmail != usuario.Email)
             {
                 if (await EmailEmUsoAsync(novoEmail, usuarioId, cancellationToken))
-                    throw new EmailJaCadastradoException(novoEmail);
+                    throw new EmailJaCadastradoException();
 
                 usuario.AlterarEmail(novoEmail);
                 alterados.Add("e-mail");
@@ -123,7 +123,7 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         }
         catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
         {
-            throw new EmailJaCadastradoException(usuario.Email);
+            throw new EmailJaCadastradoException();
         }
 
         return true;

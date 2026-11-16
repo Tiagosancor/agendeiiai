@@ -55,7 +55,7 @@ public sealed record ProfissionalDetalhe(
     Guid Id, string Nome, string? Telefone, string? Email, bool Ativo, string? FotoUrl, string? CpfMascarado, string? Funcao,
     Endereco? Endereco = null, AcessoVinculado? Acesso = null, string? CorAgenda = null);
 
-public sealed record AcessoVinculado(Guid UsuarioId, string Email, bool Ativo);
+public sealed record AcessoVinculado(Guid UsuarioId, string? Email, bool Ativo);
 
 public sealed record CriarProfissional(
     string Nome, string? Telefone = null, string? Email = null, string? Cpf = null, string? Funcao = null,

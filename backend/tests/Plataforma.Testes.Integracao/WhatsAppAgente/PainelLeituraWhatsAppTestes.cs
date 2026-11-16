@@ -63,6 +63,7 @@ public sealed class PainelLeituraWhatsAppTestes : IAsyncLifetime
         {
             var db = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
             var usuario = Usuario.Criar(c.NegocioId, "Usuário", email, perfil, escopo.ServiceProvider.GetRequiredService<ISenhaHasher>().Hash(SenhaAdmin));
+            usuario.ConfirmarEmail(email, DateTimeOffset.UtcNow);
             foreach (var permissao in extras)
                 usuario.ConcederPermissao(permissao);
             db.Usuarios.Add(usuario);

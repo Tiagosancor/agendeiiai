@@ -9,7 +9,14 @@ public interface IUsuarioAtual
 {
     Guid? UsuarioId { get; }
 
+    /// <summary>E-mail **verificado** do token (a claim só existe com e-mail verificado); nulo sem ele.</summary>
     string? Email { get; }
 
-    void Definir(Guid usuarioId, string? email);
+    /// <summary>
+    /// Rótulo da autoria (auditoria, "painel:..."): e-mail verificado, senão <c>@nome_usuario</c>, senão o nome, senão
+    /// <c>usuario:{id}</c>. Nulo só fora do painel. **Nunca** usa telefone (dado pessoal no <c>Autor</c> da auditoria).
+    /// </summary>
+    string? Rotulo { get; }
+
+    void Definir(Guid usuarioId, string? email, string? nomeUsuario = null, string? nome = null);
 }

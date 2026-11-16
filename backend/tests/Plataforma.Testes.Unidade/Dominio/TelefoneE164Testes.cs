@@ -55,4 +55,16 @@ public sealed class TelefoneE164Testes
         mascarado.Should().Contain("****");
         mascarado.Should().NotContain("88888");
     }
+
+    [Theory]
+    [InlineData("+5571988887777", "+5571988887777")]  // já com o 9: inalterado
+    [InlineData("+557188887777", "+5571988887777")]   // 12 dígitos de celular: ganha o 9
+    [InlineData("+557133334444", "+557133334444")]    // fixo: inalterado
+    [InlineData("+15551234567", "+15551234567")]      // estrangeiro: inalterado
+    public void FormaCanonica_e_a_de_13_digitos_para_celular_brasileiro(string digitado, string esperado) =>
+        TelefoneE164.Criar(digitado).FormaCanonica().Valor.Should().Be(esperado);
+
+    [Fact]
+    public void O_mesmo_celular_com_e_sem_o_nono_digito_tem_a_mesma_forma_canonica() =>
+        TelefoneE164.Criar("7188887777").FormaCanonica().Should().Be(TelefoneE164.Criar("71988887777").FormaCanonica());
 }

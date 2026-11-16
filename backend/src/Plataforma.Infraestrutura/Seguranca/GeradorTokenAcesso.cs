@@ -28,11 +28,20 @@ public sealed class GeradorTokenAcesso : IGeradorTokenAcesso
         var claims = new Dictionary<string, object>
         {
             ["sub"] = usuario.Id.ToString(),
-            ["email"] = usuario.Email,
             [ClaimsPlataforma.NegocioId] = usuario.NegocioId.ToString(),
             [ClaimsPlataforma.Perfil] = usuario.Perfil.ToString(),
             [ClaimsPlataforma.Permissao] = usuario.Permissoes.Select(p => p.Permissao.ToString()).ToArray(),
         };
+
+        // "email" só com e-mail verificado: e-mail digitado por terceiro e não confirmado não serve para nada que confie
+        // nele (rótulo de auditoria, titular da cobrança). Tokens antigos continuam válidos (só têm "email").
+        if (usuario.EmailVerificado)
+            claims["email"] = usuario.Email!;
+
+        if (usuario.NomeUsuario is not null)
+            claims[ClaimsPlataforma.NomeUsuario] = usuario.NomeUsuario.Valor;
+
+        claims[ClaimsPlataforma.NomeExibicao] = usuario.Nome;
 
         var chaveSimetrica = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_opcoes.ChaveSecreta));
         var credenciais = new SigningCredentials(chaveSimetrica, SecurityAlgorithms.HmacSha256);

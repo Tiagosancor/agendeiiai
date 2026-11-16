@@ -85,13 +85,14 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         var link = ConstrutorUrlPublica.ConstruirPainel(_opcoesMarca, $"/painel/redefinir-senha?token={tokenBruto}");
-        await _notificador.EnviarRedefinicaoSenhaAsync(usuario.Email, usuario.Nome, link, ValidadeMinutos, cancellationToken);
+        await _notificador.EnviarRedefinicaoSenhaAsync(usuario.Email ?? emailNormalizado, usuario.Nome, link, ValidadeMinutos, cancellationToken);
     }
 
     public async Task EnviarConviteAsync(Guid usuarioId, CancellationToken cancellationToken = default)
     {
         var usuario = await _dbContext.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && !u.Excluido && u.Ativo, cancellationToken);
-        if (usuario is null)
+        // Sem e-mail não há para onde mandar o convite (os chamadores validam antes; a regra de resposta é da Fatia B).
+        if (usuario is null || usuario.Email is null)
             return;
 
         var agora = DateTimeOffset.UtcNow;
