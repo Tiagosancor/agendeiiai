@@ -601,6 +601,16 @@ negócio v2.1 antes de ativar), P2 (cancelar/remarcar só atinge origem `LinkPub
 - **Testes:** lint/tsc/build ok; e2e `administracao-plataforma`, `plataforma-outbox*` e novo `plataforma-layout` passam contra build de produção + API local reconstruída (28). CI: Frontend falhou uma vez por download de fontes do Google (rede) e passou na reexecução.
 - **Pendência encontrada:** `agente-ia-premium.spec.ts` (2 testes) falha igual no código original — anterior ao PR #61.
 
+### Login por e-mail, telefone ou nome de usuário — branch `ajuste-login-telefone-usuario` (2026-11-16)
+
+- **Origem:** pedido do dono (profissional entra também por telefone e por nome de usuário que ele escolhe; e-mail opcional na criação — o administrador cadastra já com senha — mas obrigatório para recuperar a senha). **Estado:** `local`/PR aberto; nada aplicado em produção.
+- **Decisões do dono (aprovadas):** telefone de login sem prova de posse (409 neutro, liberação manual); e-mails existentes contam como verificados e o digitado pelo administrador fica não verificado até o convite/código; "administrador define nova senha" entra; telefone de contato só vira login por opção; bloqueio de 5 falhas/15 min configurável.
+- **Entrega:** backend fatias A+B (domínio, migrations, login por identificador com anti-enumeração e bloqueio, `MinhaConta`, e-mail verificado por código, acesso pelo administrador, versão de sessão que invalida tokens após trocar a senha, jobs de limpeza) + frontend (login de campo único, Minha conta, aviso de cadastro, criação/ficha com os 3 identificadores, proxy repassando `X-Forwarded-For`). Plano, contrato e revisões em `.agents/handoffs/login-telefone-usuario/` (local).
+- **Revisão cruzada do Codex:** Reprovado na 1ª volta (5 Importantes: token de acesso após trocar senha, concorrência no reenvio de código, e-mail pendente guardado, tamanho do e-mail, variáveis no compose) — todos corrigidos e testados.
+- **Testes:** unidade 1056 verdes; integração com filtros dirigidos verdes (a CI roda a suíte completa); e2e completo contra a stack local com a API desta branch: 402 de 409 (os 7 restantes: 4+ do Início/mocks corrigidos nesta branch, `painel-redesign` (contagem de 14 links) e `politica-negocio-ia` não tocam esta mudança). **Atenção:** a suíte inteira estoura o limite de 10 logins/min por IP — suba `AUTENTICACAO_LIMITE_LOGIN_POR_IP_MINUTO` no `.env` local.
+- **Deploy (ordem):** 1) aplicar `IdentificadoresLoginUsuario` (antes), 2) deploy backend + frontend juntos (o backend sozinho deixa usuários criados pelo painel antigo sem e-mail verificado), 3) aplicar `IdentificadoresLoginLimpeza` (depois). Rollback: voltar o código e `UPDATE usuarios SET email = '' WHERE email IS NULL`.
+- **Pendências:** teste de log dos conflitos no frontend; verificação do telefone de login por WhatsApp/SMS (fica para depois); limite de conflitos por autor é em memória, por instância.
+
 ### Política de privacidade do produto — PR #28 (frontend)
 
 Texto do dono publicado em `/privacidade` do domínio raiz, sem a faixa de rascunho (`PaginaLegal` ganhou a prop
