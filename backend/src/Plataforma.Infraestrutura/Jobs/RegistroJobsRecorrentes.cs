@@ -66,6 +66,10 @@ public sealed class RegistroJobsRecorrentes(
         gerenciador.AddOrUpdate<Autenticacao.JobLimparTentativasLogin>(
             "limpar-tentativas-login", job => job.ExecutarAsync(CancellationToken.None), "20 3 * * *");
 
+        // Apaga o e-mail pendente das verificações de "Minha conta" vencidas/esgotadas (dado pessoal solto). A cada 10 min.
+        gerenciador.AddOrUpdate<Autenticacao.JobLimparVerificacoesEmail>(
+            "limpar-verificacoes-email", job => job.ExecutarAsync(CancellationToken.None), "*/10 * * * *");
+
         // Retenção do diagnóstico do agente de WhatsApp (rodadas_agente, Ai__RetencaoRodadasDias). 03:50 UTC = 00:50 em Brasília.
         gerenciador.AddOrUpdate<WhatsAppAgente.JobLimparRodadasAgente>(
             "limpar-rodadas-agente", job => job.ExecutarAsync(CancellationToken.None), "50 3 * * *");

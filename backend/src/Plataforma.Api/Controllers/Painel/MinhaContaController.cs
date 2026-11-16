@@ -63,10 +63,10 @@ public sealed class MinhaContaController : ControllerBase
     }
 }
 
-public sealed record AlterarNomeUsuarioRequisicao(string? NomeUsuario, [Required] string SenhaAtual);
+public sealed record AlterarNomeUsuarioRequisicao([StringLength(100)] string? NomeUsuario, [Required, StringLength(128)] string SenhaAtual);
 
-public sealed record SolicitarEmailRequisicao([Required] string Email, [Required] string SenhaAtual);
+public sealed record SolicitarEmailRequisicao([Required, StringLength(1000)] string Email, [Required, StringLength(128)] string SenhaAtual);
 
-public sealed record ConfirmarEmailRequisicao([Required] string Codigo);
+public sealed record ConfirmarEmailRequisicao([Required, StringLength(20)] string Codigo);
 
-public sealed record AlterarPropriaSenhaRequisicao([Required] string SenhaAtual, [Required] string NovaSenha);
+public sealed record AlterarPropriaSenhaRequisicao([Required, StringLength(128)] string SenhaAtual, [Required, StringLength(1000)] string NovaSenha);

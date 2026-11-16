@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAutenticacao } from "@/lib/auth-context";
 import { AppShellPainel } from "@/components/painel/AppShellPainel";
+import { AvisoMinhaConta } from "@/components/painel/AvisoMinhaConta";
 import { AvisoAssinatura } from "@/components/painel/AvisoAssinatura";
 import { guardarUltimaRota } from "@/lib/ultima-rota";
 
@@ -41,6 +42,7 @@ export default function LayoutProtegido({ children }: { children: React.ReactNod
       roteador.replace("/painel/login");
     }}>
       <AvisoAssinatura />
+      <AvisoMinhaConta />
       {children}
     </AppShellPainel>
   );

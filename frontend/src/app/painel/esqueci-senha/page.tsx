@@ -40,10 +40,11 @@ export default function PaginaEsqueciSenha() {
         <MarcaPainel tagline />
         <h1 className="font-display mb-1 text-xl font-bold text-gray-900 dark:text-neutral-50">Esqueci minha senha</h1>
 
+        <p className="mb-4 text-sm text-gray-600 dark:text-neutral-300">Se você entra por telefone ou nome de usuário e não confirmou um e-mail, peça ao administrador do seu negócio para definir uma nova senha.</p>
         {enviado ? (
           <>
             <p className="mb-6 text-sm text-gray-600 dark:text-neutral-300">
-              Se <strong>{email}</strong> tiver acesso ao painel, você vai receber um e-mail com um link para criar uma
+              Se <strong>{email}</strong> estiver confirmado em uma conta do painel, você vai receber um e-mail com um link para criar uma
               senha nova. O link vale por 1 hora. Confira também a caixa de spam.
             </p>
             <Link href="/painel/login" className={`${classeBotaoPrimario} painel-botao-principal painel-recuperacao-acao w-full`}>
@@ -53,7 +54,7 @@ export default function PaginaEsqueciSenha() {
         ) : (
           <form onSubmit={aoEnviar}>
             <p className="mb-6 text-sm text-gray-500 dark:text-neutral-400">
-              Informe o e-mail que você usa para entrar. Vamos mandar um link para criar uma senha nova.
+              Informe seu e-mail confirmado para solicitar um link de recuperação.
             </p>
 
             <label className="mb-4 block text-sm">

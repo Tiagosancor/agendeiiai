@@ -28,13 +28,15 @@ public sealed class MinhaContaTestes : IAsyncLifetime
     private static readonly JsonSerializerOptions JsonApi = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     private readonly PostgresContainerFixture _postgres;
+    private readonly CapturaDeLogs _logs = new();
     private PlataformaWebApplicationFactory _fabrica = null!;
 
     public MinhaContaTestes(PostgresContainerFixture postgres) => _postgres = postgres;
 
     public async Task InitializeAsync()
     {
-        _fabrica = new PlataformaWebApplicationFactory(_postgres.ConnectionString);
+        _fabrica = new PlataformaWebApplicationFactory(_postgres.ConnectionString, null,
+            servicos => servicos.AddSingleton<Microsoft.Extensions.Logging.ILoggerProvider>(_logs));
         using var aquecimento = _fabrica.CreateClient();
         await _fabrica.ResetarBancoAsync();
     }
@@ -85,13 +87,6 @@ public sealed class MinhaContaTestes : IAsyncLifetime
             .Should().Be(("Sem Email", Perfil.Administrador, null, false, nome, true));
         using var anonimo = _fabrica.CreateClient();
         (await anonimo.GetAsync("/painel/minha-conta")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-    }
-
-    [Fact]
-    public async Task Minha_conta_funciona_com_a_assinatura_suspensa()
-    {
-        typeof(MinhaContaController).GetCustomAttribute<PermitirComAssinaturaSuspensaAttribute>().Should().NotBeNull();
-        await Task.CompletedTask;
     }
 
     [Fact]
@@ -289,5 +284,205 @@ public sealed class MinhaContaTestes : IAsyncLifetime
         var bloqueada = await cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = "x@teste.com", senhaAtual = Senha });
         bloqueada.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
         Codigo(JsonDocument.Parse(await bloqueada.Content.ReadAsStringAsync()).RootElement).Should().Be("muitas_tentativas");
+    }
+
+    private async Task SuspenderAssinaturaAsync(Guid negocioId)
+    {
+        await _fabrica.NoBancoAsync(async db =>
+        {
+            var plano = await db.Planos.FirstAsync(p => p.Nome == "Casa Cheia");
+            var assinatura = Plataforma.Dominio.Assinaturas.ServicoAssinatura.IniciarTeste(
+                negocioId, plano, Plataforma.Dominio.Assinaturas.Periodicidade.Mensal, "teste", DateTimeOffset.UtcNow.AddDays(-45));
+            Plataforma.Dominio.Assinaturas.ServicoAssinatura.AtualizarPorTempo(assinatura, DateTimeOffset.UtcNow);
+            db.Assinaturas.Add(assinatura);
+            await db.SaveChangesAsync();
+            return 0;
+        });
+    }
+
+    [Fact]
+    public async Task Minha_conta_funciona_com_a_assinatura_efetivamente_suspensa_enquanto_o_resto_do_painel_responde_402()
+    {
+        var (cliente, _, negocioId, nome) = await SemEmailAsync();
+        await SuspenderAssinaturaAsync(negocioId);
+        var espia = _fabrica.Services.GetRequiredService<EspiaEmail>();
+
+        (await cliente.GetAsync("/painel/profissionais")).StatusCode.Should().Be(HttpStatusCode.PaymentRequired); // controle: está suspensa
+
+        (await cliente.GetAsync("/painel/minha-conta")).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await cliente.PutAsJsonAsync("/painel/minha-conta/nome-usuario", new { nomeUsuario = nome + "x", senhaAtual = Senha })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = "suspensa@teste.com", senhaAtual = Senha })).StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var codigo = await CodigoDoCodigoAsync(espia, "suspensa@teste.com");
+        (await cliente.PostAsJsonAsync("/painel/minha-conta/email/confirmar", new { codigo })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await cliente.PutAsJsonAsync("/painel/minha-conta/senha", new { senhaAtual = Senha, novaSenha = "NovaSenha2026" })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Bearer_emitido_antes_da_troca_de_senha_recebe_401_e_o_novo_funciona()
+    {
+        var (cliente, _, _, nome) = await SemEmailAsync();
+        (await cliente.GetAsync("/painel/minha-conta")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await cliente.PutAsJsonAsync("/painel/minha-conta/senha", new { senhaAtual = Senha, novaSenha = "NovaSenha2026" })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await cliente.GetAsync("/painel/minha-conta")).StatusCode.Should().Be(HttpStatusCode.Unauthorized, "o access token anterior à troca não vale mais");
+
+        using var anonimo = _fabrica.CreateClient();
+        var login = await anonimo.PostAsJsonAsync("/painel/auth/login", new { identificador = nome, senha = "NovaSenha2026" });
+        login.StatusCode.Should().Be(HttpStatusCode.OK);
+        var novo = _fabrica.CreateClient();
+        novo.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await login.Content.ReadFromJsonAsync<RespostaLogin>())!.AccessToken);
+        (await novo.GetAsync("/painel/minha-conta")).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Refresh_token_que_sobrevive_a_troca_de_senha_por_corrida_nao_renova()
+    {
+        var (_, usuarioId, _, nome) = await SemEmailAsync();
+        using var cookies = _fabrica.CreateClient(new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactoryClientOptions { HandleCookies = false });
+        var login = await cookies.PostAsJsonAsync("/painel/auth/login", new { identificador = nome, senha = Senha });
+        var cookie = login.Headers.GetValues("Set-Cookie").First().Split(';')[0];
+
+        // A troca de senha (por qualquer caminho) sobe a versão das sessões na mesma gravação da senha.
+        await _fabrica.NoBancoAsync(async db =>
+        {
+            var u = await db.Usuarios.IgnoreQueryFilters().FirstAsync(x => x.Id == usuarioId);
+            u.AlterarSenha(_fabrica.Services.GetRequiredService<ISenhaHasher>().Hash("NovaSenha2026"));
+            await db.SaveChangesAsync();
+            return 0;
+        });
+
+        // Simula a corrida: uma renovação concorrente deixou um refresh token NÃO revogado depois da troca.
+        (await _fabrica.NoBancoAsync(db => db.TokensAtualizacao.IgnoreQueryFilters().Where(t => t.UsuarioId == usuarioId).CountAsync())).Should().BeGreaterThan(0);
+        await _fabrica.NoBancoAsync(db => db.TokensAtualizacao.IgnoreQueryFilters().Where(t => t.UsuarioId == usuarioId)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevogadoEm, (DateTimeOffset?)null)));
+
+        var renovar = new HttpRequestMessage(HttpMethod.Post, "/painel/auth/renovar");
+        renovar.Headers.Add("Cookie", cookie);
+        (await cookies.SendAsync(renovar)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Pedidos_simultaneos_de_codigo_nao_dao_500_e_deixam_uma_unica_verificacao_pendente()
+    {
+        var (cliente, usuarioId, _, _) = await SemEmailAsync();
+
+        var respostas = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ =>
+            cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = "simultaneo@teste.com", senhaAtual = Senha })));
+
+        respostas.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Accepted);
+        var pendentes = await _fabrica.NoBancoAsync(db => db.VerificacoesEmailUsuario.IgnoreQueryFilters().AsNoTracking()
+            .CountAsync(v => v.UsuarioId == usuarioId && v.UsadoEm == null && v.InvalidadoEm == null && v.Email != null));
+        pendentes.Should().Be(1, "pedido novo invalida os anteriores, mesmo simultâneo");
+    }
+
+    [Fact]
+    public async Task Pedido_de_codigo_novo_e_confirmacao_simultaneos_nao_dao_500_e_terminam_consistentes()
+    {
+        var (cliente, usuarioId, _, _) = await SemEmailAsync();
+        var espia = _fabrica.Services.GetRequiredService<EspiaEmail>();
+        await cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = "corrida.confirma@teste.com", senhaAtual = Senha });
+        var codigo = await CodigoDoCodigoAsync(espia, "corrida.confirma@teste.com");
+
+        var confirmar = cliente.PostAsJsonAsync("/painel/minha-conta/email/confirmar", new { codigo });
+        var reenviar = cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = "corrida.confirma@teste.com", senhaAtual = Senha });
+        var respostas = await Task.WhenAll(confirmar, reenviar);
+
+        respostas[0].StatusCode.Should().BeOneOf(HttpStatusCode.NoContent, HttpStatusCode.BadRequest);
+        respostas[1].StatusCode.Should().Be(HttpStatusCode.Accepted);
+        var usuario = await _fabrica.NoBancoAsync(db => db.Usuarios.IgnoreQueryFilters().AsNoTracking().FirstAsync(u => u.Id == usuarioId));
+        if (respostas[0].StatusCode == HttpStatusCode.NoContent)
+            usuario.EmailVerificado.Should().BeTrue();
+        (await _fabrica.NoBancoAsync(db => db.VerificacoesEmailUsuario.IgnoreQueryFilters().AsNoTracking()
+            .CountAsync(v => v.UsuarioId == usuarioId && v.UsadoEm == null && v.InvalidadoEm == null && v.Email != null))).Should().BeLessThanOrEqualTo(1);
+    }
+
+    [Fact]
+    public async Task Codigo_vencido_e_recusado_e_o_job_apaga_o_email_pendente_vencido_e_esgotado_e_preserva_o_valido()
+    {
+        var (vencida, idVencida, _, _) = await SemEmailAsync();
+        var (esgotada, idEsgotada, _, _) = await SemEmailAsync();
+        var (valida, idValida, _, _) = await SemEmailAsync();
+        var espia = _fabrica.Services.GetRequiredService<EspiaEmail>();
+
+        await vencida.PostAsJsonAsync("/painel/minha-conta/email", new { email = "vencido@teste.com", senhaAtual = Senha });
+        var codigoVencido = await CodigoDoCodigoAsync(espia, "vencido@teste.com");
+        await esgotada.PostAsJsonAsync("/painel/minha-conta/email", new { email = "esgotado@teste.com", senhaAtual = Senha });
+        await valida.PostAsJsonAsync("/painel/minha-conta/email", new { email = "valido@teste.com", senhaAtual = Senha });
+        var codigoValido = await CodigoDoCodigoAsync(espia, "valido@teste.com");
+
+        // Vence o código da primeira conta (relógio controlado direto no banco).
+        await _fabrica.NoBancoAsync(db => db.VerificacoesEmailUsuario.IgnoreQueryFilters().Where(v => v.UsuarioId == idVencida)
+            .ExecuteUpdateAsync(s => s.SetProperty(v => v.ExpiraEm, DateTimeOffset.UtcNow.AddMinutes(-1))));
+        (await vencida.PostAsJsonAsync("/painel/minha-conta/email/confirmar", new { codigo = codigoVencido })).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        // Esgota a segunda: o e-mail pendente some na hora, sem esperar o job.
+        for (var i = 0; i < 3; i++)
+            await esgotada.PostAsJsonAsync("/painel/minha-conta/email/confirmar", new { codigo = "000000" });
+        (await _fabrica.NoBancoAsync(db => db.VerificacoesEmailUsuario.IgnoreQueryFilters().AsNoTracking().Where(v => v.UsuarioId == idEsgotada).Select(v => v.Email).SingleAsync()))
+            .Should().BeNull();
+
+        var (anulados, _) = await _fabrica.NoBancoAsync(db => new Plataforma.Infraestrutura.Autenticacao.JobLimparVerificacoesEmail(
+            db, Microsoft.Extensions.Logging.Abstractions.NullLogger<Plataforma.Infraestrutura.Autenticacao.JobLimparVerificacoesEmail>.Instance).ExecutarAsync());
+
+        anulados.Should().Be(1, "só a vencida (a esgotada já estava limpa)");
+        async Task<string?> EmailPendente(Guid id) => await _fabrica.NoBancoAsync(db => db.VerificacoesEmailUsuario.IgnoreQueryFilters().AsNoTracking()
+            .Where(v => v.UsuarioId == id).Select(v => v.Email).SingleAsync());
+        (await EmailPendente(idVencida)).Should().BeNull();
+        (await EmailPendente(idValida)).Should().Be("valido@teste.com");
+
+        // O código ainda válido continua funcionando depois do job.
+        (await valida.PostAsJsonAsync("/painel/minha-conta/email/confirmar", new { codigo = codigoValido })).StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task Limite_por_destino_vale_entre_contas_distintas_e_acima_dele_nada_e_enviado()
+    {
+        var espia = _fabrica.Services.GetRequiredService<EspiaEmail>();
+        var contas = new List<HttpClient>();
+        for (var i = 0; i < 5; i++)
+            contas.Add((await SemEmailAsync()).Cliente);
+        var antes = espia.Enviados.Count;
+
+        foreach (var conta in contas)
+            (await conta.PostAsJsonAsync("/painel/minha-conta/email", new { email = "alvo.compartilhado@teste.com", senhaAtual = Senha }))
+                .StatusCode.Should().Be(HttpStatusCode.Accepted, "a resposta é sempre igual");
+
+        espia.Enviados.Skip(antes).Count(e => e.Destinatario == "alvo.compartilhado@teste.com").Should().Be(3, "3 por hora por e-mail de destino, de qualquer conta");
+    }
+
+    [Fact]
+    public async Task Email_acima_de_320_caracteres_e_400_email_invalido_em_minha_conta_e_nunca_500()
+    {
+        var (cliente, _, _, _) = await SemEmailAsync();
+        var demais = new string('a', 311) + "@teste.com"; // 321 caracteres
+
+        var resposta = await cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = demais, senhaAtual = Senha });
+        resposta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        Codigo(JsonDocument.Parse(await resposta.Content.ReadAsStringAsync()).RootElement).Should().Be("email_invalido");
+
+        // Muito acima do limite do campo: recusado na borda (validação do DTO), nunca 500.
+        (await cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = new string('b', 5000) + "@teste.com", senhaAtual = Senha }))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Logs_de_minha_conta_e_de_conflito_de_identificador_nao_vazam_dado_pessoal_nem_codigo()
+    {
+        var (cliente, _, _, nome) = await SemEmailAsync();
+        var (outro, _, _, nomeDoOutro) = await SemEmailAsync();
+        _ = outro;
+        var espia = _fabrica.Services.GetRequiredService<EspiaEmail>();
+
+        await cliente.PostAsJsonAsync("/painel/minha-conta/email", new { email = "log.sigiloso@teste.com", senhaAtual = Senha });
+        var codigo = await CodigoDoCodigoAsync(espia, "log.sigiloso@teste.com");
+        await cliente.PostAsJsonAsync("/painel/minha-conta/email/confirmar", new { codigo = codigo == "123456" ? "654321" : "123456" });
+        await cliente.PostAsJsonAsync("/painel/minha-conta/email/confirmar", new { codigo });
+        await cliente.PutAsJsonAsync("/painel/minha-conta/nome-usuario", new { nomeUsuario = nomeDoOutro, senhaAtual = Senha }); // conflito 409
+        await cliente.PutAsJsonAsync("/painel/minha-conta/senha", new { senhaAtual = "Errada!123", novaSenha = "NovaSenha2026" });
+
+        var tudo = string.Join("\n", _logs.Linhas);
+        foreach (var proibido in new[] { "log.sigiloso", nome, nomeDoOutro, codigo, Senha, "NovaSenha2026", "Errada!123" })
+            tudo.Should().NotContain(proibido);
     }
 }

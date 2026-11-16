@@ -184,6 +184,7 @@ public static class InfraestruturaServiceCollectionExtensions
         // Login por e-mail, telefone ou nome de usuário: contadores de abuso em Postgres, regras dos identificadores e "Minha conta".
         servicos.AddScoped<Autenticacao.LimitadorTentativasLogin>();
         servicos.AddScoped<Autenticacao.JobLimparTentativasLogin>();
+        servicos.AddScoped<Autenticacao.JobLimparVerificacoesEmail>();
         servicos.AddSingleton<Usuarios.LimitadorConflitosIdentificador>();
         servicos.AddScoped<Usuarios.ServicoIdentificadoresAcesso>();
         servicos.AddScoped<Plataforma.Aplicacao.Usuarios.IServicoMinhaConta, Usuarios.ServicoMinhaConta>();

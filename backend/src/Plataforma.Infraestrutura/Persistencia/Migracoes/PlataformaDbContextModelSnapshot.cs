@@ -2956,6 +2956,12 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasColumnType("uuid")
                         .HasColumnName("usuario_id");
 
+                    b.Property<int>("VersaoSessao")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("versao_sessao");
+
                     b.HasKey("Id")
                         .HasName("pk_tokens_atualizacao");
 
@@ -3063,6 +3069,12 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
                         .HasColumnName("telefone_login");
+
+                    b.Property<int>("VersaoSessao")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("versao_sessao");
 
                     b.HasKey("Id")
                         .HasName("pk_usuarios");

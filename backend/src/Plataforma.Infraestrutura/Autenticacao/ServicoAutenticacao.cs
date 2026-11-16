@@ -127,6 +127,15 @@ public sealed class ServicoAutenticacao : IServicoAutenticacao
         if (usuario is null || !usuario.Ativo || usuario.Excluido)
             return ResultadoLogin.Falha;
 
+        // A senha mudou depois de este refresh token nascer (inclusive uma renovação concorrente que o criou por cima da troca):
+        // a sessão acabou.
+        if (tokenAtual.VersaoSessao != usuario.VersaoSessao)
+        {
+            tokenAtual.Revogar();
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return ResultadoLogin.Falha;
+        }
+
         tokenAtual.Revogar();
 
         return await EmitirParDeTokensAsync(usuario, cancellationToken);
@@ -155,7 +164,7 @@ public sealed class ServicoAutenticacao : IServicoAutenticacao
         var expiraEm = DateTimeOffset.UtcNow.AddDays(_opcoesJwt.RefreshTokenDias);
 
         var tokenAtualizacao = TokenAtualizacao.Criar(
-            usuario.NegocioId, usuario.Id, HashDoToken(refreshTokenBruto), expiraEm);
+            usuario.NegocioId, usuario.Id, HashDoToken(refreshTokenBruto), expiraEm, usuario.VersaoSessao);
 
         _dbContext.Add(tokenAtualizacao);
         await _dbContext.SaveChangesAsync(cancellationToken);

@@ -30,6 +30,7 @@ public sealed class UsuarioConfiguracao : IEntityTypeConfiguration<Usuario>
             .HasMaxLength(20);
 
         builder.Property(u => u.SenhaDefinidaPorTerceiro).HasDefaultValue(false).IsRequired();
+        builder.Property(u => u.VersaoSessao).HasDefaultValue(0).IsRequired();
         builder.Property(u => u.Telefone).HasMaxLength(20);
         builder.Property(u => u.SenhaHash).HasMaxLength(200).IsRequired();
         builder.Property(u => u.Perfil).HasConversion<string>().HasMaxLength(30).IsRequired();

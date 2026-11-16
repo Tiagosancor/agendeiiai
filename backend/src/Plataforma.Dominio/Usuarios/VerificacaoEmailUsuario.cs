@@ -59,7 +59,13 @@ public class VerificacaoEmailUsuario : EntidadeBase, IEntidadeDoNegocio
     public bool Pendente(DateTimeOffset agora) =>
         UsadoEm is null && InvalidadoEm is null && Tentativas < MaximoTentativas && ExpiraEm > agora;
 
-    public void RegistrarTentativa() => Tentativas++;
+    /// <summary>Esgotou as tentativas: o e-mail pendente é apagado na hora (não fica guardado à toa).</summary>
+    public void RegistrarTentativa()
+    {
+        Tentativas++;
+        if (Tentativas >= MaximoTentativas)
+            Email = null;
+    }
 
     public void MarcarUsada(DateTimeOffset agora)
     {

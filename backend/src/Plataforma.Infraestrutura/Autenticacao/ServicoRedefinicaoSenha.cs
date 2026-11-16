@@ -49,7 +49,7 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
     public async Task SolicitarAsync(string email, CancellationToken cancellationToken = default)
     {
         var emailNormalizado = (email ?? string.Empty).Trim().ToLowerInvariant();
-        if (emailNormalizado.Length == 0)
+        if (emailNormalizado.Length == 0 || emailNormalizado.Length > Usuario.TamanhoMaximoEmail)
             return;
 
         var usuario = await _dbContext.Usuarios

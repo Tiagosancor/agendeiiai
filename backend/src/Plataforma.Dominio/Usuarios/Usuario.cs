@@ -45,6 +45,12 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Verdadeiro quando o administrador definiu a senha; o próprio usuário trocar (ou usar link/convite) zera.</summary>
     public bool SenhaDefinidaPorTerceiro { get; private set; }
 
+    /// <summary>
+    /// Versão das sessões: sobe junto com a senha (mesmo UPDATE, atômico). O access token carrega a versão em que foi emitido
+    /// (claim <c>sv</c>) e o refresh token também; versão diferente da atual = sessão encerrada (trocou a senha).
+    /// </summary>
+    public int VersaoSessao { get; private set; }
+
     public string? Telefone { get; private set; }
 
     public Endereco Endereco { get; private set; } = Endereco.Vazio;
@@ -152,6 +158,9 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
     /// Normaliza (<c>Trim().ToLowerInvariant()</c>); vazio vira nulo; sem <c>@</c> ou inválido lança
     /// <see cref="ArgumentException"/>.
     /// </summary>
+    /// <summary>Tamanho da coluna <c>usuarios.email</c> (RFC 5321: 320). Acima disso, <see cref="ArgumentException"/> — nunca 500 do banco.</summary>
+    public const int TamanhoMaximoEmail = 320;
+
     public static string? NormalizarEmail(string? email)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -159,7 +168,7 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
 
         var normalizado = email.Trim().ToLowerInvariant();
 
-        if (!normalizado.Contains('@') || !MailAddress.TryCreate(normalizado, out _))
+        if (normalizado.Length > TamanhoMaximoEmail || !normalizado.Contains('@') || !MailAddress.TryCreate(normalizado, out _))
             throw new ArgumentException("O e-mail é inválido.", nameof(email));
 
         return normalizado;
@@ -226,6 +235,7 @@ public class Usuario : EntidadeBase, IEntidadeDoNegocio
 
         SenhaHash = novoHash;
         SenhaDefinidaPorTerceiro = definidaPorTerceiro;
+        VersaoSessao++; // derruba, na validação do token, toda sessão aberta antes desta troca
     }
 
     /// <summary>Equivale a <see cref="DefinirEmailPeloAdministrador"/> com e-mail obrigatório (compatibilidade).</summary>

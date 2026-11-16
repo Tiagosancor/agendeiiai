@@ -60,6 +60,9 @@ public sealed class ServicoIdentificadoresAcesso
 
     private const int TentativasDeSugestao = 30;
 
+    /// <summary>Teto do texto bruto de nome de usuário/telefone: nenhum valor válido chega perto, e lixo gigante nem é processado.</summary>
+    private const int TamanhoMaximoEntrada = 100;
+
     private readonly PlataformaDbContext _dbContext;
     private readonly OpcoesMarca _marca;
     private readonly IUsuarioAtual _usuarioAtual;
@@ -91,6 +94,9 @@ public sealed class ServicoIdentificadoresAcesso
         if (string.IsNullOrWhiteSpace(texto))
             return null;
 
+        if (texto.Length > TamanhoMaximoEntrada)
+            throw new ErroDeAcessoException("nome_usuario_invalido", "O nome de usuário deve ter de 3 a 30 caracteres.");
+
         switch (NomeUsuario.Avaliar(texto, ReservadosDaMarca()))
         {
             case ProblemaNomeUsuario.Nenhum:
@@ -108,7 +114,7 @@ public sealed class ServicoIdentificadoresAcesso
         if (string.IsNullOrWhiteSpace(texto))
             return null;
 
-        if (!TelefoneE164.TentarCriar(texto, out var telefone) || telefone is null)
+        if (texto.Length > TamanhoMaximoEntrada || !TelefoneE164.TentarCriar(texto, out var telefone) || telefone is null)
             throw new ErroDeAcessoException("telefone_invalido", "Informe um telefone válido, com DDD.");
 
         return telefone.FormaCanonica();

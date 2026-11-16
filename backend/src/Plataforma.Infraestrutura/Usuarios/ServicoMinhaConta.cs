@@ -134,99 +134,181 @@ public sealed class ServicoMinhaConta : IServicoMinhaConta
             return;
         }
 
-        // Já é o e-mail verificado da conta: nada a confirmar.
-        if (usuario.EmailVerificado && usuario.Email == destino)
-            return;
+        var negocioId = usuario.NegocioId;
+        var usuarioId = usuario.Id;
+        string? codigoParaEnviar = null;
+        var avisarQueJaTemAcesso = false;
+        var nomeDoUsuario = usuario.Nome;
 
-        var agora = DateTimeOffset.UtcNow;
-
-        // Um pedido novo invalida os anteriores (e apaga o e-mail pendente deles).
-        var anteriores = await _dbContext.VerificacoesEmailUsuario
-            .Where(v => v.UsuarioId == usuario.Id && v.UsadoEm == null && v.InvalidadoEm == null)
-            .ToListAsync(cancellationToken);
-        foreach (var anterior in anteriores)
-            anterior.Invalidar(agora);
-
-        var expiraEm = agora.AddMinutes(_opcoesVerificacao.ValidadeCodigoMinutos);
-        var donoDoEmail = await _dbContext.Usuarios.IgnoreQueryFilters().AsNoTracking()
-            .AnyAsync(u => !u.Excluido && u.Email == destino && u.Id != usuario.Id, cancellationToken);
-
-        if (donoDoEmail)
+        // Emissão e confirmação do mesmo usuário são serializadas por uma trava de transação (pg_advisory_xact_lock): sem ela,
+        // dois pedidos simultâneos liam a mesma verificação pendente (xmin → 500) ou inseriam duas pendentes. Depois da trava o
+        // estado é lido de novo, e a estratégia de execução refaz o bloco inteiro se a conexão cair.
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        await estrategia.ExecuteAsync(async () =>
         {
-            // Oráculo "esse e-mail já tem conta": o registro nasce com hash aleatório (ninguém conhece o código; o mesmo trabalho
-            // no banco), nenhum código é enviado, e o endereço recebe o aviso de que já tem acesso. A confirmação vai falhar com o
-            // mesmo "codigo_invalido" de um código errado.
-            var aleatorio = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
-            _dbContext.VerificacoesEmailUsuario.Add(VerificacaoEmailUsuario.Criar(
-                usuario.NegocioId, usuario.Id, destino, aleatorio, expiraEm, _opcoesVerificacao.MaximoTentativasValidacao));
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            _dbContext.ChangeTracker.Clear();
+            codigoParaEnviar = null;
+            avisarQueJaTemAcesso = false;
 
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await TravarUsuarioAsync(negocioId, usuarioId, cancellationToken);
+
+            var atual = await CarregarAsync(cancellationToken)
+                ?? throw new ErroDeAcessoException("usuario_nao_encontrado", "Usuário não encontrado.");
+
+            // Já é o e-mail verificado da conta: nada a confirmar.
+            if (atual.EmailVerificado && atual.Email == destino)
+            {
+                await transacao.CommitAsync(cancellationToken);
+                return;
+            }
+
+            var agora = DateTimeOffset.UtcNow;
+
+            // Um pedido novo invalida os anteriores (e apaga o e-mail pendente deles).
+            var anteriores = await _dbContext.VerificacoesEmailUsuario
+                .Where(v => v.UsuarioId == usuarioId && v.UsadoEm == null && v.InvalidadoEm == null)
+                .ToListAsync(cancellationToken);
+            foreach (var anterior in anteriores)
+                anterior.Invalidar(agora);
+
+            var expiraEm = agora.AddMinutes(_opcoesVerificacao.ValidadeCodigoMinutos);
+            var donoDoEmail = await _dbContext.Usuarios.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(u => !u.Excluido && u.Email == destino && u.Id != usuarioId, cancellationToken);
+
+            if (donoDoEmail)
+            {
+                // Oráculo "esse e-mail já tem conta": o registro nasce com hash aleatório (ninguém conhece o código; o mesmo
+                // trabalho no banco), nenhum código é enviado, e o endereço recebe o aviso de que já tem acesso. A confirmação
+                // vai falhar com o mesmo "codigo_invalido" de um código errado.
+                var aleatorio = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+                _dbContext.VerificacoesEmailUsuario.Add(VerificacaoEmailUsuario.Criar(
+                    negocioId, usuarioId, destino, aleatorio, expiraEm, _opcoesVerificacao.MaximoTentativasValidacao));
+                avisarQueJaTemAcesso = true;
+            }
+            else
+            {
+                var codigo = CodigoConfirmacao.Gerar();
+                _dbContext.VerificacoesEmailUsuario.Add(VerificacaoEmailUsuario.Criar(
+                    negocioId, usuarioId, destino, HashDoCodigo(codigo), expiraEm, _opcoesVerificacao.MaximoTentativasValidacao));
+                codigoParaEnviar = codigo;
+            }
+
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            await transacao.CommitAsync(cancellationToken);
+        });
+
+        // Só depois do commit: e-mail nunca sai de dentro da transação.
+        if (avisarQueJaTemAcesso)
             await _notificador.EnviarAvisoEmailJaTemAcessoAsync(
                 destino, ConstrutorUrlPublica.ConstruirPainel(_opcoesMarca, "/painel/login"), cancellationToken);
-            return;
-        }
-
-        var codigo = CodigoConfirmacao.Gerar();
-        _dbContext.VerificacoesEmailUsuario.Add(VerificacaoEmailUsuario.Criar(
-            usuario.NegocioId, usuario.Id, destino, HashDoCodigo(codigo), expiraEm, _opcoesVerificacao.MaximoTentativasValidacao));
-        await _dbContext.SaveChangesAsync(cancellationToken);
-
-        await _notificador.EnviarCodigoEmailUsuarioAsync(destino, usuario.Nome, codigo, _opcoesVerificacao.ValidadeCodigoMinutos, cancellationToken);
+        else if (codigoParaEnviar is not null)
+            await _notificador.EnviarCodigoEmailUsuarioAsync(destino, nomeDoUsuario, codigoParaEnviar, _opcoesVerificacao.ValidadeCodigoMinutos, cancellationToken);
     }
 
     public async Task ConfirmarEmailAsync(string codigo, CancellationToken cancellationToken = default)
     {
         var usuario = await CarregarOuFalharAsync(cancellationToken);
-        var agora = DateTimeOffset.UtcNow;
-
-        var verificacao = await _dbContext.VerificacoesEmailUsuario
-            .Where(v => v.UsuarioId == usuario.Id && v.UsadoEm == null && v.InvalidadoEm == null)
-            .OrderByDescending(v => v.CriadoEm)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (verificacao is null || !verificacao.Pendente(agora) || verificacao.Email is null)
-            throw CodigoInvalido();
-
-        // A tentativa é gravada ANTES de comparar (xmin protege contra duas confirmações simultâneas): errar três vezes esgota.
-        verificacao.RegistrarTentativa();
-        try
-        {
-            await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw CodigoInvalido();
-        }
-
+        var negocioId = usuario.NegocioId;
+        var usuarioId = usuario.Id;
+        var nomeDoUsuario = usuario.Nome;
         var informado = (codigo ?? string.Empty).Trim();
-        var confere = CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(HashDoCodigo(informado)), Encoding.UTF8.GetBytes(verificacao.CodigoHash));
-        if (!confere)
-            throw CodigoInvalido();
 
-        var novoEmail = verificacao.Email;
-        var emailAnteriorVerificado = usuario.EmailVerificado && usuario.Email != novoEmail ? usuario.Email : null;
+        var confirmado = false;
+        string? emailAnteriorVerificado = null;
+        string? novoEmail = null;
 
-        usuario.ConfirmarEmail(novoEmail, agora);
-        verificacao.MarcarUsada(agora);
-
-        // Os links (redefinição/convite) enviados ao endereço antigo deixam de valer.
-        await _redefinicaoSenha.InvalidarPendentesAsync(usuario.Id, cancellationToken);
-        _auditoria.Registrar(AcoesAuditoria.ConfirmarEmailUsuario, nameof(Usuario), usuario.Id, "Campos: e-mail");
-
-        try
+        // Mesma trava por usuário da emissão (ordem global de travas: usuário, depois e-mail): confirmar e pedir código novo
+        // não se atropelam. A tentativa é gravada ANTES de comparar e fica gravada mesmo quando o código está errado.
+        var estrategia = _dbContext.Database.CreateExecutionStrategy();
+        await estrategia.ExecuteAsync(async () =>
         {
+            _dbContext.ChangeTracker.Clear();
+            confirmado = false;
+            emailAnteriorVerificado = null;
+            novoEmail = null;
+
+            await using var transacao = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+            await TravarUsuarioAsync(negocioId, usuarioId, cancellationToken);
+
+            var atual = await CarregarAsync(cancellationToken);
+            var agora = DateTimeOffset.UtcNow;
+            var verificacao = atual is null ? null : await _dbContext.VerificacoesEmailUsuario
+                .Where(v => v.UsuarioId == usuarioId && v.UsadoEm == null && v.InvalidadoEm == null)
+                .OrderByDescending(v => v.CriadoEm)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (atual is null || verificacao is null || !verificacao.Pendente(agora) || verificacao.Email is null)
+            {
+                await transacao.CommitAsync(cancellationToken);
+                return;
+            }
+
+            var emailPendente = verificacao.Email;
+            verificacao.RegistrarTentativa(); // no limite de tentativas, apaga o e-mail pendente
             await _dbContext.SaveChangesAsync(cancellationToken);
-        }
-        catch (DbUpdateException excecao) when (excecao is DbUpdateConcurrencyException || excecao.EhViolacaoDeUnicidade())
-        {
-            // Corrida: outra conta confirmou o mesmo e-mail primeiro (o índice único decide) ou o código foi usado em paralelo.
-            throw CodigoInvalido();
-        }
 
-        if (emailAnteriorVerificado is not null)
-            await _notificador.EnviarAvisoEmailAcessoAlteradoAsync(emailAnteriorVerificado, usuario.Nome, MascararEmail(novoEmail), cancellationToken);
+            var confere = CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(HashDoCodigo(informado)), Encoding.UTF8.GetBytes(verificacao.CodigoHash));
+            if (!confere)
+            {
+                await transacao.CommitAsync(cancellationToken); // a tentativa errada fica gravada
+                return;
+            }
+
+            await TravarEmailAsync(emailPendente, cancellationToken);
+            var ocupado = await _dbContext.Usuarios.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(u => !u.Excluido && u.Email == emailPendente && u.Id != usuarioId, cancellationToken);
+            if (ocupado)
+            {
+                // Outra conta ficou com o endereço no meio-tempo: este pedido morre sem dizer por quê.
+                verificacao.Invalidar(agora);
+                await _dbContext.SaveChangesAsync(cancellationToken);
+                await transacao.CommitAsync(cancellationToken);
+                return;
+            }
+
+            emailAnteriorVerificado = atual.EmailVerificado && atual.Email != emailPendente ? atual.Email : null;
+            atual.ConfirmarEmail(emailPendente, agora);
+            verificacao.MarcarUsada(agora);
+
+            // Os links (redefinição/convite) enviados ao endereço antigo deixam de valer.
+            await _redefinicaoSenha.InvalidarPendentesAsync(usuarioId, cancellationToken);
+            _auditoria.Registrar(AcoesAuditoria.ConfirmarEmailUsuario, nameof(Usuario), usuarioId, "Campos: e-mail");
+
+            try
+            {
+                await _dbContext.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+            {
+                // Corrida com uma edição de e-mail pelo administrador (que não toma a trava do e-mail): o índice único decidiu.
+                // A transação inteira desfaz — inclusive o registro da tentativa, que aqui não importa (o pedido morre).
+                await transacao.RollbackAsync(cancellationToken);
+                _dbContext.ChangeTracker.Clear();
+                emailAnteriorVerificado = null;
+                return;
+            }
+
+            await transacao.CommitAsync(cancellationToken);
+            novoEmail = emailPendente;
+            confirmado = true;
+        });
+
+        if (!confirmado)
+            throw CodigoInvalido();
+
+        if (emailAnteriorVerificado is not null && novoEmail is not null)
+            await _notificador.EnviarAvisoEmailAcessoAlteradoAsync(emailAnteriorVerificado, nomeDoUsuario, MascararEmail(novoEmail), cancellationToken);
     }
+
+    private Task TravarUsuarioAsync(Guid negocioId, Guid usuarioId, CancellationToken cancellationToken) =>
+        _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({"email-usuario:" + negocioId + ":" + usuarioId}, 0))", cancellationToken);
+
+    private Task TravarEmailAsync(string email, CancellationToken cancellationToken) =>
+        _dbContext.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({"email-destino:" + email}, 0))", cancellationToken);
 
     public async Task AlterarSenhaAsync(string senhaAtual, string novaSenha, CancellationToken cancellationToken = default)
     {

@@ -83,7 +83,7 @@ test("usuário com perfil Profissional segue para o cadastro de profissional e a
   await page.goto(`${PAINEL_BASE}/painel/usuarios`);
   await page.getByRole("button", { name: "Novo usuário" }).click();
   let modal = page.getByRole("dialog");
-  await modal.getByLabel("Nome").fill(nome);
+  await modal.getByLabel("Nome", { exact: true }).fill(nome);
   await modal.getByLabel("E-mail").fill(email);
   await modal.getByLabel("Senha", { exact: true }).fill("SenhaDoBarbeiro1");
   await modal.getByLabel("Perfil").selectOption("Profissional");
@@ -92,7 +92,7 @@ test("usuário com perfil Profissional segue para o cadastro de profissional e a
   // Abre direto o cadastro de profissional, pré-preenchido, e vincula ao salvar.
   modal = page.getByRole("dialog", { name: "Novo profissional" });
   await expect(modal.getByLabel("Nome")).toHaveValue(nome);
-  await expect(modal.getByText(`Ele vai entrar no sistema com ${email}`)).toBeVisible();
+  await expect(modal.getByText(`Ele vai entrar no sistema com ${email}`, { exact: false })).toBeVisible();
   await modal.getByRole("button", { name: "Criar" }).click();
 
   await expect(page).toHaveURL(/\/painel\/profissionais\/[0-9a-f-]+$/);

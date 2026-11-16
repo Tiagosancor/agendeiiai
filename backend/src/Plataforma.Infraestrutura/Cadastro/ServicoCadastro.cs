@@ -237,8 +237,11 @@ public sealed class ServicoCadastro : IServicoCadastro
         return null;
     }
 
+    /// <summary>Teto da senha: o bcrypt só usa os primeiros 72 bytes, e senha gigante é só custo de processamento.</summary>
+    public const int TamanhoMaximoSenha = 128;
+
     public static bool SenhaForte(string? senha) =>
-        senha is not null && senha.Length >= TamanhoMinimoSenha && senha.Any(char.IsLetter) && senha.Any(char.IsDigit);
+        senha is not null && senha.Length >= TamanhoMinimoSenha && senha.Length <= TamanhoMaximoSenha && senha.Any(char.IsLetter) && senha.Any(char.IsDigit);
 
     private async Task<ResultadoCadastro?> ProcurarConflitoAsync(Slug slug, string email, TelefoneE164 telefone, CancellationToken cancellationToken)
     {

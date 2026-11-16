@@ -62,7 +62,8 @@ public sealed class OutboxMigrationTestes(PostgresContainerFixture postgres)
                 // As colunas do serviço premium do agente (migration AgenteIaServicoPremium, POSTERIOR) também somem no Down.
                 "AND NOT (table_name = 'negocios' AND column_name LIKE 'agente_ia_%') " +
                 // As colunas do login por identificadores (migration IdentificadoresLoginUsuario, POSTERIOR) também somem no Down.
-                "AND NOT (table_name = 'usuarios' AND column_name IN ('email_verificado_em', 'nome_usuario', 'telefone_login', 'senha_definida_por_terceiro')) " +
+                "AND NOT (table_name = 'usuarios' AND column_name IN ('email_verificado_em', 'nome_usuario', 'telefone_login', 'senha_definida_por_terceiro', 'versao_sessao')) " +
+                "AND NOT (table_name = 'tokens_atualizacao' AND column_name = 'versao_sessao') " +
                 "AND NOT (table_name = 'redefinicoes_senha' AND column_name IN ('tipo', 'email_destino_hash')) ORDER BY 1");
 
             // Down: volta para a migration anterior — só a tabela da outbox some.

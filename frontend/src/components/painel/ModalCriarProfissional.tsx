@@ -6,6 +6,7 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { Modal } from "@/components/Modal";
 import { ACESSO_INICIAL, CamposAcesso, acessoParaApi, type EstadoAcesso } from "@/components/painel/CamposAcesso";
 import { classeBotaoPrimario, classeBotaoSecundario, classeInput, classeLabel } from "@/components/estilos";
+import { sugerirNomeUsuario, mensagemErroAcesso, descreverAcesso } from "@/lib/acesso";
 import { ErroApi } from "@/lib/api";
 
 /** Dados que já vêm de "Novo usuário, perfil Profissional" (seção 7): o profissional nasce vinculado a esse usuário. */
@@ -14,6 +15,8 @@ export interface ProfissionalPreenchido {
   nome: string;
   telefone: string;
   email: string;
+  nomeUsuario?: string;
+  telefoneLogin?: string;
 }
 
 /**
@@ -40,6 +43,7 @@ export function ModalCriarProfissional({
   const [cpf, setCpf] = useState("");
   const [acesso, setAcesso] = useState<EstadoAcesso>(ACESSO_INICIAL);
   const [erro, setErro] = useState<string | null>(null);
+  const [erroAcesso, setErroAcesso] = useState<unknown>(null);
   const [limiteDoPlano, setLimiteDoPlano] = useState(false);
   const [enviando, setEnviando] = useState(false);
 
@@ -53,6 +57,7 @@ export function ModalCriarProfissional({
     setEmail(preenchido?.email ?? "");
     setCpf("");
     setAcesso(ACESSO_INICIAL);
+    setErroAcesso(null);
     setErro(null);
     setLimiteDoPlano(false);
     /* eslint-enable react-hooks/set-state-in-effect */
@@ -77,13 +82,10 @@ export function ModalCriarProfissional({
       });
       await aoCriar(id);
     } catch (excecao) {
+      setErroAcesso(excecao);
       const limite = excecao instanceof ErroApi && excecao.codigo === "limite_profissionais";
       setLimiteDoPlano(limite);
-      setErro(
-        limite || (excecao instanceof ErroApi && (excecao.status === 400 || excecao.status === 409))
-          ? (excecao as ErroApi).message
-          : "Não foi possível criar o profissional.",
-      );
+      setErro(mensagemErroAcesso(excecao));
     } finally {
       setEnviando(false);
     }
@@ -94,12 +96,12 @@ export function ModalCriarProfissional({
       <form onSubmit={aoEnviar} className="space-y-3">
         {preenchido && (
           <p className="rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-700 dark:bg-neutral-800 dark:text-neutral-300">
-            Complete o cadastro de profissional de <strong>{preenchido.nome}</strong>. Ele vai entrar no sistema com {preenchido.email}.
+            Complete o cadastro de profissional de <strong>{preenchido.nome}</strong>. Ele vai entrar no sistema com {descreverAcesso({ email: preenchido.email, nomeUsuario: preenchido.nomeUsuario ?? null, telefoneLogin: preenchido.telefoneLogin ?? null })}.
           </p>
         )}
         <label>
           <span className={classeLabel}>Nome</span>
-          <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
+          <input required className={classeInput} value={nome} onChange={(e) => { setNome(e.target.value); if (acesso.nomeUsuario === sugerirNomeUsuario(nome)) setAcesso({ ...acesso, nomeUsuario: sugerirNomeUsuario(e.target.value) }); }} />
         </label>
         <label>
           <span className={classeLabel}>Função (opcional, aparece na página pública)</span>
@@ -127,7 +129,7 @@ export function ModalCriarProfissional({
           <input className={classeInput} value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" />
         </label>
 
-        {podeDarAcesso && !preenchido && <CamposAcesso valor={acesso} aoMudar={setAcesso} />}
+        {podeDarAcesso && !preenchido && <CamposAcesso valor={acesso} aoMudar={setAcesso} telefoneContato={telefone} erro={erroAcesso} />}
 
         {erro && (limiteDoPlano ? <AvisoLimitePlano mensagem={erro} /> : <p className="text-sm text-red-600">{erro}</p>)}
 

@@ -58,6 +58,22 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
             migrationBuilder.Sql(
                 "UPDATE usuarios SET email_verificado_em = now() WHERE excluido = false AND email IS NOT NULL AND email <> '';");
 
+            // Versão das sessões: sobe junto com a senha; access e refresh tokens carregam a versão em que nasceram. Trocar a senha
+            // encerra, na validação, toda sessão anterior (inclusive o access token ainda não expirado).
+            migrationBuilder.AddColumn<int>(
+                name: "versao_sessao",
+                table: "usuarios",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
+            migrationBuilder.AddColumn<int>(
+                name: "versao_sessao",
+                table: "tokens_atualizacao",
+                type: "integer",
+                nullable: false,
+                defaultValue: 0);
+
             migrationBuilder.AddColumn<string>(
                 name: "email_destino_hash",
                 table: "redefinicoes_senha",
@@ -189,6 +205,14 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                 table: "usuarios");
 
             migrationBuilder.DropColumn(
+                name: "versao_sessao",
+                table: "usuarios");
+
+            migrationBuilder.DropColumn(
+                name: "versao_sessao",
+                table: "tokens_atualizacao");
+
+            migrationBuilder.DropColumn(
                 name: "email_verificado_em",
                 table: "usuarios");
 
@@ -229,7 +253,12 @@ namespace Plataforma.Infraestrutura.Persistencia.Migracoes
                 table: "usuarios",
                 column: "email",
                 unique: true,
-                filter: "excluido = false");
+                // PRÉ-CONDIÇÃO DO ROLLBACK: o índice antigo (filtro só "excluido = false") não aceita duas contas com o mesmo
+                // e-mail, e o AlterColumn acima devolve "" a quem ficou sem e-mail. Por isso o filtro aqui ignora o vazio: o
+                // Down não falha depois que existirem várias contas sem e-mail. Essas contas ficam sem login (o código antigo
+                // só entra por e-mail) até o código novo voltar. Ordem segura: 1) voltar o código; 2) só então, se precisar, o
+                // schema (este Down) — nunca o contrário.
+                filter: "excluido = false AND email <> ''");
         }
     }
 }

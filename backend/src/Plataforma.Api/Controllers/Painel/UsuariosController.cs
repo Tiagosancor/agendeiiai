@@ -135,4 +135,4 @@ public sealed class UsuariosController : ControllerBase
     }
 }
 
-public sealed record AlterarSenhaRequisicao(string NovaSenha);
+public sealed record AlterarSenhaRequisicao([System.ComponentModel.DataAnnotations.StringLength(1000)] string NovaSenha);

@@ -389,4 +389,61 @@ public sealed class AcessoDosUsuariosTestes : IAsyncLifetime
         repetido.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await CorpoAsync(repetido)).GetProperty("campo").GetString().Should().Be("nomeUsuario");
     }
+
+    [Fact]
+    public async Task Tamanhos_acima_do_limite_viram_400_com_codigo_e_nunca_500_em_todos_os_caminhos()
+    {
+        var (admin, _, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var emailLongo = new string('a', 311) + "@teste.com"; // 321 caracteres: acima da coluna
+        var nomeLongo = new string('n', 31);
+        var telefoneLongo = new string('7', 200);
+        var senhaGigante = new string('A', 200) + "1";
+
+        async Task Esperar400(Task<HttpResponseMessage> chamada, string codigo)
+        {
+            var resposta = await chamada;
+            resposta.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            Codigo(await CorpoAsync(resposta)).Should().Be(codigo);
+        }
+
+        await Esperar400(Criar(admin, new CriarUsuario("X", emailLongo, Senha, Perfil.Recepcionista)), "email_invalido");
+        await Esperar400(Criar(admin, new CriarUsuario("X", null, Senha, Perfil.Recepcionista, NomeUsuario: nomeLongo)), "nome_usuario_invalido");
+        await Esperar400(Criar(admin, new CriarUsuario("X", null, Senha, Perfil.Recepcionista, NomeUsuario: new string('n', 5000))), "nome_usuario_invalido");
+        await Esperar400(Criar(admin, new CriarUsuario("X", null, Senha, Perfil.Recepcionista, TelefoneLogin: telefoneLongo)), "telefone_invalido");
+        await Esperar400(Criar(admin, new CriarUsuario("X", "x@teste.com", senhaGigante, Perfil.Recepcionista)), "senha_fraca");
+
+        var id = await IdCriadoAsync(await Criar(admin, new CriarUsuario("Y", "y@teste.com", Senha, Perfil.Recepcionista)));
+        await Esperar400(admin.PutAsJsonAsync($"/painel/usuarios/{id}/acesso", new DefinirAcessoUsuario(emailLongo, null, null)), "email_invalido");
+        await Esperar400(admin.PutAsJsonAsync($"/painel/usuarios/{id}", new AtualizarUsuario("Y", null, null, Email: emailLongo)), "email_invalido");
+        await Esperar400(admin.PutAsJsonAsync($"/painel/usuarios/{id}/senha", new AlterarSenhaRequisicao(senhaGigante)), "senha_fraca");
+
+        // Profissional: acesso com e-mail longo.
+        await Esperar400(admin.PostAsJsonAsync("/painel/profissionais", new CriarProfissional(
+            "Zz Longo", Acesso: new AcessoProfissional(emailLongo, Senha, false))), "email_invalido");
+
+        // Login e esqueci-senha com entradas gigantes: nunca 500.
+        using var anonimo = _fabrica.CreateClient();
+        (await anonimo.PostAsJsonAsync("/painel/auth/login", new { identificador = new string('x', 400), senha = Senha })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await anonimo.PostAsJsonAsync("/painel/auth/login", new { identificador = "y@teste.com", senha = new string('s', 500) })).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await anonimo.PostAsJsonAsync("/painel/auth/esqueci-senha", new { email = emailLongo })).StatusCode.Should().Be(HttpStatusCode.Accepted);
+        (await anonimo.PostAsJsonAsync("/painel/auth/esqueci-senha", new { email = new string('z', 5000) })).StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Bearer_de_quem_teve_a_senha_definida_pelo_administrador_deixa_de_valer_na_hora()
+    {
+        var (admin, _, _, _) = await _fabrica.CriarUsuarioELogarAsync(Perfil.Administrador);
+        var id = await IdCriadoAsync(await Criar(admin, new CriarUsuario("Alvo", null, Senha, Perfil.Recepcionista, NomeUsuario: "alvo.bearer")));
+
+        using var anonimo = _fabrica.CreateClient();
+        var login = await anonimo.PostAsJsonAsync("/painel/auth/login", new { identificador = "alvo.bearer", senha = Senha });
+        var alvo = _fabrica.CreateClient();
+        alvo.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", (await login.Content.ReadFromJsonAsync<RespostaLogin>())!.AccessToken);
+        (await alvo.GetAsync("/painel/minha-conta")).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await admin.PutAsJsonAsync($"/painel/usuarios/{id}/senha", new AlterarSenhaRequisicao("NovaSenha2026"))).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await alvo.GetAsync("/painel/minha-conta")).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await admin.GetAsync("/painel/usuarios")).StatusCode.Should().Be(HttpStatusCode.OK, "a sessão de quem trocou a senha de outro não é afetada");
+    }
 }

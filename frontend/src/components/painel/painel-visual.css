@@ -47,7 +47,8 @@
 .painel-sidebar nav a:hover { color: #fff; background: #17375780; }
 .painel-sidebar nav a[aria-current="page"] { background: linear-gradient(100deg, #123b59, #142e50); color: #fff; font-weight: 600; box-shadow: inset 3px 0 #2ad3ef; }
 .painel-sidebar nav a[aria-current="page"] svg { color: #7ae4f7; opacity: 1; }
-.painel-sidebar-conta { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 7px 0; margin-top: 16px; border-top: 1px solid #29435f; }
+.painel-sidebar-conta { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 7px 0; margin-top: 16px; border-top: 1px solid #29435f; }
+.painel-sidebar-conta > a { flex-basis: 100%; }
 .painel-visual .painel-tema { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 1px solid var(--painel-borda); border-radius: 14px; color: var(--painel-secundario); background: var(--painel-superficie); }
 .painel-sidebar .painel-tema { color: #c5d5ea; background: #102744; border-color: #29435f; }
 .painel-sair { display: flex; align-items: center; justify-content: space-between; gap: 25px; min-height: 44px; padding: 8px 12px; border-radius: 9px; font-size: 14px; cursor: pointer; }

@@ -13,6 +13,9 @@ public static class ClaimsPlataforma
     /// <summary>Nome da pessoa (<c>Usuario.Nome</c>), último recurso do rótulo de autoria.</summary>
     public const string NomeExibicao = "name";
 
+    /// <summary>Versão das sessões do usuário no momento da emissão (<c>Usuario.VersaoSessao</c>); ausente em tokens antigos = 0.</summary>
+    public const string VersaoSessao = "sv";
+
     /// <summary>Valor da claim <see cref="Perfil"/> no token da administração da plataforma.</summary>
     public const string PerfilAdministradorPlataforma = "AdministradorPlataforma";
 

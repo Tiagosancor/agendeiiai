@@ -10,6 +10,9 @@ import { CabecalhoCadastro, StatusCadastro, CarregandoCadastro } from "@/compone
 import { Modal } from "@/components/Modal";
 import { ModalExclusao } from "@/components/painel/ModalExclusao";
 import { CamposEndereco } from "@/components/painel/CamposEndereco";
+import { CamposIdentificadores } from "@/components/painel/CamposIdentificadores";
+import { GerenciarAcessoUsuario } from "@/components/painel/GerenciarAcessoUsuario";
+import { descreverAcesso, sugerirNomeUsuario, validarIdentificadores, mensagemErroAcesso } from "@/lib/acesso";
 import { CampoSenha } from "@/components/CampoSenha";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel, classeTd, classeTh } from "@/components/estilos";
 import { ENDERECO_VAZIO, PERFIS, PERMISSOES, type Endereco, type Perfil, type Permissao, type UsuarioDetalhe, type UsuarioResumo } from "@/lib/tipos";
@@ -19,6 +22,7 @@ export default function PaginaUsuarios() {
   const podeEditar = temPermissao("EditarCadastros");
   const podeExcluir = temPermissao("ExcluirCadastros");
   const podeDefinirComissao = temPermissao("GerenciarComissoes");
+  const [acessoDe, setAcessoDe] = useState<UsuarioDetalhe | null>(null);
   const [comissaoDe, setComissaoDe] = useState<UsuarioResumo | null>(null);
 
   const [usuarios, setUsuarios] = useState<UsuarioResumo[] | null>(null);
@@ -90,7 +94,7 @@ export default function PaginaUsuarios() {
             <thead role="rowgroup" className="border-b border-gray-200 dark:border-neutral-800">
               <tr role="row">
                 <th role="columnheader" scope="col" className={classeTh}>Nome</th>
-                <th role="columnheader" scope="col" className={classeTh}>E-mail</th>
+                <th role="columnheader" scope="col" className={classeTh}>Acesso</th>
                 <th role="columnheader" scope="col" className={classeTh}>Perfil</th>
                 <th role="columnheader" scope="col" className={classeTh}>Status</th>
                 <th role="columnheader" scope="col" className={classeTh}>Ações</th>
@@ -100,13 +104,14 @@ export default function PaginaUsuarios() {
               {usuarios?.map((usuario) => (
                 <tr role="row" key={usuario.id}>
                   <td role="cell" data-label="Nome" className={classeTd}>{usuario.nome}</td>
-                  <td role="cell" data-label="E-mail" className={classeTd}>{usuario.email}</td>
+                  <td role="cell" data-label="Acesso" className={classeTd}>{descreverAcesso(usuario)}</td>
                   <td role="cell" data-label="Perfil" className={classeTd}>{usuario.perfil}</td>
                   <td role="cell" data-label="Status" className={classeTd}><StatusCadastro ativo={usuario.ativo} /></td>
                   <td role="cell" data-label="Ações" className={`${classeTd} space-x-3`}>
                     <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={() => abrirPermissoes(usuario.id)}>
                       Permissões
                     </button>
+                    <button className="text-marca-primaria hover:underline dark:text-marca-acento" onClick={async () => { try { setAcessoDe(await chamarApi<UsuarioDetalhe>(`/painel/usuarios/${usuario.id}`)); } catch (e) { setErro(mensagemErroAcesso(e)); } }}>Acesso</button>
                     {podeEditar && (
                       <button
                         className="text-marca-primaria hover:underline dark:text-marca-acento"
@@ -142,6 +147,10 @@ export default function PaginaUsuarios() {
           </table>
         </div>
       </div>
+
+      <Modal titulo={`Acesso de ${acessoDe?.nome ?? ""}`} aberto={!!acessoDe} aoFechar={() => setAcessoDe(null)}>
+        {acessoDe && <GerenciarAcessoUsuario key={acessoDe.id} acesso={{ ...acessoDe, usuarioId: acessoDe.id }} telefoneContato={acessoDe.telefone ?? ""} aoSalvar={async () => { setAcessoDe(await chamarApi<UsuarioDetalhe>(`/painel/usuarios/${acessoDe.id}`)); await carregar(); }} />}
+      </Modal>
 
       <ModalCriarUsuario
         aberto={modalCriarAberto}
@@ -225,6 +234,9 @@ function ModalCriarUsuario({
   const { chamarApi } = useAutenticacao();
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
+  const [nomeUsuario, setNomeUsuario] = useState("");
+  const [telefoneLogin, setTelefoneLogin] = useState("");
+  const [erroAcesso, setErroAcesso] = useState<unknown>(null);
   const [senha, setSenha] = useState("");
   const [perfil, setPerfil] = useState<Perfil>("Recepcionista");
   const [telefone, setTelefone] = useState("");
@@ -235,21 +247,25 @@ function ModalCriarUsuario({
   async function aoEnviar(evento: FormEvent) {
     evento.preventDefault();
     setErro(null);
+    const invalido = validarIdentificadores({ email, nomeUsuario, telefoneLogin });
+    if (invalido) { setErro(invalido); return; }
     setEnviando(true);
     try {
       const usuarioId = await chamarApi<string>("/painel/usuarios", {
         metodo: "POST",
-        corpo: { nome, email, senha, perfil, telefone: telefone || null, cpf: cpf || null },
+        corpo: { nome, email: email.trim() || null, nomeUsuario: nomeUsuario.trim() || null, telefoneLogin: telefoneLogin.trim() || null, senha, perfil, telefone: telefone || null, cpf: cpf || null },
       });
-      const criado = { usuarioId, nome, email, telefone, perfil };
+      const criado = { usuarioId, nome, email, nomeUsuario, telefoneLogin, telefone, perfil };
       setNome("");
       setEmail("");
+      setNomeUsuario(""); setTelefoneLogin(""); setErroAcesso(null);
       setSenha("");
       setTelefone("");
       setCpf("");
       await aoCriar(criado);
-    } catch {
-      setErro("Não foi possível criar o usuário. Confira se o e-mail já não está cadastrado.");
+    } catch (excecao) {
+      setErroAcesso(excecao);
+      setErro(mensagemErroAcesso(excecao));
     } finally {
       setEnviando(false);
     }
@@ -260,14 +276,12 @@ function ModalCriarUsuario({
       <form onSubmit={aoEnviar} className="space-y-3">
         <label>
           <span className={classeLabel}>Nome</span>
-          <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
+          <input required className={classeInput} value={nome} onChange={(e) => { setNome(e.target.value); if (nomeUsuario === sugerirNomeUsuario(nome)) setNomeUsuario(sugerirNomeUsuario(e.target.value)); }} />
         </label>
-        <label>
-          <span className={classeLabel}>E-mail</span>
-          <input required type="email" className={classeInput} value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
+        <CamposIdentificadores valor={{ email, nomeUsuario, telefoneLogin }} aoMudar={(v) => { setEmail(v.email); setNomeUsuario(v.nomeUsuario); setTelefoneLogin(v.telefoneLogin); }} telefoneContato={telefone} erro={erroAcesso} />
         <div>
           <CampoSenha rotulo="Senha" required minLength={8} autoComplete="new-password" className={classeInput} value={senha} onChange={(e) => setSenha(e.target.value)} />
+          <p className="text-xs text-gray-500 dark:text-neutral-400">Pelo menos 8 caracteres, incluindo letra e número.</p>
         </div>
         <label>
           <span className={classeLabel}>Perfil</span>
@@ -315,7 +329,6 @@ function ModalEditarUsuario({
 }) {
   const { chamarApi } = useAutenticacao();
   const [nome, setNome] = useState(usuario.nome);
-  const [email, setEmail] = useState(usuario.email);
   const [telefone, setTelefone] = useState(usuario.telefone ?? "");
   const [cpf, setCpf] = useState("");
   const [fotoUrl, setFotoUrl] = useState(usuario.fotoUrl ?? "");
@@ -330,11 +343,11 @@ function ModalEditarUsuario({
     try {
       await chamarApi(`/painel/usuarios/${usuario.id}`, {
         metodo: "PUT",
-        corpo: { nome, email, telefone: telefone || null, cpf: cpf || null, endereco, fotoUrl },
+        corpo: { nome, telefone: telefone || null, cpf: cpf || null, endereco, fotoUrl },
       });
       await aoSalvar();
     } catch (excecao) {
-      setErro(excecao instanceof ErroApi && excecao.status === 409 ? "Este e-mail já é de outro usuário." : "Não foi possível salvar. Confira os dados.");
+      setErro(mensagemErroAcesso(excecao));
     } finally {
       setEnviando(false);
     }
@@ -347,10 +360,7 @@ function ModalEditarUsuario({
           <span className={classeLabel}>Nome</span>
           <input required className={classeInput} value={nome} onChange={(e) => setNome(e.target.value)} />
         </label>
-        <label>
-          <span className={classeLabel}>E-mail (usado no login)</span>
-          <input required type="email" className={classeInput} value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
+        <p className="text-sm">Para alterar os identificadores de login, use a ação Acesso na lista de usuários.</p>
         <label>
           <span className={classeLabel}>Telefone</span>
           <input className={classeInput} value={telefone} onChange={(e) => setTelefone(e.target.value)} type="tel" placeholder="(71) 98888-7777" />

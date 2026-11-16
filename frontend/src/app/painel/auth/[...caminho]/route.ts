@@ -23,12 +23,14 @@ export async function POST(request: NextRequest, contexto: { params: Promise<{ c
   const { caminho } = await contexto.params;
   const destino = `${urlApiInterna}/painel/auth/${caminho.join("/")}`;
 
+  const ipCliente = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip");
   const cookieDeEntrada = request.headers.get("cookie");
 
   const resposta = await fetch(destino, {
     method: "POST",
     headers: {
       "Content-Type": request.headers.get("content-type") ?? "application/json",
+      ...(ipCliente ? { "X-Forwarded-For": ipCliente } : {}),
       ...(cookieDeEntrada ? { Cookie: cookieDeEntrada } : {}),
     },
     body: await request.text(),
@@ -37,7 +39,7 @@ export async function POST(request: NextRequest, contexto: { params: Promise<{ c
 
   const respostaProxy = new NextResponse(resposta.body, {
     status: resposta.status,
-    headers: { "Content-Type": resposta.headers.get("content-type") ?? "application/json" },
+    headers: { "Content-Type": resposta.headers.get("content-type") ?? "application/json", "Cache-Control": "no-store" },
   });
 
   // Só existe um Set-Cookie possível aqui (refresh_token) — repassa como veio da API.

@@ -28,6 +28,7 @@ public sealed class GeradorTokenAcesso : IGeradorTokenAcesso
         var claims = new Dictionary<string, object>
         {
             ["sub"] = usuario.Id.ToString(),
+            [ClaimsPlataforma.VersaoSessao] = usuario.VersaoSessao,
             [ClaimsPlataforma.NegocioId] = usuario.NegocioId.ToString(),
             [ClaimsPlataforma.Perfil] = usuario.Perfil.ToString(),
             [ClaimsPlataforma.Permissao] = usuario.Permissoes.Select(p => p.Permissao.ToString()).ToArray(),

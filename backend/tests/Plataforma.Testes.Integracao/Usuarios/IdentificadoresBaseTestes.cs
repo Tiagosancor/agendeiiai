@@ -239,6 +239,23 @@ public sealed class IdentificadoresBaseTestes : IAsyncLifetime
             await MigrarAsync(fabrica, MigrationDosIdentificadores);
             (await Consultar<bool>(cs, $"SELECT email_verificado_em IS NOT NULL FROM usuarios WHERE id = '{ativoId}'")).Single().Should().BeTrue();
 
+            // Rollback de schema com várias contas SEM e-mail (a pré-condição que antes quebrava o Down): não pode falhar.
+            await MigrarAsync(fabrica, MigrationDosIdentificadores);
+            await fabrica.NoBancoAsync(async db =>
+            {
+                var negocio = await db.Negocios.IgnoreQueryFilters().FirstAsync();
+                db.Usuarios.Add(Usuario.Criar(negocio.Id, "Sem 1", null, NomeUsuario.Criar("sem.um"), null, Perfil.Recepcionista, "hash"));
+                db.Usuarios.Add(Usuario.Criar(negocio.Id, "Sem 2", null, null, TelefoneE164.Criar("71988880001"), Perfil.Recepcionista, "hash"));
+                await db.SaveChangesAsync();
+                return 0;
+            });
+            await MigrarAsync(fabrica, MigrationAnterior);
+            (await Consultar<long>(cs, "SELECT count(*) FROM usuarios WHERE email = ''")).Single().Should().BeGreaterThanOrEqualTo(2);
+            // Subir de novo exige que ninguém esteja sem e-mail (o Down apagou as colunas dos outros identificadores): quem operar o
+            // rollback de schema precisa dar e-mail ou excluir essas contas antes. Aqui, apagamos as duas.
+            await ExecutarAsync(cs, "DELETE FROM usuarios WHERE email = '' AND excluido = false");
+            await MigrarAsync(fabrica, MigrationDosIdentificadores);
+
             // Parte 2 (depois do deploy): o "" dos excluídos vira NULL, e o Down devolve o "" que a versão antiga espera.
             await MigrarAsync(fabrica, MigrationLimpeza);
             (await Consultar<bool>(cs, $"SELECT email IS NULL FROM usuarios WHERE id = '{excluidoId}'")).Single().Should().BeTrue();

@@ -27,6 +27,10 @@ public sealed record IdentificadorLogin(
 
         var bruto = texto.Trim();
 
+        // Nenhum identificador válido passa de 320 caracteres (o maior é o e-mail): lixo gigante nem chega a ser processado.
+        if (bruto.Length > Usuario.TamanhoMaximoEmail)
+            return Invalido;
+
         if (bruto.Contains('@'))
             return new(TipoIdentificadorLogin.Email, bruto.ToLowerInvariant(), null, null);
 

@@ -120,7 +120,11 @@ export function AppShellPainel({ children, aoSair }: { children: ReactNode; aoSa
           {rotulo === "WhatsApp" && podeAtender && aguardando !== null && aguardando > 0 && <><span aria-hidden="true" className="ml-auto rounded-full bg-cyan-100 px-2 text-xs text-cyan-900 dark:bg-cyan-950 dark:text-cyan-100">{aguardando}</span><span className="sr-only">, {aguardando} aguardando atendimento</span></>}
         </Link></li>;
       })}</ul></nav>
-      <div className="painel-sidebar-conta"><BotaoTema className="painel-tema" /><button type="button" className="painel-sair" onClick={aoSair}>Sair <span aria-hidden="true">↗</span></button></div>
+      <div className="painel-sidebar-conta">
+        <Link href="/painel/minha-conta" className="painel-sair" aria-current={caminho === "/painel/minha-conta" ? "page" : undefined} onClick={() => setAberto(false)}>Minha conta</Link>
+        <BotaoTema className="painel-tema" />
+        <button type="button" className="painel-sair" onClick={aoSair}>Sair <span aria-hidden="true">↗</span></button>
+      </div>
     </aside>
     <main id="conteudo-painel" className="painel-conteudo" inert={aberto} tabIndex={-1}>{children}</main>
   </div>;

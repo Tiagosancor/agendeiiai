@@ -7,6 +7,8 @@ import { useAutenticacao } from "@/lib/auth-context";
 import { classeBotaoPrimario, classeBotaoSecundario, classeCartao, classeInput, classeLabel } from "@/components/estilos";
 import { formatarReais } from "@/lib/formatacao";
 import { ErroApi } from "@/lib/api";
+import { GerenciarAcessoUsuario } from "@/components/painel/GerenciarAcessoUsuario";
+import { sugerirNomeUsuario, mensagemErroAcesso } from "@/lib/acesso";
 import { ACESSO_INICIAL, CamposAcesso, acessoParaApi, type EstadoAcesso } from "@/components/painel/CamposAcesso";
 import {
   NOMES_DIAS_SEMANA,
@@ -52,6 +54,7 @@ function SecaoAcesso({ profissionalId }: { profissionalId: string }) {
   const [formularioAberto, setFormularioAberto] = useState(false);
   const [acesso, setAcesso] = useState<EstadoAcesso>({ ...ACESSO_INICIAL, darAcesso: true });
   const [erro, setErro] = useState<string | null>(null);
+  const [erroAcesso, setErroAcesso] = useState<unknown>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
 
@@ -66,8 +69,9 @@ function SecaoAcesso({ profissionalId }: { profissionalId: string }) {
   }, [carregar]);
 
   function abrir() {
-    setAcesso({ ...ACESSO_INICIAL, darAcesso: true, email: profissional?.email ?? "" });
+    setAcesso({ ...ACESSO_INICIAL, darAcesso: true, nomeUsuario: sugerirNomeUsuario(profissional?.nome ?? ""), email: profissional?.email ?? "" });
     setErro(null);
+    setErroAcesso(null);
     setFormularioAberto(true);
   }
 
@@ -78,10 +82,11 @@ function SecaoAcesso({ profissionalId }: { profissionalId: string }) {
     try {
       await chamarApi(`/painel/profissionais/${profissionalId}/acesso`, { metodo: "POST", corpo: acessoParaApi(acesso) });
       setFormularioAberto(false);
-      setAviso(acesso.enviarConvite ? `Convite enviado para ${acesso.email.trim()}.` : "Acesso criado.");
+      setAviso(acesso.enviarConvite && acesso.email.trim() ? `Convite enviado para ${acesso.email.trim()}.` : "Acesso criado.");
       await carregar();
     } catch (excecao) {
-      setErro(excecao instanceof ErroApi ? excecao.message : "Não foi possível dar acesso.");
+      setErroAcesso(excecao);
+      setErro(mensagemErroAcesso(excecao));
     } finally {
       setEnviando(false);
     }
@@ -95,10 +100,7 @@ function SecaoAcesso({ profissionalId }: { profissionalId: string }) {
       <div className={`${classeCartao} space-y-3 p-4 text-sm`}>
         <h2 className="font-semibold text-gray-900 dark:text-neutral-50">Acesso ao sistema</h2>
         {profissional.acesso ? (
-          <p className="text-gray-700 dark:text-neutral-300">
-            Entra com <strong>{profissional.acesso.email}</strong>
-            {!profissional.acesso.ativo && " (acesso desativado)"}.
-          </p>
+          <GerenciarAcessoUsuario acesso={profissional.acesso} telefoneContato={profissional.telefone ?? ""} aoSalvar={carregar} />
         ) : (
           <p className="text-gray-700 dark:text-neutral-300">Sem acesso: aparece na agenda, mas não entra no sistema.</p>
         )}
@@ -112,7 +114,7 @@ function SecaoAcesso({ profissionalId }: { profissionalId: string }) {
 
         {formularioAberto && (
           <form onSubmit={darAcesso} className="space-y-3">
-            <CamposAcesso valor={acesso} aoMudar={setAcesso} perguntar={false} />
+            <CamposAcesso valor={acesso} aoMudar={setAcesso} perguntar={false} telefoneContato={profissional.telefone ?? ""} erro={erroAcesso} />
             {erro && <p className="text-red-600">{erro}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" className={classeBotaoSecundario} onClick={() => setFormularioAberto(false)}>

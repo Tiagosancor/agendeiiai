@@ -149,9 +149,9 @@ public sealed class AutenticacaoController : ControllerBase
 /// <c>Identificador</c> (e-mail, telefone ou nome de usuário) é o campo novo; <c>Email</c> continua aceito para a versão do front
 /// que ainda manda só o e-mail. Ao menos um dos dois é obrigatório (validado na ação).
 /// </summary>
-public sealed record RequisicaoLogin(string? Email, [Required] string Senha, string? Identificador = null);
+public sealed record RequisicaoLogin([StringLength(1000)] string? Email, [Required, StringLength(1000)] string Senha, [StringLength(1000)] string? Identificador = null);
 
-public sealed record RequisicaoEsqueciSenha([Required] string Email);
+public sealed record RequisicaoEsqueciSenha([Required, StringLength(1000)] string Email);
 
 public sealed record RequisicaoRedefinirSenha([Required] string Token, [Required] string NovaSenha);
 
