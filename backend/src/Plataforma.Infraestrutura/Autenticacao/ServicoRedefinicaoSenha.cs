@@ -56,7 +56,8 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
             .IgnoreQueryFilters()
             .FirstOrDefaultAsync(u => u.Email == emailNormalizado && !u.Excluido && u.Ativo, cancellationToken);
 
-        if (usuario is null)
+        // E-mail digitado por terceiro e nunca confirmado não é canal de recuperação de senha (a resposta não muda: 202 sempre).
+        if (usuario is null || usuario.EmailVerificadoEm is null)
             return;
 
         var agora = DateTimeOffset.UtcNow;
@@ -91,7 +92,7 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
     public async Task EnviarConviteAsync(Guid usuarioId, CancellationToken cancellationToken = default)
     {
         var usuario = await _dbContext.Usuarios.FirstOrDefaultAsync(u => u.Id == usuarioId && !u.Excluido && u.Ativo, cancellationToken);
-        // Sem e-mail não há para onde mandar o convite (os chamadores validam antes; a regra de resposta é da Fatia B).
+        // Sem e-mail não há para onde mandar o convite (os chamadores validam antes e respondem 400 convite_sem_email).
         if (usuario is null || usuario.Email is null)
             return;
 
@@ -104,7 +105,9 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
 
         var tokenBruto = Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
         _dbContext.RedefinicoesSenha.Add(
-            RedefinicaoSenha.Criar(usuario.NegocioId, usuario.Id, HashDoToken(tokenBruto), agora.AddHours(ValidadeConviteHoras)));
+            RedefinicaoSenha.Criar(
+                usuario.NegocioId, usuario.Id, HashDoToken(tokenBruto), agora.AddHours(ValidadeConviteHoras),
+                TipoRedefinicaoSenha.Convite, HashDoEmail(usuario.Email)));
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         var link = ConstrutorUrlPublica.ConstruirPainel(_opcoesMarca, $"/painel/redefinir-senha?token={tokenBruto}");
@@ -138,7 +141,13 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
             return ResultadoRedefinicaoSenha.SenhaFraca;
 
         redefinicao.MarcarUsada(agora);
-        usuario.AlterarSenha(_senhaHasher.Hash(novaSenha));
+        usuario.AlterarSenha(_senhaHasher.Hash(novaSenha), definidaPorTerceiro: false);
+
+        // O link do convite foi enviado a um endereço digitado pelo administrador: usá-lo prova a posse — mas só se o e-mail
+        // da conta ainda for aquele (trocar o e-mail antes de usar o link não verifica o endereço novo).
+        if (redefinicao.Tipo == TipoRedefinicaoSenha.Convite && usuario.Email is not null && !usuario.EmailVerificado
+            && redefinicao.EmailDestinoHash == HashDoEmail(usuario.Email))
+            usuario.ConfirmarEmail(usuario.Email, agora);
 
         // Quem pediu a troca pode estar tirando alguém da conta: derruba todas as sessões abertas.
         var sessoes = await _dbContext.TokensAtualizacao
@@ -161,6 +170,21 @@ public sealed class ServicoRedefinicaoSenha : IServicoRedefinicaoSenha
         _logger.LogInformation("Senha redefinida pelo link de e-mail para o usuário {UsuarioId}.", usuario.Id);
         return ResultadoRedefinicaoSenha.Sucesso;
     }
+
+    public async Task InvalidarPendentesAsync(Guid usuarioId, CancellationToken cancellationToken = default)
+    {
+        var agora = DateTimeOffset.UtcNow;
+        var pendentes = await _dbContext.RedefinicoesSenha
+            .IgnoreQueryFilters()
+            .Where(r => r.UsuarioId == usuarioId && r.UsadaEm == null && r.InvalidadaEm == null && r.ExpiraEm > agora)
+            .ToListAsync(cancellationToken);
+        foreach (var pendente in pendentes)
+            pendente.Invalidar(agora);
+    }
+
+    /// <summary>SHA-256 em hexadecimal do e-mail normalizado — só para saber se o link ainda vale para o mesmo endereço.</summary>
+    private static string HashDoEmail(string email) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(email.Trim().ToLowerInvariant())));
 
     private static string HashDoToken(string tokenBruto) =>
         Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(tokenBruto)));

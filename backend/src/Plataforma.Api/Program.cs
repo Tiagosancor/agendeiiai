@@ -176,6 +176,11 @@ try
         opcoes.AddPolicy(Plataforma.Api.Controllers.Administracao.AutenticacaoPlataformaController.PoliticaLoginPorIp, contexto =>
             LimitePorIpPorMinuto(contexto, "Plataforma:LimiteLoginPorIpPorMinuto", padrao: 5));
 
+        // Login do painel por IP: barreira secundária (o IP vem de X-Forwarded-For, que quem chama a API direto consegue
+        // falsificar); o bloqueio por identificador, em Postgres, é a proteção principal.
+        opcoes.AddPolicy(Plataforma.Api.Controllers.Painel.AutenticacaoController.PoliticaLoginPorIp, contexto =>
+            LimitePorIpPorMinuto(contexto, "Autenticacao:LimiteLoginPorIpPorMinuto", padrao: 10));
+
         // Esqueci minha senha do painel (pedido e troca). O limite por usuário fica no serviço.
         opcoes.AddPolicy(Plataforma.Api.Controllers.Painel.AutenticacaoController.PoliticaRedefinicaoSenhaPorIp, contexto =>
             LimitePorIpPorMinuto(contexto, "Autenticacao:LimiteRedefinicaoSenhaPorIpPorMinuto", padrao: 5));

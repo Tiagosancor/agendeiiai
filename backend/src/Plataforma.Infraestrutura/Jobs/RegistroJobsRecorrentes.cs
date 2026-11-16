@@ -62,6 +62,10 @@ public sealed class RegistroJobsRecorrentes(
         gerenciador.AddOrUpdate<Idempotencia.JobLimparIdempotencia>(
             "limpar-idempotencia", job => job.ExecutarAsync(CancellationToken.None), "30 3 * * *");
 
+        // Apaga os contadores de tentativas de login sem atividade há mais de 1 dia. 03:20 UTC = 00:20 em Brasília.
+        gerenciador.AddOrUpdate<Autenticacao.JobLimparTentativasLogin>(
+            "limpar-tentativas-login", job => job.ExecutarAsync(CancellationToken.None), "20 3 * * *");
+
         // Retenção do diagnóstico do agente de WhatsApp (rodadas_agente, Ai__RetencaoRodadasDias). 03:50 UTC = 00:50 em Brasília.
         gerenciador.AddOrUpdate<WhatsAppAgente.JobLimparRodadasAgente>(
             "limpar-rodadas-agente", job => job.ExecutarAsync(CancellationToken.None), "50 3 * * *");

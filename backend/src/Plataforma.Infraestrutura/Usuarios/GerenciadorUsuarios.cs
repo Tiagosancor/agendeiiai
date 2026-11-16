@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Plataforma.Aplicacao.Abstracoes;
 using Plataforma.Aplicacao.Auditoria;
+using Plataforma.Aplicacao.Autenticacao;
+using Plataforma.Infraestrutura.Cadastro;
 using Plataforma.Aplicacao.Cadastros;
 using Plataforma.Aplicacao.Usuarios;
 using Plataforma.Dominio.Comum;
@@ -18,10 +20,13 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
     private readonly IContextoNegocio _contextoNegocio;
     private readonly IUsuarioAtual _usuarioAtual;
     private readonly IRegistroAuditoria _auditoria;
+    private readonly ServicoIdentificadoresAcesso _identificadores;
+    private readonly IServicoRedefinicaoSenha _redefinicaoSenha;
 
     public GerenciadorUsuarios(
         PlataformaDbContext dbContext, ISenhaHasher senhaHasher, ICriptografiaCpf criptografiaCpf,
-        IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria)
+        IContextoNegocio contextoNegocio, IUsuarioAtual usuarioAtual, IRegistroAuditoria auditoria,
+        ServicoIdentificadoresAcesso identificadores, IServicoRedefinicaoSenha redefinicaoSenha)
     {
         _dbContext = dbContext;
         _senhaHasher = senhaHasher;
@@ -29,14 +34,20 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         _contextoNegocio = contextoNegocio;
         _usuarioAtual = usuarioAtual;
         _auditoria = auditoria;
+        _identificadores = identificadores;
+        _redefinicaoSenha = redefinicaoSenha;
     }
 
     public async Task<IReadOnlyList<UsuarioResumo>> ListarAsync(CancellationToken cancellationToken = default) =>
-        await _dbContext.Usuarios
+        (await _dbContext.Usuarios
             .Where(u => !u.Excluido)
             .OrderBy(u => u.Nome)
-            .Select(u => new UsuarioResumo(u.Id, u.Nome, u.Email, u.Perfil, u.Ativo, u.FotoUrl))
-            .ToListAsync(cancellationToken);
+            .Select(u => new { u.Id, u.Nome, u.Email, u.Perfil, u.Ativo, u.FotoUrl, u.EmailVerificadoEm, u.NomeUsuario, u.TelefoneLogin })
+            .ToListAsync(cancellationToken))
+        .Select(u => new UsuarioResumo(
+            u.Id, u.Nome, u.Email, u.Perfil, u.Ativo, u.FotoUrl,
+            u.Email is not null && u.EmailVerificadoEm is not null, u.NomeUsuario?.Valor, u.TelefoneLogin?.Valor))
+        .ToList();
 
     public async Task<UsuarioDetalhe?> ObterAsync(Guid usuarioId, CancellationToken cancellationToken = default)
     {
@@ -46,19 +57,27 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
 
     public async Task<Guid> CriarAsync(CriarUsuario dados, CancellationToken cancellationToken = default)
     {
-        var emailNormalizado = dados.Email.Trim().ToLowerInvariant();
+        if (!ServicoCadastro.SenhaForte(dados.Senha))
+            throw new ErroDeAcessoException("senha_fraca",
+                $"A senha precisa ter pelo menos {ServicoCadastro.TamanhoMinimoSenha} caracteres, com letras e números.");
 
-        // Checagem "otimista": o índice único global em Email (só entre os não excluídos) é
-        // quem garante a regra de verdade sob concorrência (ver o catch abaixo).
-        if (await EmailEmUsoAsync(emailNormalizado, usuarioIgnorado: null, cancellationToken))
-            throw new EmailJaCadastradoException();
+        var email = ServicoIdentificadoresAcesso.ParseEmail(dados.Email);
+        var nomeUsuario = _identificadores.ParseNomeUsuario(dados.NomeUsuario);
+        var telefoneLogin = ServicoIdentificadoresAcesso.ParseTelefoneLogin(dados.TelefoneLogin);
+        if (email is null && nomeUsuario is null && telefoneLogin is null)
+            throw new ErroDeAcessoException("identificador_obrigatorio", new IdentificadorObrigatorioException().Message);
+
+        // Checagem "otimista": os índices únicos globais (só entre os não excluídos) são quem garante a regra de verdade
+        // sob concorrência (ver o catch abaixo).
+        await _identificadores.VerificarDisponibilidadeAsync(email, nomeUsuario, telefoneLogin, usuarioIgnorado: null, cancellationToken);
 
         var cpfProtegido = ProtegerCpfSeInformado(dados.Cpf);
         var senhaHash = _senhaHasher.Hash(dados.Senha);
 
+        // A senha foi definida por quem cria: o usuário é avisado para trocá-la ("Minha conta").
         var usuario = Usuario.Criar(
-            _contextoNegocio.NegocioId!.Value, dados.Nome, emailNormalizado, dados.Perfil, senhaHash,
-            dados.Telefone, cpf: cpfProtegido);
+            _contextoNegocio.NegocioId!.Value, dados.Nome, email, nomeUsuario, telefoneLogin, dados.Perfil, senhaHash,
+            dados.Telefone, cpf: cpfProtegido, senhaDefinidaPorTerceiro: true);
 
         _dbContext.Usuarios.Add(usuario);
 
@@ -68,7 +87,7 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         }
         catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
         {
-            throw new EmailJaCadastradoException();
+            throw await _identificadores.TraduzirViolacaoAsync(excecao, nomeUsuario, cancellationToken) ?? (Exception)excecao;
         }
 
         return usuario.Id;
@@ -91,13 +110,14 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
 
         if (!string.IsNullOrWhiteSpace(dados.Email))
         {
-            var novoEmail = dados.Email.Trim().ToLowerInvariant();
+            var novoEmail = ServicoIdentificadoresAcesso.ParseEmail(dados.Email);
             if (novoEmail != usuario.Email)
             {
-                if (await EmailEmUsoAsync(novoEmail, usuarioId, cancellationToken))
-                    throw new EmailJaCadastradoException();
+                await _identificadores.VerificarDisponibilidadeAsync(novoEmail, null, null, usuarioId, cancellationToken);
 
-                usuario.AlterarEmail(novoEmail);
+                // E-mail novo não é verificado, e os links enviados ao endereço antigo deixam de valer.
+                usuario.DefinirEmailPeloAdministrador(novoEmail);
+                await _redefinicaoSenha.InvalidarPendentesAsync(usuarioId, cancellationToken);
                 alterados.Add("e-mail");
             }
         }
@@ -123,7 +143,58 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         }
         catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
         {
-            throw new EmailJaCadastradoException();
+            throw await _identificadores.TraduzirViolacaoAsync(excecao, null, cancellationToken) ?? (Exception)excecao;
+        }
+
+        return true;
+    }
+
+    public async Task<bool> DefinirAcessoAsync(
+        Guid usuarioId, DefinirAcessoUsuario dados, CancellationToken cancellationToken = default)
+    {
+        var usuario = await BuscarAsync(usuarioId, cancellationToken);
+        if (usuario is null)
+            return false;
+
+        var email = ServicoIdentificadoresAcesso.ParseEmail(dados.Email);
+        var nomeUsuario = _identificadores.ParseNomeUsuario(dados.NomeUsuario);
+        var telefoneLogin = ServicoIdentificadoresAcesso.ParseTelefoneLogin(dados.TelefoneLogin);
+        if (email is null && nomeUsuario is null && telefoneLogin is null)
+            throw new ErroDeAcessoException("identificador_obrigatorio", new IdentificadorObrigatorioException().Message);
+
+        var emailMudou = email != usuario.Email;
+        var nomeMudou = !Equals(nomeUsuario, usuario.NomeUsuario);
+        var telefoneMudou = !Equals(telefoneLogin, usuario.TelefoneLogin);
+        if (!emailMudou && !nomeMudou && !telefoneMudou)
+            return true;
+
+        await _identificadores.VerificarDisponibilidadeAsync(
+            emailMudou ? email : null, nomeMudou ? nomeUsuario : null, telefoneMudou ? telefoneLogin : null, usuarioId, cancellationToken);
+
+        // Primeiro o que passa a existir, depois o que sai: o domínio recusa ficar, nem que seja por um instante, sem nenhum.
+        if (emailMudou && email is not null) usuario.DefinirEmailPeloAdministrador(email);
+        if (nomeMudou && nomeUsuario is not null) usuario.DefinirNomeUsuario(nomeUsuario);
+        if (telefoneMudou && telefoneLogin is not null) usuario.DefinirTelefoneLogin(telefoneLogin);
+        if (emailMudou && email is null) usuario.DefinirEmailPeloAdministrador(null);
+        if (nomeMudou && nomeUsuario is null) usuario.DefinirNomeUsuario(null);
+        if (telefoneMudou && telefoneLogin is null) usuario.DefinirTelefoneLogin(null);
+
+        if (emailMudou)
+            await _redefinicaoSenha.InvalidarPendentesAsync(usuarioId, cancellationToken);
+
+        var campos = new List<string>();
+        if (emailMudou) campos.Add("e-mail");
+        if (nomeMudou) campos.Add("nome de usuário");
+        if (telefoneMudou) campos.Add("telefone de login");
+        _auditoria.Registrar(AcoesAuditoria.DefinirIdentificadoresAcesso, nameof(Usuario), usuario.Id, $"Campos: {string.Join(", ", campos)}");
+
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException excecao) when (excecao.EhViolacaoDeUnicidade())
+        {
+            throw await _identificadores.TraduzirViolacaoAsync(excecao, nomeUsuario, cancellationToken) ?? (Exception)excecao;
         }
 
         return true;
@@ -136,8 +207,33 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         if (usuario is null)
             return false;
 
-        usuario.AlterarSenha(_senhaHasher.Hash(novaSenha));
+        if (usuario.Id == _usuarioAtual.UsuarioId)
+            throw new OperacaoCadastroBloqueadaException("Para trocar a sua própria senha, use \"Minha conta\".");
+
+        if (!ServicoCadastro.SenhaForte(novaSenha))
+            throw new ErroDeAcessoException("senha_fraca",
+                $"A senha precisa ter pelo menos {ServicoCadastro.TamanhoMinimoSenha} caracteres, com letras e números.");
+
+        // Quem sabia a senha antiga (ou tinha uma sessão aberta) perde o acesso na hora.
+        usuario.AlterarSenha(_senhaHasher.Hash(novaSenha), definidaPorTerceiro: true);
+        await RevogarSessoesAsync(usuario.Id, cancellationToken);
+        _auditoria.Registrar(AcoesAuditoria.RedefinirSenhaUsuario, nameof(Usuario), usuario.Id);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    public async Task<bool> EnviarConviteAsync(Guid usuarioId, CancellationToken cancellationToken = default)
+    {
+        var usuario = await BuscarAsync(usuarioId, cancellationToken);
+        if (usuario is null)
+            return false;
+
+        if (usuario.Email is null)
+            throw new ErroDeAcessoException("convite_sem_email", "Cadastre um e-mail para este usuário antes de enviar o convite.");
+
+        _auditoria.Registrar(AcoesAuditoria.EnviarConviteUsuario, nameof(Usuario), usuario.Id);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        await _redefinicaoSenha.EnviarConviteAsync(usuario.Id, cancellationToken);
         return true;
     }
 
@@ -230,6 +326,10 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
         if (temHistorico)
         {
             usuario.Excluir(DateTimeOffset.UtcNow);
+
+            // O e-mail pendente de confirmação é dado pessoal solto: some junto com a conta.
+            _dbContext.VerificacoesEmailUsuario.RemoveRange(
+                await _dbContext.VerificacoesEmailUsuario.Where(v => v.UsuarioId == usuario.Id).ToListAsync(cancellationToken));
             _auditoria.Registrar(AcoesAuditoria.ExcluirLogicamente, nameof(Usuario), usuario.Id, $"Nome: {usuario.Nome}");
         }
         else
@@ -291,11 +391,6 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
             token.Revogar();
     }
 
-    private Task<bool> EmailEmUsoAsync(string email, Guid? usuarioIgnorado, CancellationToken cancellationToken) =>
-        _dbContext.Usuarios
-            .IgnoreQueryFilters()
-            .AnyAsync(u => u.Email == email && !u.Excluido && u.Id != usuarioIgnorado, cancellationToken);
-
     /// <summary>Excluído não aparece mais em lugar nenhum do painel (seção 7) — 404 para qualquer ação.</summary>
     private Task<Usuario?> BuscarAsync(Guid usuarioId, CancellationToken cancellationToken) =>
         _dbContext.Usuarios.Include(u => u.Permissoes)
@@ -306,5 +401,6 @@ public sealed class GerenciadorUsuarios : IGerenciadorUsuarios
 
     private static UsuarioDetalhe Mapear(Usuario usuario) => new(
         usuario.Id, usuario.Nome, usuario.Email, usuario.Telefone, usuario.Perfil, usuario.Ativo, usuario.FotoUrl,
-        usuario.Cpf?.Mascarado, usuario.Permissoes.Select(p => p.Permissao).ToList(), usuario.Endereco);
+        usuario.Cpf?.Mascarado, usuario.Permissoes.Select(p => p.Permissao).ToList(), usuario.Endereco,
+        usuario.EmailVerificado, usuario.NomeUsuario?.Valor, usuario.TelefoneLogin?.Valor);
 }

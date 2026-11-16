@@ -28,6 +28,14 @@ public static class AcoesAuditoria
     public const string CorrigirValorAtendimento = "CorrigirValorAtendimento";
     public const string ForcarAgendamento = "ForcarAgendamento";
     public const string DarAcessoProfissional = "DarAcessoProfissional";
+
+    // Acesso dos usuários (login por e-mail, telefone ou nome de usuário): detalhes só com o NOME dos campos, nunca os valores nem a senha.
+    public const string DefinirIdentificadoresAcesso = "DefinirIdentificadoresAcesso";
+    public const string RedefinirSenhaUsuario = "RedefinirSenhaUsuario";
+    public const string EnviarConviteUsuario = "EnviarConviteUsuario";
+    public const string AlterarNomeUsuario = "AlterarNomeUsuario";
+    public const string ConfirmarEmailUsuario = "ConfirmarEmailUsuario";
+    public const string AlterarSenhaPropria = "AlterarSenhaPropria";
     public const string CriarProduto = "CriarProduto";
     public const string AtivarProduto = "AtivarProduto";
     public const string DesativarProduto = "DesativarProduto";

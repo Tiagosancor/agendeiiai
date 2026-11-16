@@ -14,6 +14,7 @@ namespace Plataforma.Api.Controllers.Painel;
 [ApiController]
 [Route("painel/usuarios")]
 [Authorize(Policy = nameof(Permissao.GerenciarUsuarios))]
+[TraduzirErrosDeAcesso]
 public sealed class UsuariosController : ControllerBase
 {
     private readonly IGerenciadorUsuarios _gerenciador;
@@ -37,15 +38,8 @@ public sealed class UsuariosController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<Guid>> Criar(CriarUsuario dados, CancellationToken cancellationToken)
     {
-        try
-        {
-            var id = await _gerenciador.CriarAsync(dados, cancellationToken);
-            return CreatedAtAction(nameof(Obter), new { id }, id);
-        }
-        catch (EmailJaCadastradoException excecao)
-        {
-            return Conflict(new ProblemDetails { Title = "E-mail já cadastrado.", Detail = excecao.Message });
-        }
+        var id = await _gerenciador.CriarAsync(dados, cancellationToken);
+        return CreatedAtAction(nameof(Obter), new { id }, id);
     }
 
     /// <summary>Corrigir a ficha exige também <see cref="Permissao.EditarCadastros"/> (seção 7).</summary>
@@ -53,19 +47,36 @@ public sealed class UsuariosController : ControllerBase
     [Authorize(Policy = nameof(Permissao.EditarCadastros))]
     public async Task<IActionResult> AtualizarDados(Guid id, AtualizarUsuario dados, CancellationToken cancellationToken)
     {
+        return await _gerenciador.AtualizarDadosAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+    }
+
+    /// <summary>
+    /// Troca e-mail, nome de usuário e telefone de login de uma vez (nulo remove, desde que sobre outro). Mexer nos dados de
+    /// acesso é editar o cadastro: exige também <see cref="Permissao.EditarCadastros"/>.
+    /// </summary>
+    [HttpPut("{id:guid}/acesso")]
+    [Authorize(Policy = nameof(Permissao.EditarCadastros))]
+    public async Task<IActionResult> DefinirAcesso(Guid id, DefinirAcessoUsuario dados, CancellationToken cancellationToken) =>
+        await _gerenciador.DefinirAcessoAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+
+    /// <summary>"Administrador define nova senha" (força mínima, sessões revogadas, auditoria). Na própria conta: 409 (use Minha conta).</summary>
+    [HttpPut("{id:guid}/senha")]
+    public async Task<IActionResult> AlterarSenha(Guid id, AlterarSenhaRequisicao dados, CancellationToken cancellationToken)
+    {
         try
         {
-            return await _gerenciador.AtualizarDadosAsync(id, dados, cancellationToken) ? NoContent() : NotFound();
+            return await _gerenciador.AlterarSenhaAsync(id, dados.NovaSenha, cancellationToken) ? NoContent() : NotFound();
         }
-        catch (EmailJaCadastradoException excecao)
+        catch (OperacaoCadastroBloqueadaException excecao)
         {
-            return Conflict(new ProblemDetails { Title = "E-mail já cadastrado.", Detail = excecao.Message });
+            return RespostasCadastro.Bloqueado(this, excecao.Message);
         }
     }
 
-    [HttpPut("{id:guid}/senha")]
-    public async Task<IActionResult> AlterarSenha(Guid id, AlterarSenhaRequisicao dados, CancellationToken cancellationToken) =>
-        await _gerenciador.AlterarSenhaAsync(id, dados.NovaSenha, cancellationToken) ? NoContent() : NotFound();
+    /// <summary>Convite por e-mail para o usuário criar a própria senha (400 <c>convite_sem_email</c> se a conta não tem e-mail).</summary>
+    [HttpPost("{id:guid}/convite")]
+    public async Task<IActionResult> EnviarConvite(Guid id, CancellationToken cancellationToken) =>
+        await _gerenciador.EnviarConviteAsync(id, cancellationToken) ? Accepted() : NotFound();
 
     [HttpPost("{id:guid}/permissoes/{permissao}")]
     public async Task<IActionResult> ConcederPermissao(Guid id, Permissao permissao, CancellationToken cancellationToken) =>

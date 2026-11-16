@@ -28,6 +28,8 @@ namespace Plataforma.Testes.Integracao.Usuarios;
 public sealed class IdentificadoresBaseTestes : IAsyncLifetime
 {
     private const string MigrationAnterior = "20261029141227_AgenteWhatsAppRemarcar";
+    private const string MigrationDosIdentificadores = "20261116130214_IdentificadoresLoginUsuario";
+    private const string MigrationLimpeza = "20261116132558_IdentificadoresLoginLimpeza";
 
     private readonly PostgresContainerFixture _postgres;
     private PlataformaWebApplicationFactory _fabrica = null!;
@@ -219,7 +221,7 @@ public sealed class IdentificadoresBaseTestes : IAsyncLifetime
             await ExecutarAsync(cs, $"UPDATE usuarios SET excluido = true, email = '' WHERE id = '{excluidoId}'");
 
             // A migration nova não pode deixar nenhum e-mail nulo (a versão no ar o lê como não anulável).
-            await MigrarAsync(fabrica, null);
+            await MigrarAsync(fabrica, MigrationDosIdentificadores);
             (await Consultar<bool>(cs, $"SELECT email_verificado_em IS NOT NULL FROM usuarios WHERE id = '{ativoId}'")).Single().Should().BeTrue();
             (await Consultar<bool>(cs, $"SELECT email_verificado_em IS NULL FROM usuarios WHERE id = '{excluidoId}'")).Single().Should().BeTrue();
             (await Consultar<long>(cs, "SELECT count(*) FROM usuarios WHERE email IS NULL")).Single().Should().Be(0);
@@ -234,8 +236,15 @@ public sealed class IdentificadoresBaseTestes : IAsyncLifetime
             await MigrarAsync(fabrica, MigrationAnterior);
             (await Consultar<string>(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"))
                 .Should().NotContain(["tentativas_login", "verificacoes_email_usuario"]);
-            await MigrarAsync(fabrica, null);
+            await MigrarAsync(fabrica, MigrationDosIdentificadores);
             (await Consultar<bool>(cs, $"SELECT email_verificado_em IS NOT NULL FROM usuarios WHERE id = '{ativoId}'")).Single().Should().BeTrue();
+
+            // Parte 2 (depois do deploy): o "" dos excluídos vira NULL, e o Down devolve o "" que a versão antiga espera.
+            await MigrarAsync(fabrica, MigrationLimpeza);
+            (await Consultar<bool>(cs, $"SELECT email IS NULL FROM usuarios WHERE id = '{excluidoId}'")).Single().Should().BeTrue();
+            (await Consultar<bool>(cs, $"SELECT email IS NOT NULL FROM usuarios WHERE id = '{ativoId}'")).Single().Should().BeTrue();
+            await MigrarAsync(fabrica, MigrationDosIdentificadores);
+            (await Consultar<string>(cs, $"SELECT email FROM usuarios WHERE id = '{excluidoId}'")).Single().Should().BeEmpty();
         }
         finally
         {

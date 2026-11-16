@@ -113,6 +113,12 @@ public static class InfraestruturaServiceCollectionExtensions
             .ValidateOnStart();
 
         servicos
+            .AddOptions<OpcoesAutenticacao>()
+            .Bind(configuracao.GetSection(OpcoesAutenticacao.Secao))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        servicos
             .AddOptions<OpcoesAgendamentoPublico>()
             .Bind(configuracao.GetSection(OpcoesAgendamentoPublico.Secao))
             .ValidateDataAnnotations()
@@ -174,6 +180,13 @@ public static class InfraestruturaServiceCollectionExtensions
 
         servicos.AddScoped<IServicoAutenticacao, ServicoAutenticacao>();
         servicos.AddScoped<IServicoRedefinicaoSenha, ServicoRedefinicaoSenha>();
+
+        // Login por e-mail, telefone ou nome de usuário: contadores de abuso em Postgres, regras dos identificadores e "Minha conta".
+        servicos.AddScoped<Autenticacao.LimitadorTentativasLogin>();
+        servicos.AddScoped<Autenticacao.JobLimparTentativasLogin>();
+        servicos.AddSingleton<Usuarios.LimitadorConflitosIdentificador>();
+        servicos.AddScoped<Usuarios.ServicoIdentificadoresAcesso>();
+        servicos.AddScoped<Plataforma.Aplicacao.Usuarios.IServicoMinhaConta, Usuarios.ServicoMinhaConta>();
 
         // CRUDs da Sprint 1 (seção 7).
         servicos.AddScoped<IGerenciadorUsuarios, GerenciadorUsuarios>();

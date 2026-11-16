@@ -51,6 +51,7 @@ public sealed class PlataformaWebApplicationFactory : WebApplicationFactory<Prog
                 ["Cpf:ChaveBase64"] = Convert.ToBase64String(new byte[32]), // chave zerada — só para teste
                 ["Verificacao:ChaveHmac"] = "chave-hmac-de-teste-0123456789-0123456789",
                 // Todos os testes saem do mesmo "IP" — o limite real por IP é testado à parte.
+                ["Autenticacao:LimiteLoginPorIpPorMinuto"] = "10000",
                 ["Cadastro:LimitePorIpPorMinuto"] = "10000",
                 ["Cadastro:LimiteSlugPorIpPorMinuto"] = "10000",
                 ["Plataforma:LimiteLoginPorIpPorMinuto"] = "10000",

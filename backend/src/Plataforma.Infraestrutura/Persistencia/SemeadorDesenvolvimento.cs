@@ -33,6 +33,7 @@ public static class SemeadorDesenvolvimento
             negocio.Id, "Administrador (dev)", EmailAdministradorDev, Perfil.Administrador,
             senhaHasher.Hash(SenhaAdministradorDev));
         administrador.ConfirmarEmail(EmailAdministradorDev, DateTimeOffset.UtcNow);
+        administrador.DefinirNomeUsuario(NomeUsuario.Criar("admin.acme")); // para os e2e entrarem também por nome de usuário
         dbContext.Usuarios.Add(administrador);
 
         var plano = await dbContext.Planos.OrderBy(p => p.Ordem).FirstAsync(cancellationToken);

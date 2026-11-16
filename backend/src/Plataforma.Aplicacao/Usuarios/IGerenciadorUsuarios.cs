@@ -16,13 +16,23 @@ public interface IGerenciadorUsuarios
 
     Task<UsuarioDetalhe?> ObterAsync(Guid usuarioId, CancellationToken cancellationToken = default);
 
-    /// <summary>Lança <see cref="EmailJaCadastradoException"/> se o e-mail já existir (é único globalmente).</summary>
+    /// <summary>Lança <see cref="IdentificadorIndisponivelException"/> (e-mail, nome de usuário ou telefone em uso) e <see cref="ErroDeAcessoException"/>.</summary>
     Task<Guid> CriarAsync(CriarUsuario dados, CancellationToken cancellationToken = default);
 
-    /// <summary>Lança <see cref="EmailJaCadastradoException"/> se o novo e-mail já for de outro usuário.</summary>
+    /// <summary>Lança <see cref="IdentificadorIndisponivelException"/> se o novo e-mail já for de outro usuário.</summary>
     Task<bool> AtualizarDadosAsync(Guid usuarioId, AtualizarUsuario dados, CancellationToken cancellationToken = default);
 
+    /// <summary>Substitui e-mail, nome de usuário e telefone de login. Lança <see cref="IdentificadorIndisponivelException"/> e <see cref="ErroDeAcessoException"/>.</summary>
+    Task<bool> DefinirAcessoAsync(Guid usuarioId, DefinirAcessoUsuario dados, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// "Administrador define nova senha": força mínima (<c>senha_fraca</c>), revoga as sessões, marca "definida por terceiro"
+    /// e audita. Na própria conta lança <see cref="OperacaoCadastroBloqueadaException"/> (use "Minha conta").
+    /// </summary>
     Task<bool> AlterarSenhaAsync(Guid usuarioId, string novaSenha, CancellationToken cancellationToken = default);
+
+    /// <summary>Envia o convite por e-mail; <c>convite_sem_email</c> (<see cref="ErroDeAcessoException"/>) se a conta não tem e-mail.</summary>
+    Task<bool> EnviarConviteAsync(Guid usuarioId, CancellationToken cancellationToken = default);
 
     Task<bool> ConcederPermissaoAsync(Guid usuarioId, Permissao permissao, CancellationToken cancellationToken = default);
 
@@ -43,23 +53,29 @@ public interface IGerenciadorUsuarios
     Task<string?> RevelarCpfAsync(Guid usuarioId, CancellationToken cancellationToken = default);
 }
 
-public sealed record UsuarioResumo(Guid Id, string Nome, string? Email, Perfil Perfil, bool Ativo, string? FotoUrl);
+public sealed record UsuarioResumo(
+    Guid Id, string Nome, string? Email, Perfil Perfil, bool Ativo, string? FotoUrl,
+    bool EmailVerificado = false, string? NomeUsuario = null, string? TelefoneLogin = null);
 
 public sealed record UsuarioDetalhe(
     Guid Id, string Nome, string? Email, string? Telefone, Perfil Perfil, bool Ativo, string? FotoUrl,
-    string? CpfMascarado, IReadOnlyCollection<Permissao> Permissoes, Endereco? Endereco = null);
+    string? CpfMascarado, IReadOnlyCollection<Permissao> Permissoes, Endereco? Endereco = null,
+    bool EmailVerificado = false, string? NomeUsuario = null, string? TelefoneLogin = null);
 
+/// <summary>
+/// Pelo menos um entre <c>Email</c>, <c>NomeUsuario</c> e <c>TelefoneLogin</c> (400 <c>identificador_obrigatorio</c>). O e-mail
+/// digitado nasce **não verificado**; o telefone de contato (<c>Telefone</c>) nunca vira login sozinho.
+/// </summary>
 public sealed record CriarUsuario(
-    string Nome, string Email, string Senha, Perfil Perfil,
-    string? Telefone = null, string? Cpf = null);
+    string Nome, string? Email, string Senha, Perfil Perfil,
+    string? Telefone = null, string? Cpf = null, string? NomeUsuario = null, string? TelefoneLogin = null);
+
+/// <summary>Substitui os três identificadores de uma vez; nulo ou vazio remove (desde que sobre outro).</summary>
+public sealed record DefinirAcessoUsuario(string? Email, string? NomeUsuario, string? TelefoneLogin);
 
 /// <summary>
 /// Edição da ficha (seção 7). Campos nulos ficam como estão (compatível com quem só mandava
-/// nome/telefone/CPF); <c>FotoUrl</c> vazia apaga a foto.
+/// nome/telefone/CPF); <c>FotoUrl</c> vazia apaga a foto. <c>Email</c> nulo/vazio = não muda (para remover, <c>PUT .../acesso</c>).
 /// </summary>
 public sealed record AtualizarUsuario(
     string Nome, string? Telefone, string? Cpf, string? Email = null, Endereco? Endereco = null, string? FotoUrl = null);
-
-/// <summary>E-mail já em uso por outra conta. A mensagem **nunca** carrega o e-mail (vai para o corpo do 409 e pode cair em log).</summary>
-public sealed class EmailJaCadastradoException()
-    : Exception("Já existe um usuário com esse e-mail.");

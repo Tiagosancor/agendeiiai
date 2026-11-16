@@ -319,6 +319,41 @@ public sealed class Notificador : INotificador
             _email.EnviarAsync(email, $"Seu acesso — {negocio.NomeExibido}", corpo, cancellationToken), "E-mail/convite");
     }
 
+    public Task EnviarCodigoEmailUsuarioAsync(string email, string nomeUsuario, string codigo, int validadeMinutos, CancellationToken cancellationToken = default)
+    {
+        var nome = System.Net.WebUtility.HtmlEncode(nomeUsuario);
+        var corpo = Envelope(null, $"""
+            <p>Olá, {nome}! Use o código abaixo para confirmar este e-mail como e-mail de acesso ao painel:</p>
+            <h2>{codigo}</h2>
+            <p>O código vale por {validadeMinutos} minutos e só pode ser usado uma vez. Se não foi você, ignore este e-mail.</p>
+            """);
+        return ExecutarSemFalharAsync(() =>
+            _email.EnviarAsync(email, $"Seu código de confirmação — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/confirmar-email-usuario");
+    }
+
+    public Task EnviarAvisoEmailJaTemAcessoAsync(string email, string linkLogin, CancellationToken cancellationToken = default)
+    {
+        // Sem dizer de qual negócio é a conta: seria outro oráculo.
+        var corpo = Envelope(null, $"""
+            <p>Alguém tentou usar este e-mail como e-mail de acesso de outra conta, mas ele já tem acesso.</p>
+            <p><a href="{linkLogin}">Entrar no painel</a></p>
+            <p>Se não lembra a senha, use "Esqueci minha senha" na tela de entrada. Se não foi você, ignore esta mensagem.</p>
+            """);
+        return ExecutarSemFalharAsync(() =>
+            _email.EnviarAsync(email, $"Este e-mail já tem acesso — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/email-ja-tem-acesso");
+    }
+
+    public Task EnviarAvisoEmailAcessoAlteradoAsync(string emailAnterior, string nomeUsuario, string novoEmailMascarado, CancellationToken cancellationToken = default)
+    {
+        var nome = System.Net.WebUtility.HtmlEncode(nomeUsuario);
+        var corpo = Envelope(null, $"""
+            <p>Olá, {nome}! O e-mail de acesso da sua conta foi alterado para <strong>{System.Net.WebUtility.HtmlEncode(novoEmailMascarado)}</strong>.</p>
+            <p>Se não foi você, entre em contato com o administrador do seu negócio e troque a sua senha.</p>
+            """);
+        return ExecutarSemFalharAsync(() =>
+            _email.EnviarAsync(emailAnterior, $"Seu e-mail de acesso foi alterado — {_opcoesMarca.NomeProduto}", corpo, cancellationToken), "E-mail/email-acesso-alterado");
+    }
+
     private string Envelope(string? nomeNegocio, string conteudoHtml) =>
         MensagensDeAgendamento.Envelope(_opcoesMarca.NomeProduto, nomeNegocio, conteudoHtml);
 
