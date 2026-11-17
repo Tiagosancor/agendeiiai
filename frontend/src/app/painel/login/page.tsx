@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAutenticacao, ErroApi } from "@/lib/auth-context";
 import { BotaoTema } from "@/components/BotaoTema";
 import { MarcaPainel } from "@/components/painel/IdentidadePainel";
@@ -12,6 +12,7 @@ import { lerUltimaRota } from "@/lib/ultima-rota";
 export default function PaginaLogin() {
   const { entrar, autenticado, carregando } = useAutenticacao();
   const roteador = useRouter();
+  const senhaAlterada = useSearchParams().get("senhaAlterada") === "1";
 
   // O PWA do painel abre aqui (manifest, seção 5): com a sessão ainda válida, volta para a última tela aberta.
   // Quem acabou de entrar pelo formulário segue para o início (aoEnviar), não para a tela de uma sessão anterior.
@@ -20,7 +21,7 @@ export default function PaginaLogin() {
     if (!carregando && autenticado && !entrandoAgora.current) roteador.replace(lerUltimaRota());
   }, [carregando, autenticado, roteador]);
 
-  const [email, setEmail] = useState("");
+  const [identificador, setIdentificador] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
@@ -32,12 +33,14 @@ export default function PaginaLogin() {
 
     entrandoAgora.current = true;
     try {
-      await entrar(email, senha);
+      await entrar(identificador.trim(), senha);
       roteador.push("/painel");
     } catch (excecao) {
       entrandoAgora.current = false;
       if (excecao instanceof ErroApi && excecao.status === 401) {
-        setErro("E-mail ou senha incorretos.");
+        setErro("Dados de acesso ou senha incorretos.");
+      } else if (excecao instanceof ErroApi && excecao.status === 429) {
+        setErro("Muitas tentativas. Aguarde alguns minutos e tente de novo.");
       } else {
         setErro("Não foi possível entrar. Tente novamente em instantes.");
       }
@@ -55,16 +58,19 @@ export default function PaginaLogin() {
       >
         <MarcaPainel tagline />
         <h1 className="font-display mb-1 text-xl font-bold text-gray-900 dark:text-neutral-50">Entrar no painel</h1>
-        <p className="mb-6 text-sm text-gray-500 dark:text-neutral-400">Acesse com o e-mail e a senha do seu negócio.</p>
+        <p className="mb-6 text-sm text-gray-500 dark:text-neutral-400">Acesse com seu e-mail, telefone ou nome de usuário e sua senha.</p>
+        {senhaAlterada && <p role="status" className="mb-4 text-sm">Senha alterada. Entre novamente com a nova senha.</p>}
 
         <label className="mb-3 block text-sm">
-          <span className="mb-1 block font-medium text-gray-700 dark:text-neutral-300">E-mail</span>
+          <span className="mb-1 block font-medium text-gray-700 dark:text-neutral-300">E-mail, telefone ou usuário</span>
           <input
-            type="email"
+            type="text"
+            autoCapitalize="none"
+            spellCheck={false}
             required
             autoComplete="username"
-            value={email}
-            onChange={(evento) => setEmail(evento.target.value)}
+            value={identificador}
+            onChange={(evento) => setIdentificador(evento.target.value)}
             className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-marca-primaria focus:ring-1 focus:ring-marca-primaria dark:focus:border-marca-acento dark:focus:ring-marca-acento dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-50"
           />
         </label>

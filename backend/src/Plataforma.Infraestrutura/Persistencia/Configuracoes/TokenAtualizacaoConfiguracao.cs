@@ -14,6 +14,7 @@ public sealed class TokenAtualizacaoConfiguracao : IEntityTypeConfiguration<Toke
 
         builder.Property(t => t.Hash).HasMaxLength(100).IsRequired();
         builder.Property(t => t.ExpiraEm).IsRequired();
+        builder.Property(t => t.VersaoSessao).HasDefaultValue(0).IsRequired();
 
         builder.HasIndex(t => t.Hash).IsUnique();
     }

@@ -80,6 +80,7 @@ public static class SemeadorDeComissoes
         {
             var hasher = fabrica.Services.GetRequiredService<ISenhaHasher>();
             var usuario = Usuario.Criar(negocioId, "Usuário", email, perfil, hasher.Hash(SemeadorDeUsuarios.SenhaPadrao));
+            usuario.ConfirmarEmail(email, DateTimeOffset.UtcNow); // e-mail confirmado: só ele recebe alertas e vira "email" do token
             if (profissionalId is { } id)
                 usuario.VincularProfissional(id);
             foreach (var permissao in permissoesExtras)

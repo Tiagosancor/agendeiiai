@@ -70,6 +70,7 @@ public sealed class AtendimentoHumanoAgenteTestes : IAsyncLifetime
         {
             var db = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
             var usuario = Usuario.Criar(c.NegocioId, "Admin", email, perfil, escopo.ServiceProvider.GetRequiredService<ISenhaHasher>().Hash(SenhaAdmin));
+            usuario.ConfirmarEmail(email, DateTimeOffset.UtcNow);
             usuarioId = usuario.Id;
             db.Usuarios.Add(usuario);
             await db.SaveChangesAsync();

@@ -74,7 +74,9 @@ public static class HelpersAgendamentoAgente
         {
             var db = escopo.ServiceProvider.GetRequiredService<PlataformaDbContext>();
             var hasher = escopo.ServiceProvider.GetRequiredService<ISenhaHasher>();
-            db.Usuarios.Add(Usuario.Criar(c.NegocioId, "Admin", email, Perfil.Administrador, hasher.Hash(SenhaAdmin)));
+            var admin = Usuario.Criar(c.NegocioId, "Admin", email, Perfil.Administrador, hasher.Hash(SenhaAdmin));
+            admin.ConfirmarEmail(email, DateTimeOffset.UtcNow);
+            db.Usuarios.Add(admin);
             await db.SaveChangesAsync();
         }
 

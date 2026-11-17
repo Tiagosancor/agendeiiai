@@ -20,6 +20,6 @@ public sealed class RegistroAuditoria : IRegistroAuditoria
 
     public void Registrar(string acao, string entidade, Guid entidadeId, string? detalhes = null) =>
         _dbContext.LogsAuditoriaNegocio.Add(new LogAuditoriaNegocio(
-            _contextoNegocio.NegocioId!.Value, _usuarioAtual.UsuarioId, _usuarioAtual.Email ?? "sistema",
+            _contextoNegocio.NegocioId!.Value, _usuarioAtual.UsuarioId, _usuarioAtual.Rotulo ?? "sistema",
             acao, entidade, entidadeId, detalhes));
 }

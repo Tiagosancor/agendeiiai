@@ -15,6 +15,8 @@ using Plataforma.Dominio.Comum;
 using Plataforma.Dominio.Profissionais;
 using Plataforma.Dominio.Seguranca;
 using Plataforma.Infraestrutura.Agendamentos;
+using Plataforma.Infraestrutura.Cadastro;
+using Plataforma.Infraestrutura.Usuarios;
 using Plataforma.Infraestrutura.Persistencia;
 
 namespace Plataforma.Infraestrutura.Profissionais;
@@ -34,12 +36,14 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     private readonly IServicoRedefinicaoSenha _redefinicaoSenha;
     private readonly IArmazenamentoArquivos _arquivos;
     private readonly IProcessadorImagem _processadorImagem;
+    private readonly ServicoIdentificadoresAcesso _identificadores;
 
     public GerenciadorProfissionais(
         PlataformaDbContext dbContext, ICriptografiaCpf criptografiaCpf, IContextoNegocio contextoNegocio,
         IRegistroAuditoria auditoria, ISenhaHasher senhaHasher, IServicoRedefinicaoSenha redefinicaoSenha,
-        IArmazenamentoArquivos arquivos, IProcessadorImagem processadorImagem)
+        IArmazenamentoArquivos arquivos, IProcessadorImagem processadorImagem, ServicoIdentificadoresAcesso identificadores)
     {
+        _identificadores = identificadores;
         _dbContext = dbContext;
         _criptografiaCpf = criptografiaCpf;
         _contextoNegocio = contextoNegocio;
@@ -107,10 +111,17 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         if (profissional is null)
             return null;
 
-        var acesso = await _dbContext.Usuarios.AsNoTracking()
+        var usuarioVinculado = await _dbContext.Usuarios.AsNoTracking()
             .Where(u => u.ProfissionalId == profissionalId && !u.Excluido)
-            .Select(u => new AcessoVinculado(u.Id, u.Email, u.Ativo))
+            .Select(u => new { u.Id, u.Email, u.Ativo, u.EmailVerificadoEm, u.NomeUsuario, u.TelefoneLogin })
             .FirstOrDefaultAsync(cancellationToken);
+
+        var acesso = usuarioVinculado is null
+            ? null
+            : new AcessoVinculado(
+                usuarioVinculado.Id, usuarioVinculado.Email, usuarioVinculado.Ativo,
+                usuarioVinculado.Email is not null && usuarioVinculado.EmailVerificadoEm is not null,
+                usuarioVinculado.NomeUsuario?.Valor, usuarioVinculado.TelefoneLogin?.Valor);
 
         return Mapear(profissional) with { Acesso = acesso };
     }
@@ -153,7 +164,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
             // Relido aqui dentro: numa nova tentativa da estratégia, a instância lida lá fora já saiu do contexto.
             if (usuarioExistente is not null)
                 (await _dbContext.Usuarios.FirstAsync(u => u.Id == usuarioExistente.Id, cancellationToken)).VincularProfissional(profissional.Id);
-            await SalvarComVinculoAsync(novoUsuario?.Email, cancellationToken);
+            await SalvarComVinculoAsync(novoUsuario?.NomeUsuario, cancellationToken);
         }, cancellationToken,
         // COMMIT ambíguo (B7.2): o Id do profissional é desta requisição; se já está gravado, a tentativa anterior concluiu a criação.
         jaConfirmado: ct => _dbContext.Profissionais.AsNoTracking().AnyAsync(p => p.Id == profissional.Id, ct));
@@ -179,7 +190,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         _auditoria.Registrar(AcoesAuditoria.DarAcessoProfissional, nameof(Profissional), profissional.Id,
             dados.EnviarConvite ? "Acesso criado com convite por e-mail" : "Acesso criado com senha definida");
 
-        await SalvarComVinculoAsync(usuario.Email, cancellationToken);
+        await SalvarComVinculoAsync(usuario.NomeUsuario, cancellationToken);
 
         if (dados.EnviarConvite)
             await _redefinicaoSenha.EnviarConviteAsync(usuario.Id, cancellationToken);
@@ -194,27 +205,40 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
     private async Task<Usuario> NovoUsuarioDeAcessoAsync(
         Guid negocioId, string nome, string? telefone, AcessoProfissional acesso, CancellationToken cancellationToken)
     {
-        var email = (acesso.Email ?? string.Empty).Trim().ToLowerInvariant();
-        if (email.Length == 0 || !email.Contains('@'))
-            throw new ArgumentException("Informe o e-mail de acesso do profissional.");
+        var email = ServicoIdentificadoresAcesso.ParseEmail(acesso.Email);
+        var nomeUsuario = _identificadores.ParseNomeUsuario(acesso.NomeUsuario);
+        var telefoneLogin = ServicoIdentificadoresAcesso.ParseTelefoneLogin(acesso.TelefoneLogin);
+        if (email is null && nomeUsuario is null && telefoneLogin is null)
+            throw new ErroDeAcessoException("identificador_obrigatorio", new IdentificadorObrigatorioException().Message);
 
         string senha;
         if (acesso.EnviarConvite)
+        {
+            // O convite vai por e-mail: sem endereço não há como o profissional criar a senha dele.
+            if (email is null)
+                throw new ErroDeAcessoException("convite_sem_email", "Informe um e-mail para enviar o convite.");
             senha = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-        else if (string.IsNullOrEmpty(acesso.Senha) || acesso.Senha.Length < TamanhoMinimoSenha)
-            throw new ArgumentException($"A senha precisa ter pelo menos {TamanhoMinimoSenha} caracteres.");
+        }
+        else if (!ServicoCadastro.SenhaForte(acesso.Senha))
+        {
+            throw new ErroDeAcessoException("senha_fraca", $"A senha precisa ter pelo menos {TamanhoMinimoSenha} caracteres, com letras e números.");
+        }
         else
-            senha = acesso.Senha;
+        {
+            senha = acesso.Senha!;
+        }
 
-        // E-mail é único na plataforma inteira, só entre os não excluídos (mesma regra de "Usuários").
-        if (await _dbContext.Usuarios.IgnoreQueryFilters().AnyAsync(u => u.Email == email && !u.Excluido, cancellationToken))
-            throw new EmailJaCadastradoException(email);
+        // Cada identificador é único na plataforma inteira, só entre os não excluídos (mesma regra de "Usuários").
+        await _identificadores.VerificarDisponibilidadeAsync(email, nomeUsuario, telefoneLogin, usuarioIgnorado: null, cancellationToken);
 
-        return Usuario.Criar(negocioId, nome, email, Perfil.Profissional, _senhaHasher.Hash(senha), telefone);
+        // O telefone de CONTATO do profissional continua indo para Usuario.Telefone; nunca vira telefone de login sem pedido.
+        return Usuario.Criar(
+            negocioId, nome, email, nomeUsuario, telefoneLogin, Perfil.Profissional, _senhaHasher.Hash(senha), telefone,
+            senhaDefinidaPorTerceiro: !acesso.EnviarConvite);
     }
 
-    /// <summary>Os índices únicos decidem as corridas: e-mail repetido, ou o profissional ganhando dois usuários.</summary>
-    private async Task SalvarComVinculoAsync(string? emailNovo, CancellationToken cancellationToken)
+    /// <summary>Os índices únicos decidem as corridas: identificador repetido, ou o profissional ganhando dois usuários.</summary>
+    private async Task SalvarComVinculoAsync(NomeUsuario? nomeTentado, CancellationToken cancellationToken)
     {
         try
         {
@@ -224,7 +248,7 @@ public sealed class GerenciadorProfissionais : IGerenciadorProfissionais
         {
             if ((excecao.InnerException as PostgresException)?.ConstraintName == IndiceUsuarioPorProfissional)
                 throw new OperacaoCadastroBloqueadaException("Este profissional já tem acesso ao sistema.");
-            throw new EmailJaCadastradoException(emailNovo ?? string.Empty);
+            throw await _identificadores.TraduzirViolacaoAsync(excecao, nomeTentado, cancellationToken) ?? (Exception)excecao;
         }
     }
 

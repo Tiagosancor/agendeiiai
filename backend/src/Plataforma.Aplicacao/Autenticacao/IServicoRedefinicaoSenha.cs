@@ -7,7 +7,7 @@ namespace Plataforma.Aplicacao.Autenticacao;
 public interface IServicoRedefinicaoSenha
 {
     /// <summary>
-    /// Envia o link se o e-mail for de uma conta ativa. Não diz se a conta existe — quem
+    /// Envia o link se o e-mail for de uma conta ativa **com e-mail verificado**. Não diz se a conta existe — quem
     /// chama responde sempre a mesma coisa (anti-enumeração, mesmo espírito da seção 8.1.3).
     /// </summary>
     Task SolicitarAsync(string email, CancellationToken cancellationToken = default);
@@ -17,6 +17,12 @@ public interface IServicoRedefinicaoSenha
     /// própria senha — o mesmo mecanismo da redefinição, com validade maior e outro texto.
     /// </summary>
     Task EnviarConviteAsync(Guid usuarioId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Invalida os links (redefinição e convite) ainda pendentes do usuário — chamado ao trocar o e-mail, para o link enviado
+    /// ao endereço antigo não valer. Só marca no contexto; quem chama dá o <c>SaveChanges</c>.
+    /// </summary>
+    Task InvalidarPendentesAsync(Guid usuarioId, CancellationToken cancellationToken = default);
 
     Task<ResultadoRedefinicaoSenha> RedefinirAsync(string token, string novaSenha, CancellationToken cancellationToken = default);
 }

@@ -326,7 +326,7 @@ public sealed class EditarExcluirCadastrosTestes : IAsyncLifetime
         var excluido = await NoBancoAsync(db => db.Usuarios.IgnoreQueryFilters().AsNoTracking().FirstAsync(u => u.Id == colegaId));
         excluido.Excluido.Should().BeTrue();
         excluido.Nome.Should().Be("Colega");
-        excluido.Email.Should().BeEmpty();
+        excluido.Email.Should().BeNull();
         excluido.Telefone.Should().BeNull();
         excluido.Cpf.Should().BeNull();
         excluido.FotoUrl.Should().BeNull();

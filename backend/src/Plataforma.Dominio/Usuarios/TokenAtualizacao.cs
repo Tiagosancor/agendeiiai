@@ -18,22 +18,26 @@ public class TokenAtualizacao : EntidadeBase, IEntidadeDoNegocio
 
     public DateTimeOffset? RevogadoEm { get; private set; }
 
+    /// <summary>Versão das sessões do usuário quando este token nasceu; se a senha mudou depois, ele não renova mais.</summary>
+    public int VersaoSessao { get; private set; }
+
     public bool Valido => RevogadoEm is null && ExpiraEm > DateTimeOffset.UtcNow;
 
     protected TokenAtualizacao()
     {
     }
 
-    private TokenAtualizacao(Guid negocioId, Guid usuarioId, string hash, DateTimeOffset expiraEm)
+    private TokenAtualizacao(Guid negocioId, Guid usuarioId, string hash, DateTimeOffset expiraEm, int versaoSessao)
     {
+        VersaoSessao = versaoSessao;
         NegocioId = negocioId;
         UsuarioId = usuarioId;
         Hash = hash;
         ExpiraEm = expiraEm;
     }
 
-    public static TokenAtualizacao Criar(Guid negocioId, Guid usuarioId, string hash, DateTimeOffset expiraEm) =>
-        new(negocioId, usuarioId, hash, expiraEm);
+    public static TokenAtualizacao Criar(Guid negocioId, Guid usuarioId, string hash, DateTimeOffset expiraEm, int versaoSessao = 0) =>
+        new(negocioId, usuarioId, hash, expiraEm, versaoSessao);
 
     public void Revogar() => RevogadoEm ??= DateTimeOffset.UtcNow;
 }

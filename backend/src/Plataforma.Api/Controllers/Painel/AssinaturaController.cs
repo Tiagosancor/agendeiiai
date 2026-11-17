@@ -18,8 +18,13 @@ namespace Plataforma.Api.Controllers.Painel;
 public sealed class AssinaturaController : ControllerBase
 {
     private readonly IServicoAssinaturaNegocio _servico;
+    private readonly IUsuarioAtual _usuarioAtual;
 
-    public AssinaturaController(IServicoAssinaturaNegocio servico) => _servico = servico;
+    public AssinaturaController(IServicoAssinaturaNegocio servico, IUsuarioAtual usuarioAtual)
+    {
+        _servico = servico;
+        _usuarioAtual = usuarioAtual;
+    }
 
     [HttpGet]
     [Authorize(Policy = ClaimsPlataforma.PoliticaSomenteAdministradorNegocio)]
@@ -61,13 +66,18 @@ public sealed class AssinaturaController : ControllerBase
     [Authorize(Policy = ClaimsPlataforma.PoliticaSomenteAdministradorNegocio)]
     public async Task<ActionResult<InstrucoesPagamento>> Contratar(ContratarRequisicao requisicao, CancellationToken cancellationToken)
     {
-        var email = Email();
+        // O gateway precisa do e-mail do titular, e a claim "email" só existe com e-mail verificado.
+        var email = _usuarioAtual.Email;
         if (email is null)
-            return BadRequest(new ProblemDetails { Title = "Não foi possível identificar o e-mail do titular." });
+            return BadRequest(new ProblemDetails
+            {
+                Title = "Confirme um e-mail em Minha conta para contratar.",
+                Extensions = { ["codigo"] = "email_necessario" },
+            });
 
         try
         {
-            return Ok(await _servico.ContratarAsync($"painel:{email}", email, requisicao.PlanoId, requisicao.Periodicidade, requisicao.CpfCnpj, cancellationToken));
+            return Ok(await _servico.ContratarAsync($"painel:{Autor()}", email, requisicao.PlanoId, requisicao.Periodicidade, requisicao.CpfCnpj, cancellationToken));
         }
         catch (LimiteProfissionaisExcedidoException excecao)
         {
@@ -94,7 +104,7 @@ public sealed class AssinaturaController : ControllerBase
     {
         try
         {
-            return Ok(new { imediato = await _servico.CancelarAsync($"painel:{Email()}", cancellationToken) });
+            return Ok(new { imediato = await _servico.CancelarAsync($"painel:{Autor()}", cancellationToken) });
         }
         catch (RegraAssinaturaException excecao)
         {
@@ -114,7 +124,7 @@ public sealed class AssinaturaController : ControllerBase
     {
         try
         {
-            var autor = $"painel:{Email()}";
+            var autor = $"painel:{Autor()}";
             await _servico.TrocarPlanoAsync(autor, requisicao.PlanoId, requisicao.Periodicidade, cancellationToken);
             return NoContent();
         }
@@ -132,8 +142,8 @@ public sealed class AssinaturaController : ControllerBase
         }
     }
 
-    private string? Email() =>
-        User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? User.FindFirst("email")?.Value;
+    /// <summary>Quem fez a ação, para o histórico: e-mail verificado, @usuário ou nome — nunca telefone.</summary>
+    private string Autor() => _usuarioAtual.Rotulo ?? "desconhecido";
 
     private ConflictObjectResult LimiteExcedido(LimiteProfissionaisExcedidoException excecao) => Conflict(new ProblemDetails
     {

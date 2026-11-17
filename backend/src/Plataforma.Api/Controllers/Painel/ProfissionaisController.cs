@@ -76,7 +76,8 @@ public sealed class ProfissionaisController : ControllerBase
 
     private ObjectResult? TraduzirErroDeAcesso(Exception excecao) => excecao switch
     {
-        EmailJaCadastradoException => Conflict(new ProblemDetails { Title = "E-mail já cadastrado.", Detail = excecao.Message }),
+        ErroDeAcessoException or IdentificadorObrigatorioException or IdentificadorIndisponivelException or MuitasTentativasException
+            => RespostasAcesso.Traduzir(excecao),
         OperacaoCadastroBloqueadaException => RespostasCadastro.Bloqueado(this, excecao.Message),
         ArgumentException => BadRequest(new ProblemDetails { Title = excecao.Message }),
         _ => null,

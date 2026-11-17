@@ -12,7 +12,7 @@ public interface IGerenciadorProfissionais
     /// <summary>
     /// Com <c>Acesso</c>, cria também o usuário (perfil Profissional) já vinculado, na mesma transação; com
     /// <c>UsuarioId</c>, vincula um usuário que já existe (o caminho "Novo usuário, perfil Profissional").
-    /// Lança <c>EmailJaCadastradoException</c> e <see cref="OperacaoCadastroBloqueadaException"/>.
+    /// Lança <c>IdentificadorIndisponivelException</c> e <see cref="OperacaoCadastroBloqueadaException"/>.
     /// </summary>
     Task<Guid> CriarAsync(CriarProfissional dados, CancellationToken cancellationToken = default);
 
@@ -55,17 +55,19 @@ public sealed record ProfissionalDetalhe(
     Guid Id, string Nome, string? Telefone, string? Email, bool Ativo, string? FotoUrl, string? CpfMascarado, string? Funcao,
     Endereco? Endereco = null, AcessoVinculado? Acesso = null, string? CorAgenda = null);
 
-public sealed record AcessoVinculado(Guid UsuarioId, string Email, bool Ativo);
+public sealed record AcessoVinculado(
+    Guid UsuarioId, string? Email, bool Ativo, bool EmailVerificado = false, string? NomeUsuario = null, string? TelefoneLogin = null);
 
 public sealed record CriarProfissional(
     string Nome, string? Telefone = null, string? Email = null, string? Cpf = null, string? Funcao = null,
     AcessoProfissional? Acesso = null, Guid? UsuarioId = null, string? CorAgenda = null);
 
 /// <summary>
-/// Login do profissional (seção 7): senha definida agora ou convite por e-mail para ele criar a própria
-/// (<c>EnviarConvite</c>, e aí a senha é ignorada).
+/// Login do profissional (seção 7): pelo menos um entre e-mail, nome de usuário e telefone de login. Senha definida agora ou
+/// convite por e-mail para ele criar a própria (<c>EnviarConvite</c>, que exige e-mail; a senha é então ignorada).
 /// </summary>
-public sealed record AcessoProfissional(string Email, string? Senha, bool EnviarConvite);
+public sealed record AcessoProfissional(
+    string? Email, string? Senha, bool EnviarConvite, string? NomeUsuario = null, string? TelefoneLogin = null);
 
 /// <summary>
 /// Edição da ficha (seção 7). <c>Cpf</c>/<c>Endereco</c> nulos ficam como estão; <c>FotoUrl</c> e <c>CorAgenda</c>

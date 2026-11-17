@@ -8,6 +8,12 @@ namespace Plataforma.Dominio.Usuarios;
 /// confirmação — seção 8.1.2). Uso único, validade curta, e um pedido novo invalida os
 /// anteriores ainda pendentes do mesmo usuário.
 /// </summary>
+public enum TipoRedefinicaoSenha
+{
+    Redefinicao = 0,
+    Convite = 1,
+}
+
 public class RedefinicaoSenha : EntidadeBase, IEntidadeDoNegocio
 {
     public Guid NegocioId { get; private set; }
@@ -23,6 +29,12 @@ public class RedefinicaoSenha : EntidadeBase, IEntidadeDoNegocio
     /// <summary>Invalidada por um pedido mais novo, sem ter sido usada.</summary>
     public DateTimeOffset? InvalidadaEm { get; private set; }
 
+    /// <summary>Convite (administrador) ou redefinição pedida pelo usuário. Só o convite verifica o e-mail ao ser usado.</summary>
+    public TipoRedefinicaoSenha Tipo { get; private set; } = TipoRedefinicaoSenha.Redefinicao;
+
+    /// <summary>SHA-256 do e-mail para onde o link foi — o convite só verifica o e-mail se ele ainda for o mesmo.</summary>
+    public string? EmailDestinoHash { get; private set; }
+
     protected RedefinicaoSenha()
     {
     }
@@ -35,12 +47,14 @@ public class RedefinicaoSenha : EntidadeBase, IEntidadeDoNegocio
         ExpiraEm = expiraEm;
     }
 
-    public static RedefinicaoSenha Criar(Guid negocioId, Guid usuarioId, string hash, DateTimeOffset expiraEm)
+    public static RedefinicaoSenha Criar(
+        Guid negocioId, Guid usuarioId, string hash, DateTimeOffset expiraEm,
+        TipoRedefinicaoSenha tipo = TipoRedefinicaoSenha.Redefinicao, string? emailDestinoHash = null)
     {
         if (string.IsNullOrWhiteSpace(hash))
             throw new ArgumentException("O hash do token é obrigatório.", nameof(hash));
 
-        return new RedefinicaoSenha(negocioId, usuarioId, hash, expiraEm);
+        return new RedefinicaoSenha(negocioId, usuarioId, hash, expiraEm) { Tipo = tipo, EmailDestinoHash = emailDestinoHash };
     }
 
     public bool Valida(DateTimeOffset agora) => UsadaEm is null && InvalidadaEm is null && ExpiraEm > agora;

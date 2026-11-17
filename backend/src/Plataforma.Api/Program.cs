@@ -125,11 +125,22 @@ try
 
                     var dbContext = contexto.HttpContext.RequestServices
                         .GetRequiredService<Plataforma.Infraestrutura.Persistencia.PlataformaDbContext>();
-                    var ativo = await dbContext.Usuarios.IgnoreQueryFilters().AsNoTracking()
-                        .AnyAsync(u => u.Id == usuarioId && u.Ativo && !u.Excluido, contexto.HttpContext.RequestAborted);
+                    var versaoAtual = await dbContext.Usuarios.IgnoreQueryFilters().AsNoTracking()
+                        .Where(u => u.Id == usuarioId && u.Ativo && !u.Excluido)
+                        .Select(u => (int?)u.VersaoSessao)
+                        .FirstOrDefaultAsync(contexto.HttpContext.RequestAborted);
 
-                    if (!ativo)
+                    if (versaoAtual is null)
+                    {
                         contexto.Fail("Usuário excluído ou desativado.");
+                        return;
+                    }
+
+                    // Trocar a senha sobe a versão: o access token emitido antes (versão menor) deixa de valer na hora, sem esperar
+                    // expirar. Token antigo, sem a claim, vale como versão 0.
+                    _ = int.TryParse(contexto.Principal!.FindFirst(ClaimsPlataforma.VersaoSessao)?.Value, out var versaoDoToken);
+                    if (versaoDoToken != versaoAtual)
+                        contexto.Fail("Sessão encerrada: a senha foi alterada.");
                 },
             };
         });
@@ -175,6 +186,11 @@ try
             LimitePorIpPorMinuto(contexto, "Cadastro:LimiteSlugPorIpPorMinuto", padrao: 60));
         opcoes.AddPolicy(Plataforma.Api.Controllers.Administracao.AutenticacaoPlataformaController.PoliticaLoginPorIp, contexto =>
             LimitePorIpPorMinuto(contexto, "Plataforma:LimiteLoginPorIpPorMinuto", padrao: 5));
+
+        // Login do painel por IP: barreira secundária (o IP vem de X-Forwarded-For, que quem chama a API direto consegue
+        // falsificar); o bloqueio por identificador, em Postgres, é a proteção principal.
+        opcoes.AddPolicy(Plataforma.Api.Controllers.Painel.AutenticacaoController.PoliticaLoginPorIp, contexto =>
+            LimitePorIpPorMinuto(contexto, "Autenticacao:LimiteLoginPorIpPorMinuto", padrao: 10));
 
         // Esqueci minha senha do painel (pedido e troca). O limite por usuário fica no serviço.
         opcoes.AddPolicy(Plataforma.Api.Controllers.Painel.AutenticacaoController.PoliticaRedefinicaoSenhaPorIp, contexto =>

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import type { MinhaConta } from "./tipos";
 import { ErroApi, requisicaoApi, requisicaoAutenticacaoPainel } from "./api";
 
 interface RespostaLogin {
@@ -19,9 +20,12 @@ interface OpcoesChamada {
 }
 
 interface ContextoAutenticacao {
+  usuarioId: string | null;
+  minhaConta: MinhaConta | null;
+  atualizarMinhaConta: () => Promise<void>;
   carregando: boolean;
   autenticado: boolean;
-  entrar: (email: string, senha: string) => Promise<void>;
+  entrar: (identificador: string, senha: string) => Promise<void>;
   sair: () => Promise<void>;
   /** Chama a API do painel com o token de acesso atual; se der 401, tenta renovar uma vez antes de desistir. */
   chamarApi: <T>(caminho: string, opcoes?: OpcoesChamada) => Promise<T>;
@@ -53,6 +57,8 @@ function permissoesDoToken(token: string | null): string[] {
 const Contexto = createContext<ContextoAutenticacao | null>(null);
 
 export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
+  const [minhaConta, setMinhaConta] = useState<MinhaConta | null>(null);
+  const [versaoLogin, setVersaoLogin] = useState(0);
   const [tokenAcesso, setTokenAcesso] = useState<string | null>(null);
   const roteador = useRouter();
   const [carregando, setCarregando] = useState(true);
@@ -73,20 +79,22 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Busca disparada pela montagem (tenta renovar a sessão a partir do cookie), não estado derivado de props.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     renovar().finally(() => setCarregando(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const entrar = useCallback(async (email: string, senha: string) => {
-    const resposta = await requisicaoAutenticacaoPainel<RespostaLogin>("login", { email, senha });
+  const entrar = useCallback(async (identificador: string, senha: string) => {
+    const resposta = await requisicaoAutenticacaoPainel<RespostaLogin>("login", { identificador, senha });
     setTokenAcesso(resposta.accessToken);
+    // Mesmo que dois logins emitam o mesmo JWT no mesmo segundo, recarrega o cadastro.
+    setVersaoLogin((versao) => versao + 1);
   }, []);
 
   const sair = useCallback(async () => {
     try {
       await requisicaoAutenticacaoPainel("logout");
     } finally {
+      setMinhaConta(null);
       setTokenAcesso(null);
     }
   }, []);
@@ -97,7 +105,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
         return await requisicaoApi<T>(caminho, { ...opcoes, tokenAcesso });
       } catch (erro) {
         // Assinatura suspensa (seção 7): a API só libera a tela de assinatura — leva direto pra lá.
-        if (erro instanceof ErroApi && erro.codigo === "assinatura_suspensa" && window.location.pathname !== "/painel/assinatura") {
+        if (erro instanceof ErroApi && erro.codigo === "assinatura_suspensa" && !["/painel/assinatura", "/painel/minha-conta"].includes(window.location.pathname)) {
           roteador.push("/painel/assinatura");
         }
         if (erro instanceof ErroApi && erro.status === 401 && !semRenovar) {
@@ -112,9 +120,26 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
     [tokenAcesso, renovar, roteador],
   );
 
+  const atualizarMinhaConta = useCallback(async () => {
+    setMinhaConta(await chamarApi<MinhaConta>("/painel/minha-conta"));
+  }, [chamarApi]);
+
+  useEffect(() => {
+    if (!tokenAcesso) return;
+    const controle = new AbortController();
+    requisicaoApi<MinhaConta>("/painel/minha-conta", { tokenAcesso, sinal: controle.signal })
+      .then(setMinhaConta).catch(() => { if (!controle.signal.aborted) setMinhaConta(null); });
+    return () => controle.abort();
+  }, [tokenAcesso, versaoLogin]);
+
   const valor = useMemo<ContextoAutenticacao>(() => {
     const permissoes = permissoesDoToken(tokenAcesso);
+    let usuarioId: string | null = null;
+    try { if (tokenAcesso) usuarioId = JSON.parse(atob(tokenAcesso.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).sub ?? null; } catch { /* Token inválido: a API decide a autorização. */ }
     return {
+      usuarioId,
+      minhaConta: tokenAcesso ? minhaConta : null,
+      atualizarMinhaConta,
       carregando,
       autenticado: tokenAcesso !== null,
       entrar,
@@ -122,7 +147,7 @@ export function ProvedorAutenticacao({ children }: { children: ReactNode }) {
       chamarApi,
       temPermissao: (permissao: string) => permissoes.includes(permissao),
     };
-  }, [carregando, tokenAcesso, entrar, sair, chamarApi]);
+  }, [carregando, tokenAcesso, entrar, sair, chamarApi, minhaConta, atualizarMinhaConta]);
 
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }

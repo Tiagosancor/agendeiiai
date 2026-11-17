@@ -34,6 +34,15 @@ test("usuário mostra a senha digitada, pede o link e troca a senha", async ({ p
     data: { nome: "Recepção E2E", email, senha: "SenhaAntiga1", perfil: "Recepcionista" },
   });
   expect(criado.ok()).toBeTruthy();
+  const usuarioId: string = await criado.json();
+  // Contas novas têm e-mail não confirmado. Usar o convite prova a posse antes da recuperação.
+  expect((await request.post(`${API}/painel/usuarios/${usuarioId}/convite`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })).status()).toBe(202);
+  const tokenConvite = new URL(extrairLinkDoEmail(email)).searchParams.get("token");
+  expect((await request.post(`${API}/painel/auth/redefinir-senha`, {
+    data: { token: tokenConvite, novaSenha: "SenhaAntiga1" },
+  })).ok()).toBeTruthy();
 
   // Olho: mostra e volta a esconder o que foi digitado.
   await page.goto(`${PAINEL_BASE}/painel/login`);
@@ -48,6 +57,7 @@ test("usuário mostra a senha digitada, pede o link e troca a senha", async ({ p
 
   // Pede o link.
   await page.getByRole("link", { name: "Esqueci minha senha" }).click();
+  await expect(page.getByText("peça ao administrador", { exact: false })).toBeVisible();
   await expect(page).toHaveURL(/\/painel\/esqueci-senha$/);
   await page.getByLabel("E-mail").fill(email);
   await page.getByRole("button", { name: "Enviar link" }).click();

@@ -21,6 +21,9 @@ public sealed class AutenticacaoController : ControllerBase
 
     public const string PoliticaRedefinicaoSenhaPorIp = "RedefinicaoSenhaPorIp";
 
+    /// <summary>Limite secundário por IP no login (o bloqueio por identificador é a proteção principal).</summary>
+    public const string PoliticaLoginPorIp = "LoginPainelPorIp";
+
     private readonly IServicoAutenticacao _servicoAutenticacao;
     private readonly IServicoRedefinicaoSenha _servicoRedefinicaoSenha;
     private readonly IWebHostEnvironment _ambiente;
@@ -33,10 +36,31 @@ public sealed class AutenticacaoController : ControllerBase
         _ambiente = ambiente;
     }
 
+    /// <summary>
+    /// Entra com e-mail, telefone ou nome de usuário. <c>identificador</c> (novo) ou <c>email</c> (versão antiga do front, ainda
+    /// aceita): vale o primeiro preenchido. Falha de qualquer tipo = 401 sem corpo; identificador com falhas demais = 429
+    /// <c>muitas_tentativas</c> (sem conferir a senha).
+    /// </summary>
     [HttpPost("login")]
+    [EnableRateLimiting(PoliticaLoginPorIp)]
     public async Task<ActionResult<RespostaLogin>> Login(RequisicaoLogin requisicao, CancellationToken cancellationToken)
     {
-        var resultado = await _servicoAutenticacao.LoginAsync(requisicao.Email, requisicao.Senha, cancellationToken);
+        var identificador = !string.IsNullOrWhiteSpace(requisicao.Identificador) ? requisicao.Identificador : requisicao.Email;
+        if (string.IsNullOrWhiteSpace(identificador))
+            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
+            {
+                ["identificador"] = ["Informe o e-mail, telefone ou nome de usuário."],
+            }));
+
+        var resultado = await _servicoAutenticacao.LoginAsync(identificador, requisicao.Senha, cancellationToken);
+
+        if (resultado.Bloqueado)
+            return StatusCode(StatusCodes.Status429TooManyRequests, new ProblemDetails
+            {
+                Status = StatusCodes.Status429TooManyRequests,
+                Title = "Muitas tentativas. Aguarde alguns minutos e tente de novo.",
+                Extensions = { ["codigo"] = "muitas_tentativas" },
+            });
 
         if (!resultado.Sucesso)
             return Unauthorized();
@@ -121,9 +145,13 @@ public sealed class AutenticacaoController : ControllerBase
     }
 }
 
-public sealed record RequisicaoLogin([Required] string Email, [Required] string Senha);
+/// <summary>
+/// <c>Identificador</c> (e-mail, telefone ou nome de usuário) é o campo novo; <c>Email</c> continua aceito para a versão do front
+/// que ainda manda só o e-mail. Ao menos um dos dois é obrigatório (validado na ação).
+/// </summary>
+public sealed record RequisicaoLogin([StringLength(1000)] string? Email, [Required, StringLength(1000)] string Senha, [StringLength(1000)] string? Identificador = null);
 
-public sealed record RequisicaoEsqueciSenha([Required] string Email);
+public sealed record RequisicaoEsqueciSenha([Required, StringLength(1000)] string Email);
 
 public sealed record RequisicaoRedefinirSenha([Required] string Token, [Required] string NovaSenha);
 

@@ -90,6 +90,7 @@ async function lerCorpoJson<T>(resposta: Response): Promise<T> {
 export async function requisicaoAutenticacaoPainel<T>(caminho: "login" | "renovar" | "logout", corpo?: unknown): Promise<T> {
   const resposta = await fetch(`/painel/auth/${caminho}`, {
     method: "POST",
+    cache: "no-store",
     headers: corpo !== undefined ? { "Content-Type": "application/json" } : {},
     body: corpo !== undefined ? JSON.stringify(corpo) : undefined,
   });

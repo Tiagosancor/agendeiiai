@@ -26,6 +26,9 @@ for (const tema of ["light", "dark"]) {
     await page.route(`${API}/painel/**`, async route => {
       const req = route.request(), path = new URL(req.url()).pathname;
       if (path.startsWith("/painel/auth/")) return route.continue();
+      // Consulta do aviso "complete seu cadastro" (layout protegido): não conta como chamada da tela.
+      if (path === "/painel/whatsapp/conversas/resumo") return route.fulfill({ json: { aguardandoAtendimento: 0 } });
+      if (path === "/painel/minha-conta") return route.fulfill({ json: { nome: "Pessoa de teste", perfil: "Administrador", email: "pessoa@exemplo.com", emailVerificado: true, emailPendenteMascarado: null, nomeUsuario: null, telefoneLogin: null, senhaDefinidaPorTerceiro: false } });
       chamadas.push(`${req.method()} ${path}`);
       if (path === "/painel/assinatura/aviso") return route.fulfill({ status: 204 });
       if (path === "/painel/estoque/alertas") return route.fulfill({ json: alertas });
@@ -83,6 +86,8 @@ for (const permissoes of [[], ["VenderProdutos"]]) {
     });
     await page.route(`${API}/painel/**`, async route => {
       const path = new URL(route.request().url()).pathname;
+      if (path === "/painel/whatsapp/conversas/resumo") return route.fulfill({ json: { aguardandoAtendimento: 0 } });
+      if (path === "/painel/minha-conta") return route.fulfill({ json: { nome: "Pessoa de teste", perfil: "Administrador", email: "pessoa@exemplo.com", emailVerificado: true, emailPendenteMascarado: null, nomeUsuario: null, telefoneLogin: null, senhaDefinidaPorTerceiro: false } });
       if (path === "/painel/assinatura/aviso") return route.fulfill({ status: 204 });
       if (path === "/painel/primeiros-passos") return route.fulfill({ json: { ...passos, exibir: false } });
       if (path === "/painel/estoque/alertas") { consultasEstoque++; return route.fulfill({ json: alertas }); }

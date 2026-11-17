@@ -72,6 +72,18 @@ public interface INotificador
 
     /// <summary>Convite para o profissional criar a senha do próprio acesso (seção 7).</summary>
     Task EnviarConviteAcessoAsync(string email, string nomeUsuario, string link, int validadeHoras, CancellationToken cancellationToken = default);
+
+    /// <summary>Código de 6 dígitos para o usuário logado confirmar o e-mail de acesso ("Minha conta"). Nunca logado.</summary>
+    Task EnviarCodigoEmailUsuarioAsync(string email, string nomeUsuario, string codigo, int validadeMinutos, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Aviso ao dono de um e-mail que alguém tentou usar como acesso de outra conta: ele já tem acesso. Não diz de qual negócio
+    /// (outro oráculo) e não leva código.
+    /// </summary>
+    Task EnviarAvisoEmailJaTemAcessoAsync(string email, string linkLogin, CancellationToken cancellationToken = default);
+
+    /// <summary>Ao e-mail de acesso verificado anterior: o e-mail de acesso mudou (o novo vai mascarado).</summary>
+    Task EnviarAvisoEmailAcessoAlteradoAsync(string emailAnterior, string nomeUsuario, string novoEmailMascarado, CancellationToken cancellationToken = default);
 }
 
 public sealed record DadosBoasVindas(

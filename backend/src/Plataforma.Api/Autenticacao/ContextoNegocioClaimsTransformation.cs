@@ -30,7 +30,11 @@ public sealed class ContextoNegocioClaimsTransformation : IClaimsTransformation
 
         // Autor das ações (log de auditoria, "ninguém exclui o próprio usuário" — seção 7).
         if (_usuarioAtual.UsuarioId is null && Guid.TryParse(ObterUsuarioId(principal), out var usuarioId))
-            _usuarioAtual.Definir(usuarioId, principal.FindFirst(ClaimTypes.Email)?.Value ?? principal.FindFirst("email")?.Value);
+            _usuarioAtual.Definir(
+                usuarioId,
+                principal.FindFirst(ClaimTypes.Email)?.Value ?? principal.FindFirst("email")?.Value,
+                principal.FindFirst(ClaimsPlataforma.NomeUsuario)?.Value,
+                principal.FindFirst(ClaimsPlataforma.NomeExibicao)?.Value ?? principal.FindFirst(ClaimTypes.Name)?.Value);
 
         return Task.FromResult(principal);
     }

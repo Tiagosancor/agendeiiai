@@ -42,7 +42,9 @@ public sealed class AssinaturasTestes : IAsyncLifetime
 
         var negocio = Negocio.Criar(Slug.Criar("ass-" + Guid.NewGuid().ToString("N")[..12]), "Barbearia do Teste", TipoNegocio.Barbearia);
         dbContext.Negocios.Add(negocio);
-        dbContext.Usuarios.Add(Usuario.Criar(negocio.Id, "Dono", emailAdmin, Perfil.Administrador, "hash"));
+        var dono = Usuario.Criar(negocio.Id, "Dono", emailAdmin, Perfil.Administrador, "hash");
+        dono.ConfirmarEmail(emailAdmin, DateTimeOffset.UtcNow);
+        dbContext.Usuarios.Add(dono);
 
         var plano = await dbContext.Planos.OrderBy(p => p.Ordem).FirstAsync();
         var assinatura = criar(plano, negocio.Id);

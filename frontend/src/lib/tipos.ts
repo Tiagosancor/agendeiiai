@@ -98,7 +98,10 @@ export interface RespostaExclusao {
 export interface UsuarioResumo {
   id: string;
   nome: string;
-  email: string;
+  email: string | null;
+  emailVerificado: boolean;
+  nomeUsuario: string | null;
+  telefoneLogin: string | null;
   perfil: Perfil;
   ativo: boolean;
   fotoUrl: string | null;
@@ -107,7 +110,10 @@ export interface UsuarioResumo {
 export interface UsuarioDetalhe {
   id: string;
   nome: string;
-  email: string;
+  email: string | null;
+  emailVerificado: boolean;
+  nomeUsuario: string | null;
+  telefoneLogin: string | null;
   telefone: string | null;
   perfil: Perfil;
   ativo: boolean;
@@ -143,14 +149,19 @@ export interface ProfissionalDetalhe {
 
 export interface AcessoVinculado {
   usuarioId: string;
-  email: string;
+  email: string | null;
+  emailVerificado: boolean;
+  nomeUsuario: string | null;
+  telefoneLogin: string | null;
   ativo: boolean;
 }
 
 /** Login do profissional: senha definida agora ou convite por e-mail (a senha é ignorada). */
 export interface AcessoProfissional {
-  email: string;
-  senha: string | null;
+  email?: string | null;
+  nomeUsuario?: string | null;
+  telefoneLogin?: string | null;
+  senha?: string | null;
   enviarConvite: boolean;
 }
 
@@ -1094,3 +1105,31 @@ export interface DetalheConversaWhatsApp extends ConversaWhatsAppResumo {
 }
 
 export interface DefinirMensagemTransferenciaRequisicao { mensagem: string | null; }
+
+export interface MinhaConta {
+  nome: string;
+  perfil: Perfil;
+  email: string | null;
+  emailVerificado: boolean;
+  emailPendenteMascarado: string | null;
+  nomeUsuario: string | null;
+  telefoneLogin: string | null;
+  senhaDefinidaPorTerceiro: boolean;
+}
+
+export interface DefinirAcessoUsuario {
+  email: string | null;
+  nomeUsuario: string | null;
+  telefoneLogin: string | null;
+}
+
+export interface CriarUsuario {
+  nome: string;
+  email?: string | null;
+  nomeUsuario?: string | null;
+  telefoneLogin?: string | null;
+  senha: string;
+  perfil: Perfil;
+  telefone?: string | null;
+  cpf?: string | null;
+}

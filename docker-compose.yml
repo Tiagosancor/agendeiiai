@@ -45,6 +45,12 @@ services:
       Cpf__ChaveBase64: ${CPF_CHAVE_BASE64:?defina CPF_CHAVE_BASE64 no .env (openssl rand -base64 32)}
       # Código de confirmação (seção 8.1) — pimenta do hash, nunca o código em si. Gere com: openssl rand -base64 32
       Verificacao__ChaveHmac: ${VERIFICACAO_CHAVE_HMAC:?defina VERIFICACAO_CHAVE_HMAC no .env (openssl rand -base64 32)}
+      # Login do painel (e-mail, telefone ou nome de usuário) — limites de abuso; nenhum é segredo. Padrões = os da API.
+      Autenticacao__MaximoFalhasLoginPorIdentificador: ${AUTENTICACAO_MAXIMO_FALHAS_LOGIN:-5}
+      Autenticacao__JanelaBloqueioLoginMinutos: ${AUTENTICACAO_JANELA_BLOQUEIO_LOGIN_MINUTOS:-15}
+      Autenticacao__LimiteLoginPorIpPorMinuto: ${AUTENTICACAO_LIMITE_LOGIN_POR_IP_MINUTO:-10}
+      Autenticacao__LimiteRedefinicaoSenhaPorIpPorMinuto: ${AUTENTICACAO_LIMITE_REDEFINICAO_SENHA_POR_IP_MINUTO:-5}
+      Autenticacao__LimiteConflitosIdentificadorPorHora: ${AUTENTICACAO_LIMITE_CONFLITOS_IDENTIFICADOR_HORA:-20}
       # E-mail/WhatsApp reais são opt-in — sem essas variáveis, os provedores Fake cobrem
       # dev e testes (seção 4). Defina EMAIL_PROVEDOR=Resend / WHATSAPP_PROVEDOR=Oficial
       # (e as chaves correspondentes) só quando as contas reais (seção 12) existirem.
